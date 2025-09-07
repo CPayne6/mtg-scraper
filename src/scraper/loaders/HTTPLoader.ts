@@ -1,7 +1,3 @@
-interface LoaderArgs {
-  baseUrl: string;
-}
-
 export abstract class HTTPLoader {
 
   constructor() {}

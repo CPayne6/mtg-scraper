@@ -1,3 +1,4 @@
+import { getUserAgent } from "../agent"
 
 const defaultIdReplace = '{{id}}'
 export const domainRegex = /https?:\/\/(\w+)\.\w+/i
@@ -19,9 +20,7 @@ export abstract class DeckLoader {
    */
   protected abstract parseCardNames(data: string): string[]
 
-  async fetchCards(link: string): Promise<string[]> {
-    const id = this.idRegex.exec(link)?.[1]
-
+  async fetchCards(id: string): Promise<string[]> {
     if (!id) {
       return []
     }

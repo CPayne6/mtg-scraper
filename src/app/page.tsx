@@ -2,7 +2,7 @@
 
 import { defaultIdRegex, domainRegex } from '@/scraper/loaders'
 import { Field } from '@ark-ui/react'
-import { Heading, Text, Center, Flex, Image, Stack, HStack, Input, Button } from '@chakra-ui/react'
+import { Heading, Text, Center, Flex, Image, Stack, Input, Button } from '@chakra-ui/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -34,11 +34,11 @@ export default function Home() {
       <Stack direction="column" gap="10">
         <Stack direction="column" gap="5" align="center">
           <Image src="/scanner.png" alt="logo" height="200px" width="200px" />
-          <Heading size="lg">Card Finder</Heading>
+          <Heading size="4xl">MTG Card Finder</Heading>
           <Text>Search accross Hobbiesville, 401 Games and FacetoFace Games</Text>
         </Stack>
 
-        <HStack gap={3}>
+        <Stack gap={3} align="start" width="500px">
           <Field.Root>
             <Field.Label>
               Paste your moxfield link here
@@ -46,8 +46,10 @@ export default function Home() {
             <Input placeholder="Moxfield link here" value={moxfieldLink} onSubmit={onSubmit} onChange={(e) => setMoxfieldLink(e.target.value)} />
             {helperText && helperText.length > 0 && <Field.HelperText>{helperText}</Field.HelperText>}
           </Field.Root>
-          <Button variant="solid" color="" onClick={onSubmit}>Let&apos;s Go!</Button>
-        </HStack>
+          <Button variant="surface" onClick={onSubmit}>
+            Let&apos;s Go!
+          </Button>
+        </Stack>
       </Stack>
     </Flex>
   </Center>

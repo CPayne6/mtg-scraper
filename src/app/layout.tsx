@@ -1,6 +1,5 @@
 "use client"
 
-import "./globals.css";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 export default function RootLayout({

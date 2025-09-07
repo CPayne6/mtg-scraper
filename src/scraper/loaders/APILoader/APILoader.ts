@@ -82,7 +82,7 @@ export class APILoader extends HTTPLoader {
     const apiPath = this.formatPath(this.apiConfig.api.path, page, name)
     const baseUrl = this.apiConfig.api.baseUrl instanceof RegExp ? this.runRegex(this.apiConfig.api.baseUrl, page) : this.apiConfig.api.baseUrl
 
-    if(!baseUrl){
+    if (!baseUrl) {
       return {
         result: '{}',
         api: baseUrl + apiPath + '?' + apiParams.toString(),
@@ -90,10 +90,20 @@ export class APILoader extends HTTPLoader {
       }
     }
 
-    return {
-      result: await super.loadPage(baseUrl + apiPath + '?' + apiParams.toString()),
-      api: baseUrl + apiPath + '?' + apiParams.toString()
+    try {
+      return {
+        result: await super.loadPage(baseUrl + apiPath + '?' + apiParams.toString()),
+        api: baseUrl + apiPath + '?' + apiParams.toString()
+      }
     }
+    catch (err) {
+      return {
+        result: '{}',
+        api: baseUrl + apiPath + '?' + apiParams.toString(),
+        error: `Error while fetching data`
+      }
+    }
+
   }
 
 }
