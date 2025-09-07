@@ -2,8 +2,9 @@
   "name": "mtg-scraper",
   "version": "0.1.0",
   "private": true,
+  "main": "main/main.js",
   "scripts": {
-    "electron-dev": "electron .",
+    "electron-dev": "electron ./",
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
