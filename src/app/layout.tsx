@@ -1,11 +1,7 @@
-"use client"
+'use client'
 
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
-export const metadata = {
-  title: 'MTG Scraper',
-  description: 'A web scraper for MTG cards',
-};
 
 export default function RootLayout({
   children,
@@ -14,6 +10,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+       <head>
+        <title>MTG Scraper</title>
+      </head>
       <body>
         <ChakraProvider value={defaultSystem}>
           {children}
