@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 export interface _401Search {
   uuid: string
   items: Item[]

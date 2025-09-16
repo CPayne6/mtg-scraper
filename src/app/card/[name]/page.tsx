@@ -13,19 +13,11 @@ export function generateStaticParams() {
 export default async function Page({
   params
 }: {
-  params: Promise<{ source: string; id: string }>
+  params: Promise<{ name: string }>
 }) {
-  const { source, id } = await params
-  const loader = sourceMap[source]
-  if (!loader) {
-    return <>Unable to find source</>
-  }
-  else if (!id) {
-    return <>Unable to find id</>
-  }
-  const list = await loader.fetchCards(id)
-
-  return <Flex direction="column" align="center">
+  const name = decodeURIComponent((await params).name)
+  return <Center bg="Background" h="100vh" w="100vw" overflow="scroll">
+    <Flex direction="column" align="center">
       <Box gap="5">
         <Stack direction="row" gap="5" align="center">
           <Image src="/scanner.png" alt="logo" height="100x" width="200px" />
@@ -36,8 +28,10 @@ export default async function Page({
           </Stack>
         </Stack>
         <CardDisplay
-          cardNames={list}
+          cardNames={[name]}
+          pagination={false}
         />
       </Box >
     </Flex >
+  </Center >
 }

@@ -10,23 +10,35 @@ const supportedSites = ['moxfield']
 
 export default function Home() {
   const [moxfieldLink, setMoxfieldLink] = useState<string>('')
-  const [helperText, setHelperText] = useState<string>()
+  const [cardName, setCardName] = useState<string>('')
+
+  const [moxHelperText, setMoxHelperText] = useState<string>()
+  const [nameHelperText, setNameHelperText] = useState<string>()
 
   const router = useRouter()
 
-  const onSubmit = () => {
+  const onSubmitLink = () => {
     if (!moxfieldLink || moxfieldLink.length === 0) {
-      setHelperText("Enter a moxfield link to get started")
+      setMoxHelperText("Enter a moxfield link to get started")
       return
     }
     const id = defaultIdRegex.exec(moxfieldLink)?.[1];
     const type = domainRegex.exec(moxfieldLink)?.[1];
 
     if (!id || !type || !supportedSites.includes(type)) {
-      setHelperText("Unable to read link")
+      setMoxHelperText("Unable to read link")
       return
     }
     router.push(`/list/${type}/${id}`)
+  }
+
+  const onSubmitCardName = () => {
+    const name = cardName.trim()
+    if (!name || name.length === 0) {
+      setNameHelperText("Enter the entire name")
+      return
+    }
+    router.push(`/card/${encodeURIComponent(name)}`)
   }
 
   return <Center bg="Background" h="100vh" w="100vw">
@@ -43,10 +55,22 @@ export default function Home() {
             <Field.Label>
               Paste your moxfield link here
             </Field.Label>
-            <Input placeholder="Moxfield link here" value={moxfieldLink} onSubmit={onSubmit} onChange={(e) => setMoxfieldLink(e.target.value)} />
-            {helperText && helperText.length > 0 && <Field.HelperText>{helperText}</Field.HelperText>}
+            <Input placeholder="Moxfield link here" value={moxfieldLink} onSubmit={onSubmitLink} onChange={(e) => setMoxfieldLink(e.target.value)} />
+            {moxHelperText && moxHelperText.length > 0 && <Field.HelperText>{moxHelperText}</Field.HelperText>}
           </Field.Root>
-          <Button variant="surface" onClick={onSubmit}>
+          <Button variant="surface" onClick={onSubmitLink}>
+            Let&apos;s Go!
+          </Button>
+        </Stack>
+        <Stack gap={3} align="start" width="500px">
+          <Field.Root>
+            <Field.Label>
+              Paste your card name here
+            </Field.Label>
+            <Input placeholder="Card name here" value={cardName} onSubmit={onSubmitCardName} onChange={(e) => setCardName(e.target.value)} />
+            {nameHelperText && nameHelperText.length > 0 && <Field.HelperText>{nameHelperText}</Field.HelperText>}
+          </Field.Root>
+          <Button variant="surface" onClick={onSubmitCardName}>
             Let&apos;s Go!
           </Button>
         </Stack>

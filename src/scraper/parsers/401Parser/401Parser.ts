@@ -36,9 +36,9 @@ export class _401Parser implements Parser {
     // Loop through the items and filter out ones that don't have the right name or that are not available
     let parsedData;
 
-    try{
+    try {
       parsedData = JSON.parse(data)
-    }catch (err){
+    } catch (err) {
       console.error(err)
       return {
         result: [],
@@ -54,6 +54,33 @@ export class _401Parser implements Parser {
 
     for (const item of parsedData.items) {
       const innerCards: Card[] = []
+
+      let type = ''
+      const attrMap: Record<string, any> = {}
+      for (const att of item.att) {
+        const name = att[0]
+        const values = att[1]
+        let productCorrect = true
+
+        for (let i = 0; Array.isArray(values) && i < values.length; i++) {
+          const value = values[i]
+          if (name && value) {
+            attrMap[name] = value;
+          }
+          if (name.toLocaleLowerCase() === 'type') {
+            type = value
+          }
+          else {
+            productCorrect = false;
+            break;
+          }
+        }
+      }
+
+      if(type !== 'Magic: The Gathering Singles'){
+        continue;
+      }
+
       // Iterate through the convoluted object structure
       for (const innerItem of item.vra) {
         const cardAttr = innerItem[1]

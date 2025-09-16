@@ -24,7 +24,7 @@ export class F2FSearchParser implements Parser {
     }
     for (const hit of searchResults?.hits.hits) {
       const cardInfo = hit._source
-      if (cardInfo.product_type.toLocaleLowerCase() !== 'singles') {
+      if (cardInfo.product_type.toLocaleLowerCase() !== 'singles' || cardInfo["Game Type"][0] !== "Magic: The Gathering") {
         continue;
       }
 

@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 export interface F2FSearch {
   took: number
   timed_out: boolean

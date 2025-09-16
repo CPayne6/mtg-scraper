@@ -31,7 +31,7 @@ export type CardWithStore = Card & { store: string }
 const fetchCardFromStore = async (cardName: string, store: Store) => {
   const data = await store.loader.search(cardName);
   const response = await store.parser.extractItems(data.result);
-  return response.result.map(card => ({ ...card, store: store.name })).filter(card => card.title.toLocaleLowerCase().startsWith(cardName.toLocaleLowerCase()))
+  return response.result.map(card => ({ ...card, store: store.name })).filter(card => card.title.toLocaleLowerCase().replaceAll(/[,\\\/]/g,"").startsWith(cardName.toLocaleLowerCase().replaceAll(/[,\\\/]/g,"")))
 }
 
 export async function loadCard(cardName: string) {

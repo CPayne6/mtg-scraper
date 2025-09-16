@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 export interface HobbiesSearch {
   count: number
   additional_results: any[]

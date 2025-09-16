@@ -1,10 +1,12 @@
+
 export abstract class HTTPLoader {
 
-  constructor() {}
+  constructor() {
+  }
 
   async loadPage(url: string) {
     const res = await fetch(url);
-    return await res.text();
+    return res.text();
   }
 
   abstract search(name: string, params?: URLSearchParams): Promise<{ result: string, api: string, error?: boolean | string }>

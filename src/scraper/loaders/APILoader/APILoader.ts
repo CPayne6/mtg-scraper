@@ -1,5 +1,6 @@
-import { writeFileSync } from "fs";
 import { HTTPLoader } from "../HTTPLoader";
+
+const defaultCacheTimeout = 100000
 
 export interface APILoaderConfig {
   initial: {
@@ -13,14 +14,26 @@ export interface APILoaderConfig {
     path: RegExp | (RegExp | string)[],
     params?: RegExp | [string, string | RegExp][]
   }
+  cacheTimeout?: number
 }
 
 export const searchReplace = '{{search_term}}'
 
 export class APILoader extends HTTPLoader {
 
+
+  cachedPage: string
+  cacheTimestamp: number
+
   constructor(protected apiConfig: APILoaderConfig) {
     super()
+    this.cacheTimestamp = 0
+    this.cachedPage = ''
+  }
+
+  cacheApiPage(page: string) {
+    this.cachedPage = page
+    this.cacheTimestamp = Date.now()
   }
 
   /**
@@ -75,35 +88,43 @@ export class APILoader extends HTTPLoader {
 
   async search(name: string, params: URLSearchParams = new URLSearchParams(this.apiConfig.initial.params)) {
     params.set(this.apiConfig.initial.searchKey, name);
-    const path = (this.apiConfig.initial.path.at(0) === '/' ? '' : '/') + this.apiConfig.initial.path
-    const page = await super.loadPage(this.apiConfig.initial.baseUrl + path + "?" + params.toString());
+    // Handle fetch if cache is out of date
+    if (Date.now() - this.cacheTimestamp > (this.apiConfig.cacheTimeout ?? defaultCacheTimeout)) {
+      const path = (this.apiConfig.initial.path.at(0) === '/' ? '' : '/') + this.apiConfig.initial.path
+      const page = await super.loadPage(this.apiConfig.initial.baseUrl + path + "?" + params.toString());
+      this.cacheApiPage(page)
+    }
 
-    const apiParams = this.formatParams(this.apiConfig.api.params, page, name)
-    const apiPath = this.formatPath(this.apiConfig.api.path, page, name)
-    const baseUrl = this.apiConfig.api.baseUrl instanceof RegExp ? this.runRegex(this.apiConfig.api.baseUrl, page) : this.apiConfig.api.baseUrl
+    const apiParams = this.formatParams(this.apiConfig.api.params, this.cachedPage, name)
+    const apiPath = this.formatPath(this.apiConfig.api.path, this.cachedPage, name)
+    const baseUrl = this.apiConfig.api.baseUrl instanceof RegExp ? this.runRegex(this.apiConfig.api.baseUrl, this.cachedPage) : this.apiConfig.api.baseUrl
+
+    const api = baseUrl + apiPath + '?' + apiParams.toString()
 
     if (!baseUrl) {
       return {
         result: '{}',
-        api: baseUrl + apiPath + '?' + apiParams.toString(),
+        api,
         error: `Unable to parse base url from ${this.apiConfig.api.baseUrl}`
       }
     }
 
+
+    console.log('fetching', api)
+
     try {
       return {
-        result: await super.loadPage(baseUrl + apiPath + '?' + apiParams.toString()),
-        api: baseUrl + apiPath + '?' + apiParams.toString()
+        result: await super.loadPage(api),
+        api
       }
     }
     catch (err) {
       return {
         result: '{}',
-        api: baseUrl + apiPath + '?' + apiParams.toString(),
+        api,
         error: `Error while fetching data`
       }
     }
-
   }
 
 }
