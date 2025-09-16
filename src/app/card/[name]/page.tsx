@@ -1,6 +1,7 @@
 import { CardDisplay } from '@/components/CardDisplay/CardDisplay';
 import { MoxfieldLoader, DeckLoader } from '@/scraper/loaders'
 import { Heading, Text, Center, Flex, Image, Stack, Box, Button } from '@chakra-ui/react'
+import { Suspense } from 'react';
 
 const sourceMap: Record<string, DeckLoader> = {
   moxfield: new MoxfieldLoader()
@@ -27,10 +28,12 @@ export default async function Page({
             <Button asChild><a href="/">Home</a></Button>
           </Stack>
         </Stack>
-        <CardDisplay
-          cardNames={[name]}
-          pagination={false}
-        />
+        <Suspense fallback={<>...Loading</>}>
+          <CardDisplay
+            cardNames={[name]}
+            pagination={false}
+          />
+        </Suspense>
       </Box >
     </Flex >
   </Center >
