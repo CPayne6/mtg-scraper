@@ -57,7 +57,7 @@ export function CardDisplay({ cardName }: CardListProps) {
   }
 
   return <Box position="relative">
-    <Flex md={{ direction: "column" }} gap="5" align="center" justify="end">
+    <Flex md={{ direction: "column" }} gap="5" align="center" justify="space-between">
       <Heading size="xl">{cardName}</Heading>
       <form onSubmit={onSubmitCardName}>
         <Flex gap="1">
