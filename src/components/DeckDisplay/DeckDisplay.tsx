@@ -3,7 +3,7 @@
 import { CardWithStore } from "@/scraper"
 import { ChangeEventHandler, SetStateAction, useEffect, useMemo, useState } from "react"
 import { CardList } from "../CardsList";
-import { Box, Button, createListCollection, Flex, NumberInput, Text } from "@chakra-ui/react";
+import { Box, Button, createListCollection, Flex, NumberInput, Text, Heading } from "@chakra-ui/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Select } from "../Select/Select";
 
@@ -114,22 +114,25 @@ export function DeckDisplay({ cardNames, pagination = true }: DeckListProps) {
     items: cardNames.map((name, index) => ({ label: name, value: (index + 1).toString() })).sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
   }), [cardNames])
   return <Box position="relative">
-    <Flex md={{ direction: "column" }} gap="5" align="center" justify="end">
-      <Flex>
-        {currentCardData.cardName && <Select collection={collection} size="lg" value={[(cardIndex + 1).toString()]} onValueChange={(e) => onPageChange(e.value[0])} />}
-      </Flex>
-      {pagination
-        && <Flex align="center" gap="1">
-          <Text>Page</Text>
-          <NumberInput.Root size="xs" width="3em">
-            <NumberInput.Input min="1" max={cardNames.length.toString()} value={cardIndex + 1} onChange={(e) => onPageChange(e.target.value)} />
-          </NumberInput.Root>
-          <Text>of {cardNames.length}</Text>
+    <Flex md={{ direction: "column" }} align="center" justify="space-between">
+      <Heading size="xl">{currentCardData.cardName}</Heading>
+      <Flex md={{ direction: "column" }} gap="5" align="center" justify="end">
+        <Flex>
+          {currentCardData.cardName && <Select minWidth="200px" maxWidth="300px" collection={collection} size="lg" value={[(cardIndex + 1).toString()]} onValueChange={(e) => onPageChange(e.value[0])} />}
         </Flex>
-      }
-      <Flex gap="2">
-        <Button onClick={onPreviousPage} disabled={cardIndex === 0} size="sm">Previous</Button>
-        <Button onClick={onNextPage} size="sm" disabled={cardIndex >= cardNames.length - 1}>Next</Button>
+        {pagination
+          && <Flex align="center" gap="1">
+            <Text>Page</Text>
+            <NumberInput.Root size="xs" width="3em">
+              <NumberInput.Input min="1" max={cardNames.length.toString()} value={cardIndex + 1} onChange={(e) => onPageChange(e.target.value)} />
+            </NumberInput.Root>
+            <Text>of {cardNames.length}</Text>
+          </Flex>
+        }
+        <Flex gap="2">
+          <Button onClick={onPreviousPage} disabled={cardIndex === 0} size="sm">Previous</Button>
+          <Button onClick={onNextPage} size="sm" disabled={cardIndex >= cardNames.length - 1}>Next</Button>
+        </Flex>
       </Flex>
     </Flex>
     <CardList cards={currentCardData.data} loading={currentCardData.loading} />
