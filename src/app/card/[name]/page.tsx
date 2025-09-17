@@ -1,4 +1,5 @@
 import { CardDisplay } from '@/components/CardDisplay/CardDisplay';
+import { DeckDisplay } from '@/components/DeckDisplay/DeckDisplay';
 import { MoxfieldLoader, DeckLoader } from '@/scraper/loaders'
 import { Heading, Text, Center, Flex, Image, Stack, Box, Button } from '@chakra-ui/react'
 import { Suspense } from 'react';
@@ -30,8 +31,7 @@ export default async function Page({
         </Stack>
         <Suspense fallback={<>...Loading</>}>
           <CardDisplay
-            cardNames={[name]}
-            pagination={false}
+            cardName={name}
           />
         </Suspense>
       </Box >
