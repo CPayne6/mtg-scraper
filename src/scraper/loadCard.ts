@@ -26,8 +26,13 @@ const stores: Store[] = [
   },
   {
     name: 'House of Cards',
-    loader: new BinderPOSLoader('https://houseofcards.ca'),
+    loader: new BinderPOSLoader('https://houseofcards.ca', 'mtg-advanced-search'),
     parser: new BinderPOSParser('https://houseofcards.ca')
+  },
+  {
+    name: 'Black Knight Games',
+    loader: new BinderPOSLoader('https://blackknightgames.ca', 'magic-the-gathering-search'),
+    parser: new BinderPOSParser('https://blackknightgames.ca')
   }
 ]
 

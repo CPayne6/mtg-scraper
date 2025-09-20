@@ -2,11 +2,11 @@ import { APILoader, searchReplace } from "../APILoader";
 
 
 export class BinderPOSLoader extends APILoader {
-  constructor(storeURL: string) {
+  constructor(storeURL: string, page: string) {
     super({
       initial: {
         baseUrl: storeURL,
-        path: '/pages/mtg-advanced-search',
+        path: '/pages/' + page,
         params: 'availabilty=true',
         searchKey: 'q'
       },
