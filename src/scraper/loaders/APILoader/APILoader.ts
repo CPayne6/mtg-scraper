@@ -12,7 +12,9 @@ export interface APILoaderConfig {
   api: {
     baseUrl: string | RegExp,
     path: RegExp | (RegExp | string)[],
-    params?: RegExp | [string, string | RegExp][]
+    params?: RegExp | [string, string | RegExp][],
+    body?: RegExp | [string, any | RegExp][],
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   }
   cacheTimeout?: number
 }
@@ -86,6 +88,25 @@ export class APILoader extends HTTPLoader {
     return finalParams
   }
 
+  formatBody(body: APILoaderConfig['api']['body'], page: string, term: string) {
+    const finalBody = body instanceof RegExp ? JSON.parse(this.runRegex(body, page) ?? '{}') : {}
+
+    if (Array.isArray(body)) {
+      for (const item of body) {
+        if (Array.isArray(item)) {
+          const [key, value] = item
+          const parsedValue = value instanceof RegExp ? this.runRegex(value, page) : value
+          if (key && parsedValue) {
+            finalBody[key] = typeof parsedValue === 'string' && parsedValue.includes(searchReplace)
+              ? parsedValue.replace(searchReplace, term)
+              : parsedValue
+          }
+        }
+      }
+    }
+    return finalBody
+  }
+
   async search(name: string, params: URLSearchParams = new URLSearchParams(this.apiConfig.initial.params)) {
     params.set(this.apiConfig.initial.searchKey, name);
     // Handle fetch if cache is out of date
@@ -98,6 +119,7 @@ export class APILoader extends HTTPLoader {
     const apiParams = this.formatParams(this.apiConfig.api.params, this.cachedPage, name)
     const apiPath = this.formatPath(this.apiConfig.api.path, this.cachedPage, name)
     const baseUrl = this.apiConfig.api.baseUrl instanceof RegExp ? this.runRegex(this.apiConfig.api.baseUrl, this.cachedPage) : this.apiConfig.api.baseUrl
+    const body = this.formatBody(this.apiConfig.api.body, this.cachedPage, name)
 
     const api = baseUrl + apiPath + '?' + apiParams.toString()
 
@@ -114,7 +136,7 @@ export class APILoader extends HTTPLoader {
 
     try {
       return {
-        result: await super.loadPage(api),
+        result: await super.loadPage(api, ...(this.apiConfig.api.method ? [JSON.stringify(body), this.apiConfig.api.method] : [])),
         api
       }
     }

@@ -1,6 +1,6 @@
 import { Card } from "./card.types";
-import { _401Loader, F2FLoader, HobbiesLoader, HTTPLoader } from "./loaders";
-import { _401Parser, F2FSearchParser, HobbiesParser, Parser } from "./parsers";
+import { _401Loader, BinderPOSLoader, F2FLoader, HobbiesLoader, HTTPLoader } from "./loaders";
+import { _401Parser, BinderPOSParser, F2FSearchParser, HobbiesParser, Parser } from "./parsers";
 
 interface Store {
   name: string;
@@ -23,6 +23,11 @@ const stores: Store[] = [
     name: 'Hobbiesville',
     loader: new HobbiesLoader(),
     parser: new HobbiesParser()
+  },
+  {
+    name: 'House of Cards',
+    loader: new BinderPOSLoader('https://houseofcards.ca'),
+    parser: new BinderPOSParser('https://houseofcards.ca')
   }
 ]
 

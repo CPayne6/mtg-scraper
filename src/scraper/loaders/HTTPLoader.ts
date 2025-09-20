@@ -4,8 +4,8 @@ export abstract class HTTPLoader {
   constructor() {
   }
 
-  async loadPage(url: string) {
-    const res = await fetch(url);
+  async loadPage(url: string, body?: string, method?: string) {
+    const res = await fetch(url, { method, body, headers: typeof body === 'string' ? new Headers({ "content-type": "application/json;" }) : undefined });
     return res.text();
   }
 
