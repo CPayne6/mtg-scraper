@@ -4,7 +4,7 @@ import { CardWithStore } from "@/scraper"
 import { FormEventHandler, useEffect, useState } from "react"
 import { CardList } from "../CardsList";
 import { Box, Button, Flex, Heading, Input } from "@chakra-ui/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 interface DataState {
   cardName: string;
@@ -47,6 +47,7 @@ export function CardDisplay({ cardName }: CardListProps) {
 
   const onSubmitCardName: FormEventHandler<HTMLFormElement> = (e) => {
     e.stopPropagation()
+    e.preventDefault()
     const value = search.trim()
     if (value.length > 0) {
       router.push(`/card/${value}`)
