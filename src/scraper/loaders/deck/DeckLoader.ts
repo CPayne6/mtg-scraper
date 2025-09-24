@@ -2,7 +2,7 @@ import { getUserAgent } from "../agent"
 
 const defaultIdReplace = '{{id}}'
 export const domainRegex = /https?:\/\/(\w+)\.\w+/i
-export const defaultIdRegex = /decks\/(\w+)/
+export const defaultIdRegex = /decks\/([-\w]+)/
 
 export abstract class DeckLoader {
   constructor(
