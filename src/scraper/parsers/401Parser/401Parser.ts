@@ -3,6 +3,8 @@ import { Card } from "../../card.types";
 import { Parser } from "../Parser";
 import { _401Search } from "./search.types";
 
+const cardNameRegex = /^([^\(]+) \(/i
+
 interface _401ParserSearchConfig {
   store_uuid_regex: RegExp;
   store_id_regex: RegExp;
@@ -34,7 +36,7 @@ export class _401Parser implements Parser {
   async extractItems(data: string) {
     const cards: Card[] = [];
     // Loop through the items and filter out ones that don't have the right name or that are not available
-    let parsedData;
+    let parsedData: _401Search;
 
     try {
       parsedData = JSON.parse(data)
@@ -99,13 +101,17 @@ export class _401Parser implements Parser {
         }
 
         if (productCorrect && attrMap["Sellable"] !== false) {
+          const cardName = item.l.match(cardNameRegex)?.[1].split(' - ')[0] ?? item.l
+          const splitSku = (attrMap['Product-sku'] ?? attrMap['Barcode'])?.split('-')
           innerCards.push({
             condition: attrMap["Condition"]?.toLocaleLowerCase(),
             price: Number(attrMap["Price"]?.split(":").pop()),
             currency: attrMap["Price"]?.split(":").shift(),
             image: item.t,
-            title: item.l,
-            link: this.searchConfig.store_host + item.u
+            title: cardName,
+            link: this.searchConfig.store_host + item.u,
+            set: splitSku[2] ?? 'Unknown',
+            card_number: String(Number(splitSku[3]?.replace(/\D/g,'')))
           })
         }
       }

@@ -1,5 +1,6 @@
 'use client'
 
+import { LibraryProvider } from "@/context";
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 
 
@@ -10,12 +11,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-       <head>
+      <head>
         <title>MTG Scraper</title>
       </head>
       <body>
         <ChakraProvider value={defaultSystem}>
-          {children}
+          <LibraryProvider>
+            {children}
+          </LibraryProvider>
         </ChakraProvider>
       </body>
     </html>

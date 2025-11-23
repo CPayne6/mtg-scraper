@@ -2,6 +2,9 @@ import { writeFileSync } from "fs";
 import { Card, Condition } from "../../card.types";
 import { Parser } from "../Parser";
 import { HobbiesSearch } from "./search.types";
+import { isValidSetCode } from "@/scraper/sets";
+
+const nameRegex = /^([^\(]+) \(/i
 
 interface HobbiesParserConfig {
   store_id_regex: RegExp;
@@ -27,7 +30,7 @@ export class HobbiesParser implements Parser {
   }
   async extractItems(page: string) {
     const cards: Card[] = []
-    let parsedData;
+    let parsedData: HobbiesSearch;
 
     try {
       parsedData = JSON.parse(page)
@@ -39,7 +42,7 @@ export class HobbiesParser implements Parser {
       }
     }
     
-    for(const product of parsedData.products){
+    for(const product of parsedData?.products){
       const variantInfo = product.variantInfo ?? product.variant_info
 
       if(!variantInfo){
@@ -49,13 +52,16 @@ export class HobbiesParser implements Parser {
       const innerCards: Card[] = []
       for(const variant of variantInfo){
         if(variant.inventory_quantity > 0){
+          const splitDisplayName = product.display_name.split('-')
           innerCards.push({
             price: variant.price,
             currency: 'CAD',
             image: product.imageUrl ?? product.image_url,
             condition: variant.title.toLocaleLowerCase() as Condition,
-            title: product.name,
-            link: product.url
+            title: product.display_name.match(nameRegex)?.[1] ?? product.display_name,
+            link: product.url,
+            set: splitDisplayName[0]?.substring(splitDisplayName[0].lastIndexOf('(') + 1, splitDisplayName[0].length) ?? 'Unknown',
+            card_number: String(Number(splitDisplayName[1]?.substring(0, splitDisplayName[1].indexOf(')'))))
           })
         }
       }

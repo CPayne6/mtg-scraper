@@ -38,7 +38,9 @@ export class BinderPOSParser implements Parser {
             image: product.img,
             link: this.storeHost + '/products/' + product.handle,
             price: variant.price,
-            title: product.title
+            title: product.cardName,
+            set: product.setCode,
+            card_number: product.cardNumber
           })
         }
       }

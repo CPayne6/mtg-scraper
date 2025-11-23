@@ -1,5 +1,6 @@
 "use client";
 
+import { UploadLibrary } from '@/components';
 import { defaultIdRegex, domainRegex } from '@/scraper/loaders'
 import { Field } from '@ark-ui/react'
 import { Heading, Text, Center, Flex, Image, Stack, Input, Button } from '@chakra-ui/react'
@@ -51,6 +52,7 @@ export default function Home() {
         </Stack>
 
         <Stack gap={3} align="start" width="500px">
+          <div><UploadLibrary /></div>
           <Field.Root>
             <Field.Label>
               Paste your moxfield link here

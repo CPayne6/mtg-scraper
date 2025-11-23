@@ -8,4 +8,7 @@ export interface Card {
   title: string;
   currency: string;
   link: string;
+  set: string;
+  card_number: string;
+  scryfall_id?: string;
 }

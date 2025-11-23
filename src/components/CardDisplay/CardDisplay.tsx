@@ -5,6 +5,7 @@ import { FormEventHandler, useEffect, useState } from "react"
 import { CardList } from "../CardsList";
 import { Box, Button, Flex, Heading, Input } from "@chakra-ui/react";
 import { useRouter } from "next/navigation";
+import { PreviewLibrary } from "..";
 
 interface DataState {
   cardName: string;
@@ -60,12 +61,15 @@ export function CardDisplay({ cardName }: CardListProps) {
   return <Box position="relative">
     <Flex md={{ direction: "column" }} gap="5" align="center" justify="space-between">
       <Heading size="xl">{cardName}</Heading>
-      <form onSubmit={onSubmitCardName}>
-        <Flex gap="1">
-          <Input placeholder="Card name here" value={search} onChange={(e) => setSearch(e.target.value)} width="200px" />
-          <Button type="submit">Search</Button>
-        </Flex>
-      </form>
+      <Flex gap="5" direction="row" align="center">
+        <form onSubmit={onSubmitCardName}>
+          <Flex gap="1">
+            <Input placeholder="Card name here" value={search} onChange={(e) => setSearch(e.target.value)} width="200px" />
+            <Button type="submit">Search</Button>
+          </Flex>
+        </form>
+        <PreviewLibrary name={cardName} />
+      </Flex>
     </Flex>
     <CardList cards={data} loading={loading} />
   </Box>

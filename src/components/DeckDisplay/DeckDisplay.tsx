@@ -6,6 +6,7 @@ import { CardList } from "../CardsList";
 import { Box, Button, createListCollection, Flex, NumberInput, Text, Heading } from "@chakra-ui/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Select } from "../Select/Select";
+import { PreviewLibrary } from "../Library";
 
 interface DataState {
   cardName: string;
@@ -133,6 +134,7 @@ export function DeckDisplay({ cardNames, pagination = true }: DeckListProps) {
           <Button onClick={onPreviousPage} disabled={cardIndex === 0} size="sm">Previous</Button>
           <Button onClick={onNextPage} size="sm" disabled={cardIndex >= cardNames.length - 1}>Next</Button>
         </Flex>
+        <PreviewLibrary name={currentCardData.cardName} />
       </Flex>
     </Flex>
     <CardList cards={currentCardData.data} loading={currentCardData.loading} />

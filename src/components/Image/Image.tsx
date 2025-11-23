@@ -13,6 +13,6 @@ export const Image = (props: ImageProps) => {
 
   return <>
     <Skeleton hidden={!loading} />
-    <ChakraImage {...props} hidden={loading} onLoad={onLoad} />
+    <ChakraImage {...props} hidden={loading || props.hidden} onLoad={onLoad} />
   </>
 }
