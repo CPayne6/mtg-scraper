@@ -30,7 +30,6 @@ export const UploadLibrary = () => {
       newEntries.push(...entries)
     }
 
-    console.log(newEntries)
     addToLibrary(newEntries)
     alert("Uploaded file to library")
   }

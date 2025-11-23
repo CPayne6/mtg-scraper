@@ -2,11 +2,8 @@
 
 import { useEffect, useState } from "react"
 
-export const useLocalStorage = <T extends Record<string, any>>(key: string, defaultValue = {}): [T, (v: T) => void] => {
-  const [value, setValue] = useState<T>(() => {
-    const stored = localStorage.getItem(key)
-    return stored ? JSON.parse(stored) : defaultValue
-  })
+export const useLocalStorage = <T extends Record<string, any>>(key: string, defaultValue: T): [T, (v: T) => void] => {
+  const [value, setValue] = useState<T>(defaultValue)
 
   const storeValue = (v: T) => {
     localStorage.setItem(key, JSON.stringify(v))
@@ -21,6 +18,11 @@ export const useLocalStorage = <T extends Record<string, any>>(key: string, defa
     };
 
     window.addEventListener('storage', handleStorageChange);
+
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      setValue(JSON.parse(stored))
+    }
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);

@@ -18,7 +18,7 @@ export const LibraryContext = React.createContext<LibraryContext>({
 })
 
 export const LibraryProvider = (props: { children: React.ReactNode }) => {
-  const [library, setLibrary] = useLocalStorage<LibraryStorage>(LIBRARY_KEY)
+  const [library, setLibrary] = useLocalStorage<LibraryStorage>(LIBRARY_KEY, {})
 
   const addToLibrary = (items: LibraryEntry | LibraryEntry[]) => {
     if (Array.isArray(items)) {
