@@ -13,16 +13,6 @@ export const UploadLibrary = () => {
   const { setLibrary, addToLibrary } = useContext(LibraryContext)
   const [open, setOpen] = useState(false)
 
-  const handleSetLibrary = () => {
-    setLibrary({
-      'sol ring': {
-        name: 'Sol Ring',
-        foil: false,
-        scryfall_id: 'ee6e5a35-fe21-4dee-b0ef-a8f2841511ad'
-      }
-    })
-  }
-
   const handleClearLibrary = () => {
     setLibrary({})
   }
