@@ -1,12 +1,6 @@
 import { CardDisplay } from '@/components/CardDisplay/CardDisplay';
-import { DeckDisplay } from '@/components/DeckDisplay/DeckDisplay';
-import { MoxfieldLoader, DeckLoader } from '@/scraper/loaders'
 import { Heading, Text, Center, Flex, Image, Stack, Box, Button } from '@chakra-ui/react'
 import { Suspense } from 'react';
-
-const sourceMap: Record<string, DeckLoader> = {
-  moxfield: new MoxfieldLoader()
-}
 
 export function generateStaticParams() {
   return []

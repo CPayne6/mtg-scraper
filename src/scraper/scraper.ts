@@ -1,9 +1,8 @@
 import { F2FSearchParser } from './parsers/F2FParser/F2FSearchParser'
 import { _401Parser } from "./parsers/401Parser";
-import { writeFileSync } from "fs";
 import { HobbiesParser } from "./parsers/HobbiesParser";
 import { Card } from "./card.types";
-import { _401Loader, F2FLoader, HobbiesLoader, MoxfieldLoader } from "./loaders";
+import { _401Loader, F2FLoader, HobbiesLoader } from "./loaders";
 import { HTTPLoader } from "./loaders/HTTPLoader";
 import { Parser } from './parsers';
 
@@ -26,11 +25,6 @@ const stores = [
 ]
 
 const purchaseMap: Record<string, Record<string, { cards: Card[]; parserError?: string | boolean | undefined; loaderError?: string | boolean | undefined; api: string }>> = {}
-
-async function fetchCardsList(link = 'https://moxfield.com/decks/tMw6gq234Ei3pMJXBdzLUg') {
-  const loader = new MoxfieldLoader()
-  return loader.fetchCards(link)
-}
 
 async function fetchCard(cardName: string, loader: HTTPLoader, store: typeof stores[0]) {
   const shortenedCardName = cardName.substring(0, cardName.length - 1)
@@ -61,11 +55,3 @@ async function run(store: typeof stores[0], cardNames: string[]) {
     }
   }
 }
-fetchCardsList().then((cards) => {
-  Promise.all(
-    stores.map((item) => run(item, cards))
-  ).then((res) => {
-    writeFileSync('raw.json', JSON.stringify(purchaseMap))
-  });
-
-})

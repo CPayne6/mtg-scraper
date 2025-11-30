@@ -33,6 +33,16 @@ const stores: Store[] = [
     name: 'Black Knight Games',
     loader: new BinderPOSLoader('https://blackknightgames.ca', 'magic-the-gathering-search'),
     parser: new BinderPOSParser('https://blackknightgames.ca')
+  },
+  {
+    name: 'Exor Games',
+    loader: new BinderPOSLoader('https://exorgames.com', 'advanced-search'),
+    parser: new BinderPOSParser('https://exorgames.com')
+  },
+  {
+    name: 'Game Knight',
+    loader: new BinderPOSLoader('https://gameknight.ca', 'magic-the-gathering-singles'),
+    parser: new BinderPOSParser('https://gameknight.ca')
   }
 ]
 
