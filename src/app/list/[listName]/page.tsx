@@ -14,18 +14,9 @@ export function generateStaticParams() {
 export default async function Page({
   params
 }: {
-  params: Promise<{ source: string; id: string }>
+  params: Promise<{ listName: string }>
 }) {
-  const { source, id } = await params
-  const loader = sourceMap[source]
-  if (!loader) {
-    return <>Unable to find source</>
-  }
-  else if (!id) {
-    return <>Unable to find id</>
-  }
-  const list = await loader.fetchCards(id)
-
+  const { listName } = await params
   return <Flex direction="column" align="center">
     <Box gap="5">
       <Stack direction="row" gap="5" align="center">
@@ -38,7 +29,7 @@ export default async function Page({
       </Stack>
       <Suspense  fallback={<>...Loading card list</>}>
         <DeckDisplay
-          cardNames={list}
+          listName={decodeURI(listName)}
         />
       </Suspense>
     </Box >

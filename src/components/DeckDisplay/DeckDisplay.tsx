@@ -1,12 +1,13 @@
 "use client"
 
 import { CardWithStore } from "@/scraper"
-import { ChangeEventHandler, SetStateAction, useEffect, useMemo, useState } from "react"
+import { SetStateAction, useEffect, useMemo, useState } from "react"
 import { CardList } from "../CardsList";
 import { Box, Button, createListCollection, Flex, NumberInput, Text, Heading } from "@chakra-ui/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Select } from "../Select/Select";
 import { PreviewLibrary } from "../Library";
+import { useLocalStorage } from "@/hooks";
 
 interface DataState {
   cardName: string;
@@ -20,14 +21,16 @@ const fetchCardData = async (name: string) => {
 }
 
 interface DeckListProps {
-  cardNames: string[];
+  listName: string;
   pagination?: boolean;
 }
 
-export function DeckDisplay({ cardNames, pagination = true }: DeckListProps) {
+export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const page = Number(searchParams.get('page'))
+  const [listStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
+  const cardNames = listStorage[listName] ?? []
   const [cardIndex, setCardIndex] = useState((isNaN(page) || page > cardNames.length || page <= 1) ? 0 : page - 1)
 
   const [data, setDataState] = useState<DataState[]>(cardNames.map(name => ({
@@ -114,7 +117,8 @@ export function DeckDisplay({ cardNames, pagination = true }: DeckListProps) {
   const collection = useMemo(() => createListCollection({
     items: cardNames.map((name, index) => ({ label: name, value: (index + 1).toString() })).sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
   }), [cardNames])
-  return <Box position="relative">
+  return cardNames.length > 0 ? 
+    <Box position="relative">
     <Flex md={{ direction: "column" }} align="center" justify="space-between">
       <Heading size="xl">{currentCardData.cardName}</Heading>
       <Flex md={{ direction: "column" }} gap="5" align="center" justify="end">
@@ -139,4 +143,5 @@ export function DeckDisplay({ cardNames, pagination = true }: DeckListProps) {
     </Flex>
     <CardList cards={currentCardData.data} loading={currentCardData.loading} />
   </Box>
+  : <>No cards found in this list</>
 }

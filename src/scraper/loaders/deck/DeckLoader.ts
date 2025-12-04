@@ -1,8 +1,7 @@
-import { getUserAgent } from "../agent"
-
 const defaultIdReplace = '{{id}}'
 export const domainRegex = /https?:\/\/(\w+)\.\w+/i
 export const defaultIdRegex = /decks\/([-\w]+)/
+export const cardNameRegex = /^\d*\s([\w ,'-]+)(?: \()*.*$/i
 
 export abstract class DeckLoader {
   constructor(

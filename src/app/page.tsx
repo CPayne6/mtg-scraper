@@ -1,36 +1,51 @@
 "use client";
 
 import { UploadLibrary } from '@/components';
-import { defaultIdRegex, domainRegex } from '@/scraper/loaders'
+import { useLocalStorage } from '@/hooks';
+import { cardNameRegex } from '@/scraper/loaders'
+import { generateRandomName } from '@/utils/randomNameGenerator';
 import { Field } from '@ark-ui/react'
-import { Heading, Text, Center, Flex, Image, Stack, Input, Button } from '@chakra-ui/react'
+import { Heading, Text, Center, Flex, Image, Stack, Input, Button, Textarea } from '@chakra-ui/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-const supportedSites = ['moxfield']
-
 export default function Home() {
-  const [moxfieldLink, setMoxfieldLink] = useState<string>('')
+  const [listName, setListName] = useState<string>('') // TODO: let them enter a custom name
+  const [cardsList, setCardsList] = useState<string>('')
   const [cardName, setCardName] = useState<string>('')
 
-  const [moxHelperText, setMoxHelperText] = useState<string>()
+  const [deckListHelperText, setMoxHelperText] = useState<string>()
   const [nameHelperText, setNameHelperText] = useState<string>()
+  const [listStorage, setListStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
 
   const router = useRouter()
 
-  const onSubmitLink = () => {
-    if (!moxfieldLink || moxfieldLink.length === 0) {
-      setMoxHelperText("Enter a moxfield link to get started")
+  const onSubmitCardList = () => {
+    if (!cardsList || cardsList.length === 0) {
+      setMoxHelperText("Enter a deck list to get started")
       return
     }
-    const id = defaultIdRegex.exec(moxfieldLink)?.[1];
-    const type = domainRegex.exec(moxfieldLink)?.[1];
+    const cardsListArr = []
+    for(const cardNameRaw of cardsList.split('\n')) {
+      if(cardNameRaw.trim() === ''){
+        continue;
+      }
 
-    if (!id || !type || !supportedSites.includes(type)) {
+      const cardName = cardNameRegex.exec(cardNameRaw)?.[1].trim()
+      if(cardName && cardName.length !== 0) {
+        cardsListArr.push(cardName)
+      }
+    }
+
+    if (cardsListArr.length === 0) {
       setMoxHelperText("Unable to read link")
       return
     }
-    router.push(`/list/${type}/${id}`)
+
+    const cleanedListName = listName.replaceAll(/\W/g, '')
+    const storageName = cleanedListName.length > 0 ? cleanedListName : generateRandomName()
+    setListStorage({ ...listStorage, [storageName]: cardsListArr})
+    router.push(`/list/${storageName}`)
   }
 
   const onSubmitCardName = () => {
@@ -55,12 +70,12 @@ export default function Home() {
           <div><UploadLibrary /></div>
           <Field.Root>
             <Field.Label>
-              Paste your moxfield link here
+              Paste your cards list here
             </Field.Label>
-            <Input placeholder="Moxfield link here" value={moxfieldLink} onSubmit={onSubmitLink} onChange={(e) => setMoxfieldLink(e.target.value)} />
-            {moxHelperText && moxHelperText.length > 0 && <Field.HelperText>{moxHelperText}</Field.HelperText>}
+            <Textarea placeholder="Cards list here" value={cardsList} onSubmit={onSubmitCardList} onChange={(e) => setCardsList(e.target.value)} />
+            {deckListHelperText && deckListHelperText.length > 0 && <Field.HelperText>{deckListHelperText}</Field.HelperText>}
           </Field.Root>
-          <Button variant="surface" onClick={onSubmitLink}>
+          <Button variant="surface" onClick={onSubmitCardList}>
             Let&apos;s Go!
           </Button>
         </Stack>

@@ -112,6 +112,5 @@ const userAgents = [
  */
 export function getUserAgent(index?: number){
   const agent = userAgents[index ?? Math.floor(Math.random() * userAgents.length)]
-  console.log(agent)
   return agent
 }
