@@ -1,6 +1,7 @@
 import { HTTPLoader } from "../HTTPLoader";
 
-const defaultCacheTimeout = 100000
+// 1 day cache timeout
+const defaultCacheTimeout = 86400000
 
 export interface APILoaderConfig {
   initial: {
