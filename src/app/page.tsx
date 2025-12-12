@@ -2,12 +2,13 @@
 
 import { UploadLibrary } from '@/components';
 import { useLocalStorage } from '@/hooks';
-import { cardNameRegex } from '@/scraper/loaders'
 import { generateRandomName } from '@/utils/randomNameGenerator';
 import { Field } from '@ark-ui/react'
 import { Heading, Text, Center, Flex, Image, Stack, Input, Button, Textarea } from '@chakra-ui/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+
+export const cardNameRegex = /^\d*\s*([\w ,'-]+)(?: \()*.*$/i
 
 export default function Home() {
   const [listName, setListName] = useState<string>('') // TODO: let them enter a custom name

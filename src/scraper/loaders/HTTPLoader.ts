@@ -1,11 +1,53 @@
+import * as undici from 'undici'
+import { getProxy } from '../proxy'
 
 export abstract class HTTPLoader {
+  protected agent: undici.ProxyAgent | undefined
 
-  constructor() {
+  constructor(protected readonly useProxy: boolean = true) {
+    if (useProxy) {
+      this.agent = new undici.ProxyAgent('http://' + getProxy().toString())
+    }
+  }
+
+  /**
+   * Attempt to fetch with retries
+   * 
+   * Changes proxy on each retry if useProxy is enabled
+   * 
+   * @param input 
+   * @param options 
+   * @param retries 
+   * @returns 
+   */
+  private async fetchWithRetry(input: undici.RequestInfo, options?: undici.RequestInit, retries = 1): Promise<undici.Response> {
+    try {
+      const res = await undici.fetch(input, {
+        ...options,
+        dispatcher: this.agent
+      });
+      return res;
+    } catch (error) {
+      if (retries > 0) {
+        console.warn(`Fetch failed for ${input}. Retrying... (${retries} retries left)`);
+        if (this.useProxy) {
+          this.agent = new undici.ProxyAgent(getProxy().toString())
+        }
+        return this.fetchWithRetry(input, options, retries - 1);
+      } else {
+        console.error(`Fetch failed for ${input}. No more retries left.`);
+        throw error;
+      }
+    }
   }
 
   async loadPage(url: string, body?: string, method?: string) {
-    const res = await fetch(url, { method, body, headers: typeof body === 'string' ? new Headers({ "content-type": "application/json;" }) : undefined });
+    const res = await this.fetchWithRetry(url, {
+      method,
+      body,
+      headers: typeof body === 'string' ? new Headers({ "content-type": "application/json;" }) : undefined,
+      dispatcher: this.agent
+    });
     return res.text();
   }
 
