@@ -48,10 +48,36 @@ const stores: Store[] = [
 
 export type CardWithStore = Card & { store: string }
 
+type CacheValue = {
+  timestamp: number;
+  value: unknown;
+}
+
+const cache: Record<string, CacheValue> = {}
+
+// cache for 1 day
+const cacheTTL = 86400000
+
+
 const fetchCardFromStore = async (cardName: string, store: Store) => {
+  // Check if the card name and store is in the cache
+  if(cache[store.name + '-' + cardName] && Date.now() - cache[store.name + '-' + cardName].timestamp < cacheTTL){
+    return cache[store.name + '-' + cardName].value as CardWithStore[]
+  }
+
+  // On cache miss, fetch the card data
   const data = await store.loader.search(cardName);
   const response = await store.parser.extractItems(data.result);
-  return response.result.map(card => ({ ...card, store: store.name })).filter(card => card.title.toLocaleLowerCase().replaceAll(/[,\\\/]/g,"").startsWith(cardName.toLocaleLowerCase().replaceAll(/[,\\\/]/g,"")))
+
+  const results = response.result.map(card => ({ ...card, store: store.name })).filter(card => card.title.toLocaleLowerCase().replaceAll(/[,\\\/]/g,"").startsWith(cardName.toLocaleLowerCase().replaceAll(/[,\\\/]/g,"")))
+  // If no error, cache the result
+  if (!response.error){
+    cache[store.name + '-' + cardName] = {
+      timestamp: Date.now(),
+      value: results
+    }
+  }
+  return results
 }
 
 export async function loadCard(cardName: string) {

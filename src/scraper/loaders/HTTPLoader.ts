@@ -37,7 +37,7 @@ export abstract class HTTPLoader {
       if (retries > 0) {
         console.warn(`Fetch failed for ${input}. Retrying... (${retries} retries left)`);
         if (this.useProxy) {
-          disableProxy(fetchProxy!, 30000);
+          disableProxy(fetchProxy!, 1000);
           this.proxy = getProxy();
         }
         return this.fetchWithRetry(input, options, retries - 1);
