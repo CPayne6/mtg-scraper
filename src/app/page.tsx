@@ -1,6 +1,7 @@
 "use client";
 
 import { UploadLibrary } from '@/components';
+import SkryfallAutocomplete from '@/components/SkryfallAutocomplete/SkryfallAutocomplete';
 import { useLocalStorage } from '@/hooks';
 import { generateRandomName } from '@/utils/randomNameGenerator';
 import { Field } from '@ark-ui/react'
@@ -27,13 +28,13 @@ export default function Home() {
       return
     }
     const cardsListArr = []
-    for(const cardNameRaw of cardsList.split('\n')) {
-      if(cardNameRaw.trim() === ''){
+    for (const cardNameRaw of cardsList.split('\n')) {
+      if (cardNameRaw.trim() === '') {
         continue;
       }
 
       const cardName = cardNameRegex.exec(cardNameRaw)?.[1].trim()
-      if(cardName && cardName.length !== 0) {
+      if (cardName && cardName.length !== 0) {
         cardsListArr.push(cardName)
       }
     }
@@ -45,12 +46,11 @@ export default function Home() {
 
     const cleanedListName = listName.replaceAll(/\W/g, '')
     const storageName = cleanedListName.length > 0 ? cleanedListName : generateRandomName()
-    setListStorage({ ...listStorage, [storageName]: cardsListArr})
+    setListStorage({ ...listStorage, [storageName]: cardsListArr })
     router.push(`/list/${storageName}`)
   }
 
-  const onSubmitCardName = () => {
-    const name = cardName.trim()
+  const onSubmitCardName = (name: string) => {
     if (!name || name.length === 0) {
       setNameHelperText("Enter the entire name")
       return
@@ -83,14 +83,11 @@ export default function Home() {
         <Stack gap={3} align="start" width="500px">
           <Field.Root>
             <Field.Label>
-              Paste your card name here
+              Enter your card name here
             </Field.Label>
-            <Input placeholder="Card name here" value={cardName} onSubmit={onSubmitCardName} onChange={(e) => setCardName(e.target.value)} />
+            <SkryfallAutocomplete placeholder="Card name here" onSelect={onSubmitCardName} />
             {nameHelperText && nameHelperText.length > 0 && <Field.HelperText>{nameHelperText}</Field.HelperText>}
           </Field.Root>
-          <Button variant="surface" onClick={onSubmitCardName}>
-            Let&apos;s Go!
-          </Button>
         </Stack>
       </Stack>
     </Flex>

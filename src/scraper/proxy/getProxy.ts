@@ -1,4 +1,4 @@
-import { WebscrapeProxy, OxylabsProxy } from './proxies';
+import { WebshareProxy, OxylabsProxy } from './proxies';
 import { Proxy } from './proxies/Proxy';
 
 interface ProxyItem {
@@ -7,7 +7,7 @@ interface ProxyItem {
 }
 
 export const proxies: ProxyItem[] = [
-  { proxy: new WebscrapeProxy() },
+  { proxy: new WebshareProxy() },
   { proxy: new OxylabsProxy() }
 ]
 

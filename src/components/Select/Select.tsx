@@ -1,4 +1,5 @@
-import { Select as ChakraSelect, Portal, SelectRootProps } from "@chakra-ui/react"
+import { Select as ChakraSelect, SelectRootProps } from "@chakra-ui/react"
+import { SelectDropdown } from "./SelectDropdown";
 
 export function Select(props: SelectRootProps) {
   const { collection } = props;
@@ -12,17 +13,6 @@ export function Select(props: SelectRootProps) {
         <ChakraSelect.Indicator />
       </ChakraSelect.IndicatorGroup>
     </ChakraSelect.Control>
-    <Portal>
-      <ChakraSelect.Positioner>
-        <ChakraSelect.Content>
-          {collection.items.map((option) => (
-            <ChakraSelect.Item item={option} key={option.value}>
-              {option.label}
-              <ChakraSelect.ItemIndicator />
-            </ChakraSelect.Item>
-          ))}
-        </ChakraSelect.Content>
-      </ChakraSelect.Positioner>
-    </Portal>
+    <SelectDropdown items={collection.items} />
   </ChakraSelect.Root >
 }

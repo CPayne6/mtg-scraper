@@ -1,2 +1,2 @@
-export * from './WebscrapeProxy'
+export * from './WebshareProxy'
 export * from './OxylabsProxy'

@@ -6,6 +6,7 @@ import { CardList } from "../CardsList";
 import { Box, Button, Flex, Heading, Input } from "@chakra-ui/react";
 import { useRouter } from "next/navigation";
 import { PreviewLibrary } from "..";
+import SkryfallAutocomplete from "../SkryfallAutocomplete/SkryfallAutocomplete";
 
 interface DataState {
   cardName: string;
@@ -28,8 +29,6 @@ export function CardDisplay({ cardName }: CardListProps) {
   const [data, setData] = useState<CardWithStore[]>()
   const [loading, setLoading] = useState(true)
 
-  const [search, setSearch] = useState(cardName)
-
   useEffect(() => {
     async function fetchCard() {
       setLoading(true)
@@ -46,12 +45,9 @@ export function CardDisplay({ cardName }: CardListProps) {
     fetchCard()
   }, [cardName])
 
-  const onSubmitCardName: FormEventHandler<HTMLFormElement> = (e) => {
-    e.stopPropagation()
-    e.preventDefault()
-    const value = search.trim()
-    if (value.length > 0) {
-      router.push(`/card/${value}`)
+  const onSubmitCardName = (cardName: string) => {
+    if (cardName.length > 0) {
+      router.push(`/card/${cardName}`)
     }
     else {
       alert("Enter a value to search")
@@ -62,12 +58,7 @@ export function CardDisplay({ cardName }: CardListProps) {
     <Flex md={{ direction: "column" }} gap="5" align="center" justify="space-between">
       <Heading size="xl">{cardName}</Heading>
       <Flex gap="5" direction="row" align="center">
-        <form onSubmit={onSubmitCardName}>
-          <Flex gap="1">
-            <Input placeholder="Card name here" value={search} onChange={(e) => setSearch(e.target.value)} width="200px" />
-            <Button type="submit">Search</Button>
-          </Flex>
-        </form>
+        <SkryfallAutocomplete initialValue={cardName} placeholder="Card name here" onSelect={onSubmitCardName} />
         <PreviewLibrary name={cardName} />
       </Flex>
     </Flex>
