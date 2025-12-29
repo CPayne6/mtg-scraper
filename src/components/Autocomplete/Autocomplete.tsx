@@ -86,8 +86,6 @@ export default function Autocomplete({
     inputRef.current?.focus();
   };
 
-  console.log("Rendering Autocomplete with options:", options, "and filtered:", filtered.items);
-
   return (
     <Box ref={containerRef} position="relative" width="100%">
       <InputGroup endElement={

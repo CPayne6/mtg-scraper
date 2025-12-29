@@ -23,7 +23,8 @@ interface CardListProps {
   cardName: string;
 }
 
-export function CardDisplay({ cardName }: CardListProps) {
+export function CardDisplay(props: CardListProps) {
+  const cardName = decodeURIComponent(props.cardName)
   const router = useRouter()
 
   const [data, setData] = useState<CardWithStore[]>()
@@ -47,7 +48,7 @@ export function CardDisplay({ cardName }: CardListProps) {
 
   const onSubmitCardName = (cardName: string) => {
     if (cardName.length > 0) {
-      router.push(`/card/${cardName}`)
+      router.push(`/card/${encodeURIComponent(cardName)}`)
     }
     else {
       alert("Enter a value to search")
