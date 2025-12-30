@@ -1,3 +1,14 @@
+
+TODOs:
+beef it up
+pull most used cards every day
+dropdown menu bug
+ads
+migrate from nextjs to react node
+double sided card images
+decklist display on the side like hearthstone/arena
+Support other card games
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
