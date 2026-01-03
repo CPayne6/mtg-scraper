@@ -1,8 +1,6 @@
-import { writeFileSync } from "fs";
 import { Card, Condition } from "../../card.types";
 import { Parser } from "../Parser";
 import { HobbiesSearch } from "./search.types";
-import { isValidSetCode } from "@/scraper/sets";
 
 const nameRegex = /^([^\(]+) \(/i
 

@@ -1,10 +1,28 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { CardModule } from './card/card.module';
+import { HealthModule } from './health/health.module';
+import { StoreModule } from './store/store.module';
+import configuration from './config/configuration';
+import { validationSchema } from './config/validation';
+import { getDatabaseConfig } from './config/database.config';
 
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+      validationSchema,
+    }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: getDatabaseConfig,
+    }),
+    StoreModule,
+    CardModule,
+    HealthModule,
+  ],
 })
 export class AppModule {}

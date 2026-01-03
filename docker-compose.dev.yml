@@ -1,0 +1,143 @@
+services:
+  # Redis - Used for both caching and queue
+  redis:
+    image: redis:7-alpine
+    container_name: mtg-redis-dev
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --notify-keyspace-events AKE
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    networks:
+      - mtg-network-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # API Service (Development mode with hot reload)
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    container_name: mtg-api-dev
+    ports:
+      - "5000:5000"
+    env_file:
+      - apps/api/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/api/src:/app/apps/api/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      # Mount config files
+      - ./apps/api/tsconfig.json:/app/apps/api/tsconfig.json:ro
+      - ./apps/api/nest-cli.json:/app/apps/api/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mtg-network-dev
+    command: pnpm dev
+
+  # UI Service (Development mode with Vite hot reload)
+  ui:
+    build:
+      context: .
+      dockerfile: apps/ui/Dockerfile.dev
+    container_name: mtg-ui-dev
+    ports:
+      - "3000:3000"
+    env_file:
+      - apps/ui/.env
+    environment:
+      - NODE_ENV=development
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/ui/src:/app/apps/ui/src:delegated
+      - ./apps/ui/public:/app/apps/ui/public:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      # Mount config files
+      - ./apps/ui/vite.config.ts:/app/apps/ui/vite.config.ts:ro
+      - ./apps/ui/tsconfig.json:/app/apps/ui/tsconfig.json:ro
+      - ./apps/ui/tsconfig.app.json:/app/apps/ui/tsconfig.app.json:ro
+      - ./apps/ui/index.html:/app/apps/ui/index.html:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      - api
+    networks:
+      - mtg-network-dev
+    command: pnpm dev
+
+  # Scheduler Service (Development mode with hot reload)
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile.dev
+    container_name: mtg-scheduler-dev
+    env_file:
+      - apps/scheduler/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      # Mount config files
+      - ./apps/scheduler/tsconfig.json:/app/apps/scheduler/tsconfig.json:ro
+      - ./apps/scheduler/nest-cli.json:/app/apps/scheduler/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mtg-network-dev
+    command: pnpm dev
+
+  # Scraper Worker Service (Development mode with hot reload)
+  # Use: docker-compose -f docker-compose.dev.yml up --scale scraper=3
+  scraper:
+    build:
+      context: .
+      dockerfile: apps/scraper/Dockerfile.dev
+    env_file:
+      - apps/scraper/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/scraper/src:/app/apps/scraper/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      # Mount config files
+      - ./apps/scraper/tsconfig.json:/app/apps/scraper/tsconfig.json:ro
+      - ./apps/scraper/nest-cli.json:/app/apps/scraper/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mtg-network-dev
+    command: pnpm dev
+    deploy:
+      replicas: 3
+
+networks:
+  mtg-network-dev:
+    driver: bridge
+
+volumes:
+  redis-data-dev:
+    driver: local

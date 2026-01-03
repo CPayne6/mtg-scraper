@@ -1,0 +1,23 @@
+{
+  "name": "@mtg-scraper/shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities for MTG Scraper",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "watch": "tsc --watch --project tsconfig.build.json",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [],
+  "author": "Chris Payne",
+  "license": "ISC",
+  "packageManager": "pnpm@10.26.2",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "type": "module"
+}

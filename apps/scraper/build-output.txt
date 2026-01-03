@@ -1,0 +1,4 @@
+
+> scraper@0.0.1 build C:\Users\cpayn\Documents\projects\mtg-scraper\apps\scraper
+> nest build
+

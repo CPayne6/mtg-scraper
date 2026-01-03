@@ -1,0 +1,157 @@
+services:
+  # PostgreSQL - Store configuration and metadata
+  postgres:
+    image: postgres:16-alpine
+    container_name: mtg-postgres
+    environment:
+      - POSTGRES_DB=mtg_scraper
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - mtg-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis - Used for both caching and queue
+  redis:
+    image: redis:7-alpine
+    container_name: mtg-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --notify-keyspace-events AKE
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - mtg-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: mtg-api
+    ports:
+      - "5000:5000"
+    env_file:
+      - apps/api/.env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - mtg-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # UI Service
+  ui:
+    build:
+      context: .
+      dockerfile: apps/ui/Dockerfile
+    container_name: mtg-ui
+    ports:
+      - "3000:3000"
+    env_file:
+      - apps/ui/.env
+    depends_on:
+      - api
+    networks:
+      - mtg-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Scheduler Service
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile
+    container_name: mtg-scheduler
+    env_file:
+      - apps/scheduler/.env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mtg-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node dist/main.js"]
+      interval: 60s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  # Scraper Worker Service
+  # Scale scraper workers based on load
+  # Use: docker-compose up --scale scraper=3
+  scraper:
+    build:
+      context: .
+      dockerfile: apps/scraper/Dockerfile
+    env_file:
+      - apps/scraper/.env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - mtg-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node dist/main.js"]
+      interval: 60s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 3
+
+networks:
+  mtg-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
