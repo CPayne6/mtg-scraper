@@ -1,17 +1,10 @@
+import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Box, Button, FormControl, FormHelperText, FormLabel, Stack, TextField, Typography } from '@mui/material'
 import { UploadLibrary } from '../components'
 import SkryfallAutocomplete from '../components/SkryfallAutocomplete/SkryfallAutocomplete'
 import { useLocalStorage } from '../hooks'
 import { generateRandomName } from '../utils/randomNameGenerator'
-import Box from '@mui/material/Box'
-import Stack from '@mui/material/Stack'
-import Typography from '@mui/material/Typography'
-import TextField from '@mui/material/TextField'
-import Button from '@mui/material/Button'
-import FormControl from '@mui/material/FormControl'
-import FormLabel from '@mui/material/FormLabel'
-import FormHelperText from '@mui/material/FormHelperText'
-import { useState } from 'react'
 
 export const cardNameRegex = /^\d*\s*([\w ,'-]+)(?: \()*.*$/i
 

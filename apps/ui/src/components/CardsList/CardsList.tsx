@@ -1,10 +1,9 @@
-import { CardWithStore } from "../CardDisplay/CardDisplay"
-import { Card as DisplayCard } from "./Card";
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
-import { formatStorageName } from "../Library/library.utils";
-import { useContext } from "react";
-import { LibraryContext } from "@/context";
+import { CardWithStore } from "@mtg-scraper/shared"
+import { useContext } from "react"
+import { Box, Typography } from "@mui/material"
+import { Card as DisplayCard } from "./Card"
+import { formatStorageName } from "../Library/library.utils"
+import { LibraryContext } from "@/context"
 
 interface CardListProps {
   loading: boolean

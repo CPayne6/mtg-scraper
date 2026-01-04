@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CardWithStore } from '@mtg-scraper/shared';
-import { StoreService } from '../store/store.service';
-import { Store as StoreEntity } from '../store/entities/store.entity';
+import { StoreService, Store as StoreEntity } from '@mtg-scraper/core';
 import {
   _401Loader,
   BinderPOSLoader,

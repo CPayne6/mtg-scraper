@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20
 WORKDIR /app
 
 # Install pnpm
@@ -15,11 +15,11 @@ RUN pnpm install --frozen-lockfile
 # Copy all source code
 COPY packages/shared ./packages/shared
 COPY apps/scheduler ./apps/scheduler
-COPY tsconfig.json ./
+COPY tsconfig.json nx.json ./
 
-# Build shared package (needed for initial setup)
-WORKDIR /app/packages/shared
-RUN pnpm build
+# Build using Nx (automatically builds dependencies)
+WORKDIR /app
+RUN pnpm nx build scheduler
 
 # Set working directory to Scheduler
 WORKDIR /app/apps/scheduler

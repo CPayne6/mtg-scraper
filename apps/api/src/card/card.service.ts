@@ -1,7 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CacheService, CardWithStore } from '../cache/cache.service';
-import { QueueService } from '../queue/queue.service';
-import { StoreService } from '../store/store.service';
+import { CacheService, CardWithStore, QueueService, StoreService } from '@mtg-scraper/core';
 import { CardSearchResponse, StoreInfo, PriceStats } from '@mtg-scraper/shared';
 import { randomUUID } from 'crypto';
 

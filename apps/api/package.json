@@ -22,6 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@mtg-scraper/core": "workspace:*",
     "@mtg-scraper/shared": "workspace:*",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^11.0.1",

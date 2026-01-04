@@ -21,5 +21,9 @@
     "start:scraper": "pnpm --filter scraper start:prod",
     "start:scheduler": "pnpm --filter scheduler start:prod",
     "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "@nx/js": "^22.3.3",
+    "nx": "^22.3.3"
   }
 }

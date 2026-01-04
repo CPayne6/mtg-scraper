@@ -1,29 +1,24 @@
-import { CardWithStore } from "../CardDisplay/CardDisplay"
+import { CardSearchResponse, CardWithStore } from "@mtg-scraper/shared"
 import { SetStateAction, useEffect, useMemo, useRef, useState } from "react"
-import { CardList } from "../CardsList";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
-import FormControl from "@mui/material/FormControl";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PreviewLibrary } from "../Library";
-import { useLocalStorage } from "@/hooks";
+import { useNavigate, useSearch } from "@tanstack/react-router"
+import { Box, Button, FormControl, Grid, MenuItem, Select, Stack, TextField, Typography } from "@mui/material"
+import { CardList } from "../CardsList"
+import { StoreFilter } from "../StoreFilter"
+import { PreviewLibrary } from "../Library"
+import { useLocalStorage } from "@/hooks"
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 interface DataState {
   cardName: string;
-  data: null | CardWithStore[];
+  data: null | CardSearchResponse;
   loading: boolean;
+  selectedStores: string[];
 }
 
 const fetchCardData = async (name: string) => {
   const response = await fetch(`${API_URL}/card/${encodeURIComponent(name)}`)
-  return await response.json() as CardWithStore[]
+  return await response.json() as CardSearchResponse
 }
 
 interface DeckListProps {
@@ -42,7 +37,8 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   const [data, setDataState] = useState<DataState[]>(cardNames.map(name => ({
     cardName: name,
     loading: true,
-    data: null
+    data: null,
+    selectedStores: []
   })))
 
   // Track which cards are currently being fetched to prevent duplicate requests
@@ -75,19 +71,21 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
     // Mark as fetching
     fetchingRef.current.add(index)
 
-    // Mark as loading in state
+    // Mark as loading in state and clear old data
     setDataStateByIndex(index, (prev) => ({
       ...prev,
-      loading: true
+      loading: true,
+      data: null
     }))
 
     try {
       // Fetch the card data
-      const cards = await fetchCardData(cardState.cardName)
+      const response = await fetchCardData(cardState.cardName)
       setDataStateByIndex(index, (prev) => ({
         ...prev,
         loading: false,
-        data: cards
+        data: response,
+        selectedStores: []
       }))
     } catch (err) {
       console.error(err)
@@ -152,6 +150,29 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
       .sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
   , [cardNames])
 
+  // Filter cards by selected stores
+  const filteredCards = useMemo(() => {
+    if (!currentCardData?.data) return undefined
+
+    const { selectedStores, data: cardData } = currentCardData
+
+    // If no stores selected or all stores selected, return all cards
+    if (selectedStores.length === 0 || selectedStores.length === cardData.stores.length) {
+      return cardData.results
+    }
+
+    // Filter cards by selected stores
+    return cardData.results.filter(card => selectedStores.includes(card.store))
+  }, [currentCardData])
+
+  // Handler for store filter changes
+  const handleStoreFilterChange = (storeNames: string[]) => {
+    setDataStateByIndex(cardIndex, (prev) => ({
+      ...prev,
+      selectedStores: storeNames
+    }))
+  }
+
   if (cardNames.length === 0) {
     return (
       <Box sx={{
@@ -187,99 +208,129 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   }
 
   return (
-    <Box sx={{ width: '100%' }}>
-      <Stack
-        direction={{ xs: 'column', lg: 'row' }}
-        spacing={{ xs: 2, md: 3 }}
-        alignItems={{ xs: 'stretch', lg: 'center' }}
-        justifyContent="space-between"
-        sx={{
-          mb: { xs: 3, md: 4 },
-          p: { xs: 2, md: 3 },
-          bgcolor: 'background.paper',
-          borderRadius: 2,
-          boxShadow: 1
-        }}
-      >
-        <Typography
-          variant="h4"
-          sx={{
-            fontSize: { xs: '1.5rem', md: '2rem' },
-            fontWeight: 600
-          }}
-        >
-          {currentCardData.cardName}
-        </Typography>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', sm: 'center' }}
-          justifyContent="flex-end"
-          sx={{ flexWrap: 'wrap' }}
-        >
-          {currentCardData.cardName && (
-            <FormControl sx={{ minWidth: { xs: '100%', sm: 200 }, maxWidth: 300 }}>
-              <Select
-                value={(cardIndex + 1).toString()}
-                onChange={(e) => onPageChange(e.target.value)}
-                size="small"
-              >
-                {sortedCardNames.map((item) => (
-                  <MenuItem key={item.value} value={item.value}>
-                    {item.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-          {pagination && (
-            <Stack
-              direction="row"
-              alignItems="center"
-              spacing={1}
-              sx={{
-                bgcolor: 'background.default',
-                borderRadius: 1,
-                px: 2,
-                py: 0.5
-              }}
-            >
-              <Typography variant="body2">Page</Typography>
-              <TextField
-                type="number"
-                size="small"
-                value={cardIndex + 1}
-                onChange={(e) => onPageChange(e.target.value)}
-                inputProps={{ min: 1, max: cardNames.length }}
-                sx={{ width: '70px' }}
-              />
-              <Typography variant="body2">of {cardNames.length}</Typography>
-            </Stack>
-          )}
-          <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
-            <Button
-              onClick={onPreviousPage}
-              disabled={cardIndex === 0}
-              variant="outlined"
-              size="small"
-              sx={{ flex: { xs: 1, sm: 0 } }}
-            >
-              Previous
-            </Button>
-            <Button
-              onClick={onNextPage}
-              variant="outlined"
-              size="small"
-              disabled={cardIndex >= cardNames.length - 1}
-              sx={{ flex: { xs: 1, sm: 0 } }}
-            >
-              Next
-            </Button>
+    <Grid container spacing={3}>
+      {/* Left Sidebar - Filters */}
+      {!currentCardData.loading && currentCardData.data && currentCardData.data.stores.length > 0 && (
+        <Grid item xs={12} md={3} lg={2}>
+          <Stack spacing={2}>
+            <StoreFilter
+              stores={currentCardData.data.stores}
+              selectedStores={currentCardData.selectedStores || []}
+              onStoresChange={handleStoreFilterChange}
+            />
           </Stack>
-          <PreviewLibrary name={currentCardData.cardName} />
-        </Stack>
-      </Stack>
-      <CardList cards={currentCardData.data} loading={currentCardData.loading} />
-    </Box>
+        </Grid>
+      )}
+
+      {/* Main Content */}
+      <Grid item xs={12} md={currentCardData.data && currentCardData.data.stores.length > 0 ? 9 : 12} lg={currentCardData.data && currentCardData.data.stores.length > 0 ? 10 : 12}>
+        <Box sx={{ width: '100%' }}>
+          <Stack
+            direction={{ xs: 'column', lg: 'row' }}
+            spacing={{ xs: 2, md: 3 }}
+            alignItems={{ xs: 'stretch', lg: 'center' }}
+            justifyContent="space-between"
+            sx={{
+              mb: { xs: 3, md: 4 },
+              p: { xs: 2, md: 3 },
+              bgcolor: 'background.paper',
+              borderRadius: 2,
+              boxShadow: 1
+            }}
+          >
+            <Box>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontSize: { xs: '1.5rem', md: '2rem' },
+                  fontWeight: 600,
+                  mb: 1
+                }}
+              >
+                {currentCardData.cardName}
+              </Typography>
+              {currentCardData.loading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Loading price data...
+                </Typography>
+              ) : currentCardData.data ? (
+                <Typography variant="body2" color="text.secondary">
+                  {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)} • Avg: ${currentCardData.data.priceStats.avg.toFixed(2)} (all stores)
+                </Typography>
+              ) : null}
+            </Box>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              justifyContent="flex-end"
+              sx={{ flexWrap: 'wrap' }}
+            >
+              {currentCardData.cardName && (
+                <FormControl sx={{ minWidth: { xs: '100%', sm: 200 }, maxWidth: 300 }}>
+                  <Select
+                    value={(cardIndex + 1).toString()}
+                    onChange={(e) => onPageChange(e.target.value)}
+                    size="small"
+                  >
+                    {sortedCardNames.map((item) => (
+                      <MenuItem key={item.value} value={item.value}>
+                        {item.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+              {pagination && (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{
+                    bgcolor: 'background.default',
+                    borderRadius: 1,
+                    px: 2,
+                    py: 0.5
+                  }}
+                >
+                  <Typography variant="body2">Page</Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={cardIndex + 1}
+                    onChange={(e) => onPageChange(e.target.value)}
+                    inputProps={{ min: 1, max: cardNames.length }}
+                    sx={{ width: '70px' }}
+                  />
+                  <Typography variant="body2">of {cardNames.length}</Typography>
+                </Stack>
+              )}
+              <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
+                <Button
+                  onClick={onPreviousPage}
+                  disabled={cardIndex === 0}
+                  variant="outlined"
+                  size="small"
+                  sx={{ flex: { xs: 1, sm: 0 } }}
+                >
+                  Previous
+                </Button>
+                <Button
+                  onClick={onNextPage}
+                  variant="outlined"
+                  size="small"
+                  disabled={cardIndex >= cardNames.length - 1}
+                  sx={{ flex: { xs: 1, sm: 0 } }}
+                >
+                  Next
+                </Button>
+              </Stack>
+              <PreviewLibrary name={currentCardData.cardName} />
+            </Stack>
+          </Stack>
+          <CardList cards={filteredCards} loading={currentCardData.loading} />
+        </Box>
+      </Grid>
+    </Grid>
   )
 }

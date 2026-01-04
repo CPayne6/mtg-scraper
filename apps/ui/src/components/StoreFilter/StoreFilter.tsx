@@ -1,59 +1,49 @@
-import { useState } from 'react';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import FormControl from '@mui/material/FormControl';
-import FormLabel from '@mui/material/FormLabel';
-import FormGroup from '@mui/material/FormGroup';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import IconButton from '@mui/material/IconButton';
-import Collapse from '@mui/material/Collapse';
-import Button from '@mui/material/Button';
-import ExpandMore from '@mui/icons-material/ExpandMore';
-import ExpandLess from '@mui/icons-material/ExpandLess';
-import { StoreInfo } from '@mtg-scraper/shared';
+import { useMemo, useState } from 'react'
+import { Box, Button, Checkbox, Collapse, FormControl, FormControlLabel, FormGroup, FormLabel, IconButton, Typography } from '@mui/material'
+import { ExpandLess, ExpandMore } from '@mui/icons-material'
+import { StoreInfo } from '@mtg-scraper/shared'
 
 interface StoreFilterProps {
   stores: StoreInfo[];
   selectedStores: string[];
-  onStoresChange: (storeNames: string[] | null) => void;
+  onStoresChange: (storeNames: string[]) => void;
 }
 
 export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFilterProps) {
   const [expanded, setExpanded] = useState(true);
 
   const handleToggleStore = (storeName: string) => {
-    const currentSelection = selectedStores || [];
-    const isSelected = currentSelection.includes(storeName);
+    const isSelected = selectedStores.includes(storeName);
 
     if (isSelected) {
       // Remove from selection
-      const newSelection = currentSelection.filter(s => s !== storeName);
-      onStoresChange(newSelection.length > 0 ? newSelection : null);
+      const newSelection = selectedStores.filter(s => s !== storeName);
+      onStoresChange(newSelection);
     } else {
       // Add to selection
-      onStoresChange([...currentSelection, storeName]);
+      onStoresChange([...selectedStores, storeName]);
     }
   };
 
-  const handleSelectAll = () => {
-    onStoresChange(null); // null means show all stores
-  };
-
   const handleClearAll = () => {
-    onStoresChange([]); // empty array means clear selection
+    onStoresChange([]);
   };
 
-  const isAllSelected = !selectedStores || selectedStores.length === 0;
-  const selectedCount = isAllSelected
-    ? stores.reduce((sum, s) => sum + s.cardCount, 0)
-    : stores
-        .filter(s => selectedStores.includes(s.displayName))
-        .reduce((sum, s) => sum + s.cardCount, 0);
+  const selectedCount = useMemo(
+    () => selectedStores.length === 0
+      ? stores.reduce((sum, s) => sum + s.cardCount, 0)
+      : stores
+          .filter(s => selectedStores.includes(s.displayName))
+          .reduce((sum, s) => sum + s.cardCount, 0),
+    [stores, selectedStores]
+  );
 
-  const displayText = isAllSelected
-    ? 'All Stores'
-    : `${selectedStores.length} store${selectedStores.length !== 1 ? 's' : ''}`;
+  const displayText = useMemo(
+    () => selectedStores.length === 0
+      ? 'All Stores'
+      : `${selectedStores.length} store${selectedStores.length !== 1 ? 's' : ''}`,
+    [selectedStores.length]
+  );
 
   return (
     <Box
@@ -97,17 +87,14 @@ export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFil
       <Collapse in={expanded}>
         <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-            <Button size="small" onClick={handleSelectAll} disabled={isAllSelected}>
-              All
-            </Button>
-            <Button size="small" onClick={handleClearAll} disabled={isAllSelected}>
+            <Button size="small" onClick={handleClearAll} disabled={selectedStores.length === 0}>
               Clear
             </Button>
           </Box>
 
           <FormGroup>
             {stores.map((store) => {
-              const isSelected = isAllSelected || selectedStores.includes(store.displayName);
+              const isSelected = selectedStores.length > 0 && selectedStores.includes(store.displayName);
               return (
                 <FormControlLabel
                   key={store.id}
@@ -115,7 +102,6 @@ export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFil
                     <Checkbox
                       checked={isSelected}
                       onChange={() => handleToggleStore(store.displayName)}
-                      disabled={isAllSelected}
                     />
                   }
                   label={

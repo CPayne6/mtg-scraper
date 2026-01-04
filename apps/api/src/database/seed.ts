@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { Store } from '../store/entities/store.entity';
+import { Store } from '@mtg-scraper/core';
 
 const stores: Partial<Store>[] = [
   {

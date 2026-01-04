@@ -1,4 +1,24 @@
 services:
+  # PostgreSQL - Store configuration and metadata
+  postgres:
+    image: postgres:16-alpine
+    container_name: mtg-postgres-dev
+    environment:
+      - POSTGRES_DB=mtg_scraper
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    networks:
+      - mtg-network-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
@@ -30,17 +50,22 @@ services:
       - NODE_ENV=development
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
     volumes:
       # Mount source code for hot reload
       - ./apps/api/src:/app/apps/api/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
       - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/api/tsconfig.json:/app/apps/api/tsconfig.json:ro
       - ./apps/api/nest-cli.json:/app/apps/api/nest-cli.json:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - mtg-network-dev
@@ -116,17 +141,22 @@ services:
       - NODE_ENV=development
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
     volumes:
       # Mount source code for hot reload
       - ./apps/scraper/src:/app/apps/scraper/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
       - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/scraper/tsconfig.json:/app/apps/scraper/tsconfig.json:ro
       - ./apps/scraper/nest-cli.json:/app/apps/scraper/nest-cli.json:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - mtg-network-dev
@@ -140,4 +170,6 @@ networks:
 
 volumes:
   redis-data-dev:
+    driver: local
+  postgres-data-dev:
     driver: local

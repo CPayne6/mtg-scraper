@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20
 WORKDIR /app
 
 # Install pnpm
@@ -7,6 +7,7 @@ RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
 # Copy workspace configuration
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/core/package.json ./packages/core/
 COPY apps/scraper/package.json ./apps/scraper/
 
 # Install ALL dependencies (including dev dependencies)
@@ -14,12 +15,13 @@ RUN pnpm install --frozen-lockfile
 
 # Copy all source code
 COPY packages/shared ./packages/shared
+COPY packages/core ./packages/core
 COPY apps/scraper ./apps/scraper
-COPY tsconfig.json ./
+COPY tsconfig.json nx.json ./
 
-# Build shared package (needed for initial setup)
-WORKDIR /app/packages/shared
-RUN pnpm build
+# Build using Nx (automatically builds dependencies)
+WORKDIR /app
+RUN pnpm nx build scraper
 
 # Set working directory to Scraper
 WORKDIR /app/apps/scraper

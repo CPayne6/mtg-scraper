@@ -11,6 +11,7 @@
     "jsx": "react-jsx",
     "verbatimModuleSyntax": true,
     "noUncheckedSideEffectImports": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    "incremental": false
   }
 }

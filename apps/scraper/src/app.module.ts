@@ -4,9 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
-import { QueueModule } from './queue/queue.module';
-import { StoreModule } from './store/store.module';
-import { getDatabaseConfig } from './config/database.config';
+import { getDatabaseConfig } from '@mtg-scraper/core';
+import { ScraperModule } from './scraper/scraper.module';
 
 @Module({
   imports: [
@@ -16,8 +15,7 @@ import { getDatabaseConfig } from './config/database.config';
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
-    StoreModule,
-    QueueModule,
+    ScraperModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,24 +1,17 @@
 import { CardSearchResponse, CardWithStore } from "@mtg-scraper/shared"
 import { useEffect, useState, useMemo } from "react"
-import { CardList } from "../CardsList";
-import { StoreFilter } from "../StoreFilter";
-import Box from "@mui/material/Box";
-import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Grid";
-import { useNavigate } from "@tanstack/react-router";
-import { PreviewLibrary } from "..";
-import SkryfallAutocomplete from "../SkryfallAutocomplete/SkryfallAutocomplete";
+import { useNavigate } from "@tanstack/react-router"
+import { Box, Grid, Stack, Typography } from "@mui/material"
+import { CardList } from "../CardsList"
+import { StoreFilter } from "../StoreFilter"
+import { PreviewLibrary } from ".."
+import SkryfallAutocomplete from "../SkryfallAutocomplete/SkryfallAutocomplete"
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const fetchCardData = async (name: string) => {
   const response = await fetch(`${API_URL}/card/${encodeURIComponent(name)}`)
   return await response.json() as CardSearchResponse
-}
-
-interface CardDisplayProps {
-  cardName: string;
 }
 
 // Filter operation types
@@ -32,6 +25,15 @@ interface FilterConfig<T = any> {
   value?: T;
   // Custom filter function for complex logic
   filterFn?: (card: CardWithStore) => boolean;
+}
+
+// Default filter configuration - Store filter (empty array = show all stores)
+const DEFAULT_FILTERS = new Map<string, FilterConfig>([
+  ['stores', { filterKey: 'stores', key: 'store', operation: 'in', value: [] }],
+]);
+
+interface CardDisplayProps {
+  cardName: string;
 }
 
 // Apply a single filter to a card
@@ -89,21 +91,17 @@ export function CardDisplay(props: CardDisplayProps) {
   const [loading, setLoading] = useState(true)
 
   // Extensible filter configuration array - use Map for O(1) lookup by filterKey
-  const [filterConfigs, setFilterConfigs] = useState<Map<string, FilterConfig>>(new Map([
-    // Store filter (default: show all stores, value is array of store names)
-    ['stores', { filterKey: 'stores', key: 'store', operation: 'in', value: null }],
-  ]));
+  const [filterConfigs, setFilterConfigs] = useState<Map<string, FilterConfig>>(DEFAULT_FILTERS);
 
   useEffect(() => {
     async function fetchCard() {
       setLoading(true)
-      // Reset filters on new search
-      setFilterConfigs(new Map([
-        ['stores', { filterKey: 'stores', key: 'store', operation: 'in', value: null }],
-      ]))
+      setData(null) // Clear stale data immediately
       try {
         const responseData = await fetchCardData(cardName)
         setData(responseData)
+        // Reset filters to default
+        setFilterConfigs(new Map(DEFAULT_FILTERS))
       } catch (err) {
         console.error(err)
       } finally {
@@ -168,7 +166,7 @@ export function CardDisplay(props: CardDisplayProps) {
   }
 
   // Specific filter handlers (wrapper functions for common filters)
-  const handleStoreFilterChange = (storeNames: string[] | null) => {
+  const handleStoreFilterChange = (storeNames: string[]) => {
     updateFilter('stores', storeNames);
   }
 
@@ -223,11 +221,15 @@ export function CardDisplay(props: CardDisplayProps) {
               >
                 {cardName}
               </Typography>
-              {data && (
+              {loading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Loading price data...
+                </Typography>
+              ) : data ? (
                 <Typography variant="body2" color="text.secondary">
                   {filteredCards?.length || 0} / {data.priceStats.count} results • ${data.priceStats.min.toFixed(2)} - ${data.priceStats.max.toFixed(2)} • Avg: ${data.priceStats.avg.toFixed(2)} (all stores)
                 </Typography>
-              )}
+              ) : null}
             </Box>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}

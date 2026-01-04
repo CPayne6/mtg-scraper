@@ -1,10 +1,7 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { CardDisplay } from '../components/CardDisplay/CardDisplay'
-import Box from '@mui/material/Box'
-import Stack from '@mui/material/Stack'
-import Typography from '@mui/material/Typography'
-import Button from '@mui/material/Button'
 import { Suspense } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { Box, Button, Stack, Typography } from '@mui/material'
+import { CardDisplay } from '../components/CardDisplay/CardDisplay'
 
 export const Route = createFileRoute('/card/$name')({
   component: CardPage,

@@ -3,10 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CardModule } from './card/card.module';
 import { HealthModule } from './health/health.module';
-import { StoreModule } from './store/store.module';
+import { StoreModule } from '@mtg-scraper/core';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
-import { getDatabaseConfig } from './config/database.config';
+import { getDatabaseConfig } from '@mtg-scraper/core';
 
 @Module({
   imports: [

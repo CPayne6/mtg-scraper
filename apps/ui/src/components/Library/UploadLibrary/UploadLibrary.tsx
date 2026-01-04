@@ -1,12 +1,11 @@
 "use client"
 
-import Button from "@mui/material/Button"
-import Popover from "@mui/material/Popover"
+import { useContext, useState } from "react"
+import { Button, Popover } from "@mui/material"
+import { Dropzone } from "@/components/Dropzone"
+import { LibraryContext } from "@/context"
 import { parseFile, supportedFileTypes } from "../library.utils"
 import { LibraryEntry } from "../library.types"
-import { Dropzone } from "@/components/Dropzone"
-import { useContext, useState } from "react"
-import { LibraryContext } from "@/context"
 
 export const UploadLibrary = () => {
 

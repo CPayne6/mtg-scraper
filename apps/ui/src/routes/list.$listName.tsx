@@ -1,10 +1,7 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { DeckDisplay } from '../components/DeckDisplay/DeckDisplay'
-import Box from '@mui/material/Box'
-import Stack from '@mui/material/Stack'
-import Typography from '@mui/material/Typography'
-import Button from '@mui/material/Button'
 import { Suspense } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { Box, Button, Stack, Typography } from '@mui/material'
+import { DeckDisplay } from '../components/DeckDisplay/DeckDisplay'
 
 export const Route = createFileRoute('/list/$listName')({
   component: ListPage,
