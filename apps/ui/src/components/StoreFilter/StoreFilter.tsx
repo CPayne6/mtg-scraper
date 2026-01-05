@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Box, Button, Checkbox, Collapse, FormControl, FormControlLabel, FormGroup, FormLabel, IconButton, Typography } from '@mui/material'
 import { ExpandLess, ExpandMore } from '@mui/icons-material'
-import { StoreInfo } from '@mtg-scraper/shared'
+import { StoreInfo } from '@scoutlgs/shared'
 
 interface StoreFilterProps {
   stores: StoreInfo[];

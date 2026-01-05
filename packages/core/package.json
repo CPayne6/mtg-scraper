@@ -1,7 +1,7 @@
 {
-  "name": "@mtg-scraper/core",
+  "name": "@scoutlgs/core",
   "version": "1.0.0",
-  "description": "Core infrastructure and domain logic for MTG Scraper",
+  "description": "Core infrastructure and domain logic for ScoutLGS",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -32,7 +32,7 @@
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/typeorm": "^10.0.1",
-    "@mtg-scraper/shared": "workspace:*",
+    "@scoutlgs/shared": "workspace:*",
     "bullmq": "^5.66.4",
     "ioredis": "^5.8.2",
     "reflect-metadata": "^0.2.2",

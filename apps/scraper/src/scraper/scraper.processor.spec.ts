@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ScrapeCardProcessor } from './scraper.processor';
 import { ScraperService } from './scraper.service';
-import { CacheService } from '@mtg-scraper/core';
+import { CacheService } from '@scoutlgs/core';
 import { Job } from 'bullmq';
-import { ScrapeCardJobData, ScrapeCardJobResult } from '@mtg-scraper/shared';
-import { mockCardWithStore, mockMultipleCards } from '@mtg-scraper/core/test';
+import { ScrapeCardJobData, ScrapeCardJobResult } from '@scoutlgs/shared';
+import { mockCardWithStore, mockMultipleCards } from '@scoutlgs/core/test';
 
 describe('ScrapeCardProcessor', () => {
   let processor: ScrapeCardProcessor;

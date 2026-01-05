@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { ConfigModule } from '@nestjs/config';
-import { QUEUE_NAMES } from '@mtg-scraper/shared';
+import { QUEUE_NAMES } from '@scoutlgs/shared';
 import { CacheService } from './cache.service';
 
 @Module({

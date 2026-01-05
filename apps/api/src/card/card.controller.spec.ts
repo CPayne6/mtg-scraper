@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CardController } from './card.controller';
 import { CardService } from './card.service';
-import { mockCardSearchResponse } from '@mtg-scraper/core/test';
+import { mockCardSearchResponse } from '@scoutlgs/core/test';
 import { GetCardDto } from './dto/get-card.dto';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 

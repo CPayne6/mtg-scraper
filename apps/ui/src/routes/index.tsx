@@ -81,11 +81,11 @@ function Home() {
         <Stack direction="column" spacing={{ xs: 3, md: 4 }} alignItems="center">
           <Box
             component="img"
-            src="/scanner.png"
-            alt="logo"
+            src="/ScoutLGS-logo-transparent.png"
+            alt="ScoutLGS Logo"
             sx={{
               height: { xs: 150, md: 180, lg: 220 },
-              width: { xs: 150, md: 180, lg: 220 },
+              width: 'auto',
               objectFit: 'contain'
             }}
           />
@@ -98,7 +98,7 @@ function Home() {
               letterSpacing: '-0.02em'
             }}
           >
-            MTG Card Finder
+            ScoutLGS
           </Typography>
           <Typography
             variant="h6"
@@ -111,7 +111,7 @@ function Home() {
               lineHeight: 1.6
             }}
           >
-            Search across Hobbiesville, 401 Games and FacetoFace Games
+            Scout your local game stores - Search across Hobbiesville, 401 Games and FacetoFace Games
           </Typography>
         </Stack>
 

@@ -13,7 +13,7 @@ async function bootstrap() {
   const popularCardsLimit = configService.get<number>('popularCards.limit');
 
   logger.log('═══════════════════════════════════════════════════════');
-  logger.log('MTG Scraper - Scheduler Service');
+  logger.log('ScoutLGS - Scheduler Service');
   logger.log('═══════════════════════════════════════════════════════');
   logger.log(`Schedule Enabled: ${scheduleEnabled}`);
   logger.log(`Daily Scrape Time: ${dailyScrapeTime}`);

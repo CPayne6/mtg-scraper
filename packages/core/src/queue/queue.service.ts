@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES, JOB_NAMES, ScrapeCardJobData } from '@mtg-scraper/shared';
+import { QUEUE_NAMES, JOB_NAMES, ScrapeCardJobData } from '@scoutlgs/shared';
 
 @Injectable()
 export class QueueService {

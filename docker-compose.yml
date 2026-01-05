@@ -2,17 +2,17 @@ services:
   # PostgreSQL - Store configuration and metadata
   postgres:
     image: postgres:16-alpine
-    container_name: mtg-postgres
+    container_name: scoutlgs-postgres
     environment:
-      - POSTGRES_DB=mtg_scraper
+      - POSTGRES_DB=scoutlgs
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - scoutlgs-postgres-data:/var/lib/postgresql/data
     networks:
-      - mtg-network
+      - scoutlgs-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -23,14 +23,14 @@ services:
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
-    container_name: mtg-redis
+    container_name: scoutlgs-redis
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction --notify-keyspace-events AKE
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - scoutlgs-redis-data:/data
     networks:
-      - mtg-network
+      - scoutlgs-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -43,7 +43,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: mtg-api
+    container_name: scoutlgs-api
     ports:
       - "5000:5000"
     env_file:
@@ -59,7 +59,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - mtg-network
+      - scoutlgs-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -73,7 +73,7 @@ services:
     build:
       context: .
       dockerfile: apps/ui/Dockerfile
-    container_name: mtg-ui
+    container_name: scoutlgs-ui
     ports:
       - "3000:3000"
     env_file:
@@ -81,7 +81,7 @@ services:
     depends_on:
       - api
     networks:
-      - mtg-network
+      - scoutlgs-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
@@ -95,7 +95,7 @@ services:
     build:
       context: .
       dockerfile: apps/scheduler/Dockerfile
-    container_name: mtg-scheduler
+    container_name: scoutlgs-scheduler
     env_file:
       - apps/scheduler/.env
     environment:
@@ -106,7 +106,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - mtg-network
+      - scoutlgs-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pgrep", "-f", "node dist/main.js"]
@@ -135,7 +135,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - mtg-network
+      - scoutlgs-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pgrep", "-f", "node dist/main.js"]
@@ -147,11 +147,11 @@ services:
       replicas: 3
 
 networks:
-  mtg-network:
+  scoutlgs-network:
     driver: bridge
 
 volumes:
-  redis-data:
+  scoutlgs-redis-data:
     driver: local
-  postgres-data:
+  scoutlgs-postgres-data:
     driver: local

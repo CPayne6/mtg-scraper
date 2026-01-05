@@ -1,7 +1,7 @@
 {
   "name": "scheduler",
   "version": "1.0.0",
-  "description": "MTG Scraper - Scheduled Tasks Service",
+  "description": "ScoutLGS - Scheduled Tasks Service",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CacheService, CardWithStore, QueueService, StoreService } from '@mtg-scraper/core';
-import { CardSearchResponse, StoreInfo, PriceStats } from '@mtg-scraper/shared';
+import { CacheService, CardWithStore, QueueService, StoreService } from '@scoutlgs/core';
+import { CardSearchResponse, StoreInfo, PriceStats } from '@scoutlgs/shared';
 import { randomUUID } from 'crypto';
 
 @Injectable()

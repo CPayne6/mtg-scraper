@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { Store } from '@mtg-scraper/core';
+import { Store } from '@scoutlgs/core';
 
 const stores: Partial<Store>[] = [
   {
@@ -64,7 +64,7 @@ async function seed() {
     port: parseInt(process.env.DATABASE_PORT || '5432'),
     username: process.env.DATABASE_USER || 'postgres',
     password: process.env.DATABASE_PASSWORD || 'postgres',
-    database: process.env.DATABASE_NAME || 'mtg_scraper',
+    database: process.env.DATABASE_NAME || 'scoutlgs',
     entities: [Store],
     synchronize: true, // This will create tables automatically
   });

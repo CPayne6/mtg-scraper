@@ -1,7 +1,7 @@
 @echo off
 REM Development environment startup script for Windows
 
-echo Starting MTG Scraper Development Environment...
+echo Starting ScoutLGS Development Environment...
 echo.
 
 REM Check if .env files exist

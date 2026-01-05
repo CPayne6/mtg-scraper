@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CardService } from './card.service';
-import { CacheService, QueueService, StoreService } from '@mtg-scraper/core';
-import { mockCardWithStore, mockStores } from '@mtg-scraper/core/test';
-import { CardWithStore } from '@mtg-scraper/shared';
+import { CacheService, QueueService, StoreService } from '@scoutlgs/core';
+import { mockCardWithStore, mockStores } from '@scoutlgs/core/test';
+import { CardWithStore } from '@scoutlgs/shared';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('CardService', () => {

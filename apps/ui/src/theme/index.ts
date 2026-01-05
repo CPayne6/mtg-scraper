@@ -5,41 +5,43 @@ const lightThemeOptions: ThemeOptions = {
   palette: {
     mode: 'light',
     primary: {
-      main: '#1976d2',
+      main: '#0d9488', // Ocean teal
     },
     secondary: {
-      main: '#dc004e',
+      main: '#8b5cf6', // Purple
     },
     background: {
-      default: '#f5f5f5',
+      default: '#f0fdfa', // Aqua tint
       paper: '#ffffff',
     },
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
     h1: {
       fontSize: '2.5rem',
-      fontWeight: 500,
+      fontWeight: 700, // Bolder
+      letterSpacing: '-0.02em',
     },
     h2: {
       fontSize: '2rem',
-      fontWeight: 500,
+      fontWeight: 600,
+      letterSpacing: '-0.01em',
     },
     h3: {
       fontSize: '1.75rem',
-      fontWeight: 500,
+      fontWeight: 600,
     },
     h4: {
       fontSize: '1.5rem',
-      fontWeight: 500,
+      fontWeight: 600,
     },
     h5: {
       fontSize: '1.25rem',
-      fontWeight: 500,
+      fontWeight: 600,
     },
     h6: {
       fontSize: '1rem',
-      fontWeight: 500,
+      fontWeight: 600,
     },
   },
   spacing: 8, // Base spacing unit (8px)
@@ -59,14 +61,14 @@ const darkThemeOptions: ThemeOptions = {
   palette: {
     mode: 'dark',
     primary: {
-      main: '#90caf9',
+      main: '#5eead4', // Light teal
     },
     secondary: {
-      main: '#f48fb1',
+      main: '#c4b5fd', // Light purple
     },
     background: {
-      default: '#121212',
-      paper: '#1e1e1e',
+      default: '#134e4a', // Deep ocean
+      paper: '#1e40af', // Deep teal-blue
     },
   },
   typography: lightThemeOptions.typography,

@@ -22,8 +22,8 @@
     "test:e2e": "vitest run --config vitest.config.e2e.ts"
   },
   "dependencies": {
-    "@mtg-scraper/core": "workspace:*",
-    "@mtg-scraper/shared": "workspace:*",
+    "@scoutlgs/core": "workspace:*",
+    "@scoutlgs/shared": "workspace:*",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",

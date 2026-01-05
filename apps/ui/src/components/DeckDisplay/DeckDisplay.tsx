@@ -1,4 +1,4 @@
-import { CardSearchResponse, CardWithStore } from "@mtg-scraper/shared"
+import { CardSearchResponse, CardWithStore } from "@scoutlgs/shared"
 import { SetStateAction, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { Box, Button, Collapse, FormControl, FormLabel, IconButton, Grid, MenuItem, Select, Skeleton, Stack, TextField, Typography } from "@mui/material"

@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
-import { getDatabaseConfig } from '@mtg-scraper/core';
+import { getDatabaseConfig } from '@scoutlgs/core';
 import { ScraperModule } from './scraper/scraper.module';
 
 @Module({

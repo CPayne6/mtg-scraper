@@ -1,4 +1,4 @@
-import { Card } from "@mtg-scraper/shared";
+import { Card } from "@scoutlgs/shared";
 import { _401Loader, BinderPOSLoader, F2FLoader, HobbiesLoader, HTTPLoader } from "./loaders";
 import { _401Parser, BinderPOSParser, F2FSearchParser, HobbiesParser, Parser } from "./parsers";
 

@@ -1,4 +1,4 @@
-import { CardWithStore } from "@mtg-scraper/shared"
+import { CardWithStore } from "@scoutlgs/shared"
 import { useContext } from "react"
 import { Box, Typography } from "@mui/material"
 import { Card as DisplayCard } from "./Card"

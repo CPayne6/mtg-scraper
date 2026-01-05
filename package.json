@@ -1,7 +1,7 @@
 {
-  "name": "mtg-scraper",
+  "name": "scoutlgs",
   "version": "1.0.0",
-  "description": "MTG Card Finder - Search across multiple Toronto area stores",
+  "description": "ScoutLGS - MTG Card Finder - Search across multiple Toronto area stores",
   "author": "Chris Payne",
   "license": "ISC",
   "packageManager": "pnpm@10.26.2",

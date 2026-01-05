@@ -1,4 +1,4 @@
-import { Card, Condition } from "@mtg-scraper/shared";
+import { Card, Condition } from "@scoutlgs/shared";
 import { Parser } from "../Parser";
 import { BinderPOSSearch } from "./search.types";
 

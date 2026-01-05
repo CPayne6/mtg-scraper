@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES, ScrapeCardJobResult } from '@mtg-scraper/shared';
+import { QUEUE_NAMES, ScrapeCardJobResult } from '@scoutlgs/shared';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 

@@ -1,7 +1,7 @@
 import { F2FSearchParser } from './parsers/F2FParser/F2FSearchParser'
 import { _401Parser } from "./parsers/401Parser";
 import { HobbiesParser } from "./parsers/HobbiesParser";
-import { Card } from "@mtg-scraper/shared";
+import { Card } from "@scoutlgs/shared";
 import { _401Loader, F2FLoader, HobbiesLoader } from "./loaders";
 import { HTTPLoader } from "./loaders/HTTPLoader";
 import { Parser } from './parsers';

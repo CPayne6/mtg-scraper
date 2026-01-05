@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Logger } from '@nestjs/common';
 import { CardService } from './card.service';
-import { CardSearchResponse } from '@mtg-scraper/shared';
+import { CardSearchResponse } from '@scoutlgs/shared';
 import { GetCardDto } from './dto/get-card.dto';
 
 @Controller('card')

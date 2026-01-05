@@ -2,17 +2,17 @@ services:
   # PostgreSQL - Store configuration and metadata
   postgres:
     image: postgres:16-alpine
-    container_name: mtg-postgres-dev
+    container_name: scoutlgs-postgres-dev
     environment:
-      - POSTGRES_DB=mtg_scraper
+      - POSTGRES_DB=scoutlgs
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data-dev:/var/lib/postgresql/data
+      - scoutlgs-postgres-data-dev:/var/lib/postgresql/data
     networks:
-      - mtg-network-dev
+      - scoutlgs-network-dev
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -22,14 +22,14 @@ services:
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
-    container_name: mtg-redis-dev
+    container_name: scoutlgs-redis-dev
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction --notify-keyspace-events AKE
     ports:
       - "6379:6379"
     volumes:
-      - redis-data-dev:/data
+      - scoutlgs-redis-data-dev:/data
     networks:
-      - mtg-network-dev
+      - scoutlgs-network-dev
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -41,7 +41,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile.dev
-    container_name: mtg-api-dev
+    container_name: scoutlgs-api-dev
     ports:
       - "5000:5000"
     env_file:
@@ -68,7 +68,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - mtg-network-dev
+      - scoutlgs-network-dev
     command: pnpm dev
 
   # UI Service (Development mode with Vite hot reload)
@@ -76,7 +76,7 @@ services:
     build:
       context: .
       dockerfile: apps/ui/Dockerfile.dev
-    container_name: mtg-ui-dev
+    container_name: scoutlgs-ui-dev
     ports:
       - "3000:3000"
     env_file:
@@ -98,7 +98,7 @@ services:
     depends_on:
       - api
     networks:
-      - mtg-network-dev
+      - scoutlgs-network-dev
     command: pnpm dev
 
   # Scheduler Service (Development mode with hot reload)
@@ -106,7 +106,7 @@ services:
     build:
       context: .
       dockerfile: apps/scheduler/Dockerfile.dev
-    container_name: mtg-scheduler-dev
+    container_name: scoutlgs-scheduler-dev
     env_file:
       - apps/scheduler/.env
     environment:
@@ -126,7 +126,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - mtg-network-dev
+      - scoutlgs-network-dev
     command: pnpm dev
 
   # Scraper Worker Service (Development mode with hot reload)
@@ -159,17 +159,17 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - mtg-network-dev
+      - scoutlgs-network-dev
     command: pnpm dev
     deploy:
       replicas: 3
 
 networks:
-  mtg-network-dev:
+  scoutlgs-network-dev:
     driver: bridge
 
 volumes:
-  redis-data-dev:
+  scoutlgs-redis-data-dev:
     driver: local
-  postgres-data-dev:
+  scoutlgs-postgres-data-dev:
     driver: local

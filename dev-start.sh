@@ -1,7 +1,7 @@
 #!/bin/bash
 # Development environment startup script
 
-echo "Starting MTG Scraper Development Environment..."
+echo "Starting ScoutLGS Development Environment..."
 echo ""
 
 # Check if .env files exist

@@ -1,4 +1,4 @@
-import { Card } from "@mtg-scraper/shared";
+import { Card } from "@scoutlgs/shared";
 
 export interface Parser {
   extractItems(data: string): Promise<{ result: Card[], error?: boolean | string }>

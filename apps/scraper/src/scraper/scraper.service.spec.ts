@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ScraperService } from './scraper.service';
-import { StoreService } from '@mtg-scraper/core';
-import { mockStores } from '@mtg-scraper/core/test';
-import { CardWithStore } from '@mtg-scraper/shared';
+import { StoreService } from '@scoutlgs/core';
+import { mockStores } from '@scoutlgs/core/test';
+import { CardWithStore } from '@scoutlgs/shared';
 
 describe('ScraperService', () => {
   let service: ScraperService;

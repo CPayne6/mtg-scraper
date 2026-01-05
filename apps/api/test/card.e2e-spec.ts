@@ -2,8 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { CacheService, QueueService, StoreService } from '@mtg-scraper/core';
-import { mockCardWithStore, mockStores } from '@mtg-scraper/core/test';
+import { CacheService, QueueService, StoreService } from '@scoutlgs/core';
+import { mockCardWithStore, mockStores } from '@scoutlgs/core/test';
 
 describe('Card API (e2e)', () => {
   let app: INestApplication;

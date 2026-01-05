@@ -1,4 +1,4 @@
-import { CardWithStore, CardSearchResponse } from '@mtg-scraper/shared';
+import { CardWithStore, CardSearchResponse } from '@scoutlgs/shared';
 
 export const mockCardWithStore: CardWithStore = {
   title: 'Black Lotus',

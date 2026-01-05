@@ -1,6 +1,6 @@
 import { Parser } from "../Parser";
 import { F2FSearch } from "./search.types";
-import { Card, Condition } from "@mtg-scraper/shared";
+import { Card, Condition } from "@scoutlgs/shared";
 import { isValidSetCode } from "@/scraper/sets";
 
 export class F2FSearchParser implements Parser {

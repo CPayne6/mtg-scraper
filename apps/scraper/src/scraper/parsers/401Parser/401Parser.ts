@@ -1,5 +1,5 @@
 import { writeFileSync } from "fs";
-import { Card } from "@mtg-scraper/shared";
+import { Card } from "@scoutlgs/shared";
 import { Parser } from "../Parser";
 import { _401Search } from "./search.types";
 

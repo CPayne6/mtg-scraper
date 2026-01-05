@@ -6,8 +6,8 @@ import {
   JOB_NAMES,
   ScrapeCardJobData,
   ScrapeCardJobResult,
-} from '@mtg-scraper/shared';
-import { CacheService } from '@mtg-scraper/core';
+} from '@scoutlgs/shared';
+import { CacheService } from '@scoutlgs/core';
 import { ScraperService } from './scraper.service';
 
 @Processor(QUEUE_NAMES.CARD_SCRAPE)
