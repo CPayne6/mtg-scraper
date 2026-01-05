@@ -24,7 +24,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: mtg-redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --notify-keyspace-events AKE
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction --notify-keyspace-events AKE
     ports:
       - "6379:6379"
     volumes:

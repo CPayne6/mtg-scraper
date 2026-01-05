@@ -4,8 +4,19 @@
   "description": "Core infrastructure and domain logic for MTG Scraper",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./test": {
+      "types": "./src/test/index.ts",
+      "default": "./src/test/index.ts"
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "src/test"
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",

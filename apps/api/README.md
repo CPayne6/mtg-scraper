@@ -1,98 +1,518 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# API Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS-based REST API service that handles MTG card search requests and orchestrates the scraping workflow.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Overview
 
-## Description
+The API service is the main entry point for the application. It receives card search requests from the UI, manages the queue system, and returns aggregated results from multiple stores.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+### Responsibilities
 
-## Project setup
+- Handle card search requests via REST API
+- Check Redis cache for existing results
+- Enqueue scraping jobs with high priority
+- Wait for scraper completion via pub/sub
+- Return aggregated results with price statistics
+- Provide health check endpoints
+- Manage CORS for frontend communication
 
-```bash
-$ pnpm install
+## Architecture
+
+```
+┌─────────────────────────────────────┐
+│         API Service                 │
+│                                     │
+│  ┌──────────────────────────────┐  │
+│  │   CardController             │  │
+│  │   GET /card/:cardName        │  │
+│  └──────────┬───────────────────┘  │
+│             │                       │
+│  ┌──────────▼───────────────────┐  │
+│  │   CardService                │  │
+│  │   - Search orchestration     │  │
+│  │   - Result aggregation       │  │
+│  └──┬───┬───────────────┬───────┘  │
+│     │   │               │           │
+│     │   │               │           │
+│  ┌──▼───▼──┐  ┌────────▼────────┐  │
+│  │ Cache   │  │ Queue           │  │
+│  │ Service │  │ Service         │  │
+│  │ (Redis) │  │ (BullMQ)        │  │
+│  └─────────┘  └─────────────────┘  │
+│                                     │
+│  ┌──────────────────────────────┐  │
+│  │   HealthController           │  │
+│  │   GET /health                │  │
+│  └──────────────────────────────┘  │
+└─────────────────────────────────────┘
 ```
 
-## Compile and run the project
+### Tech Stack
 
-```bash
-# development
-$ pnpm run start
+- **Framework**: NestJS 11.x
+- **ORM**: TypeORM
+- **Queue**: BullMQ (via @nestjs/bull)
+- **Cache**: Redis (via ioredis)
+- **Validation**: class-validator, class-transformer
+- **Testing**: Vitest, Supertest
 
-# watch mode
-$ pnpm run start:dev
+### Dependencies
 
-# production mode
-$ pnpm run start:prod
+**Workspace Packages**
+- `@mtg-scraper/core` - Infrastructure modules (Queue, Cache, Store, Database)
+- `@mtg-scraper/shared` - Shared types and constants
+
+**Key Libraries**
+- `@nestjs/bull` - BullMQ integration
+- `@nestjs/typeorm` - TypeORM integration
+- `@nestjs/terminus` - Health checks
+- `ioredis` - Redis client
+- `pg` - PostgreSQL driver
+
+## Project Structure
+
+```
+apps/api/
+├── src/
+│   ├── card/
+│   │   ├── card.controller.ts       # REST endpoints
+│   │   ├── card.service.ts          # Business logic
+│   │   ├── card.controller.spec.ts  # Unit tests
+│   │   └── card.service.spec.ts
+│   ├── health/
+│   │   ├── health.controller.ts     # Health check endpoint
+│   │   └── health.controller.spec.ts
+│   ├── database/
+│   │   └── seed.ts                  # Database seeding script
+│   ├── app.module.ts                # Root module
+│   └── main.ts                      # Bootstrap
+├── test/
+│   └── card.e2e-spec.ts             # E2E tests
+├── Dockerfile                       # Production build
+├── Dockerfile.dev                   # Development with hot reload
+├── nest-cli.json                    # NestJS CLI config
+├── tsconfig.json                    # TypeScript config
+├── vitest.config.ts                 # Unit tests config
+├── vitest.config.e2e.ts             # E2E tests config
+├── .env.example                     # Environment template
+└── package.json
 ```
 
-## Run tests
+## API Endpoints
 
-```bash
-# unit tests
-$ pnpm run test
+### Card Search
 
-# e2e tests
-$ pnpm run test:e2e
+**Endpoint**: `GET /card/:cardName`
 
-# test coverage
-$ pnpm run test:cov
+Search for an MTG card across all configured stores.
+
+**Parameters**
+- `cardName` (path) - Name of the card to search (URL encoded)
+
+**Response**: `CardSearchResponse`
+```typescript
+{
+  results: CardWithStore[];  // Array of cards with store info
+  stats: PriceStats;         // Price statistics across all results
+}
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+**Example**
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+# Search for "Lightning Bolt"
+curl http://localhost:5000/card/Lightning%20Bolt
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+**Response Example**
+```json
+{
+  "results": [
+    {
+      "name": "Lightning Bolt",
+      "set": "Foundations",
+      "price": 0.25,
+      "condition": "NM",
+      "foil": false,
+      "quantity": 50,
+      "store": {
+        "name": "f2f",
+        "displayName": "Face to Face Games",
+        "url": "https://www.facetofacegames.com"
+      }
+    }
+  ],
+  "stats": {
+    "min": 0.25,
+    "max": 1.50,
+    "avg": 0.75,
+    "median": 0.50
+  }
+}
+```
 
-## Resources
+**Flow**
+1. Receive request with card name
+2. Check Redis cache for `card:{cardname}`
+3. If found, return cached results immediately
+4. If not found:
+   - Set `scraping:{cardname}` lock in Redis (5min TTL)
+   - Enqueue job to `card-scrape` queue with priority 10
+   - Wait up to 60s for scraper completion via pub/sub
+   - Return results or timeout error
+5. Multiple concurrent requests for same card will wait for single scrape
 
-Check out a few resources that may come in handy when working with NestJS:
+### Health Check
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+**Endpoint**: `GET /health`
 
-## Support
+Returns health status of API and its dependencies.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**Response**
+```json
+{
+  "status": "ok",
+  "info": {
+    "database": { "status": "up" },
+    "redis": { "status": "up" }
+  },
+  "error": {},
+  "details": {
+    "database": { "status": "up" },
+    "redis": { "status": "up" }
+  }
+}
+```
 
-## Stay in touch
+## Configuration
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### Environment Variables
+
+Create `apps/api/.env` from `.env.example`:
+
+```bash
+# Server Configuration
+PORT=5000
+FRONTEND_URL=http://localhost:3000
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# PostgreSQL Configuration
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=mtg_scraper
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+DATABASE_SYNCHRONIZE=false
+```
+
+**Docker Environment**
+When running in Docker, the following are automatically set:
+- `REDIS_HOST=redis`
+- `DATABASE_HOST=postgres`
+- `NODE_ENV=production` (or `development` in dev mode)
+
+### Configuration Schema Validation
+
+The API uses Joi for environment validation on startup:
+
+```typescript
+// apps/api/src/app.module.ts
+validationSchema: Joi.object({
+  PORT: Joi.number().default(5000),
+  FRONTEND_URL: Joi.string().required(),
+  REDIS_HOST: Joi.string().required(),
+  REDIS_PORT: Joi.number().default(6379),
+  DATABASE_HOST: Joi.string().required(),
+  // ... etc
+})
+```
+
+## Development
+
+### Local Development
+
+```bash
+# Install dependencies (from root)
+pnpm install
+
+# Build shared packages first
+pnpm --filter @mtg-scraper/shared build
+pnpm --filter @mtg-scraper/core build
+
+# Start in watch mode
+cd apps/api
+pnpm dev
+
+# Or from root
+pnpm --filter api dev
+```
+
+### With Docker (Hot Reload)
+
+```bash
+# Start all services with hot reload
+docker-compose -f docker-compose.dev.yml up api
+
+# View logs
+docker-compose -f docker-compose.dev.yml logs -f api
+```
+
+### Database Seeding
+
+Seed the database with initial store configurations:
+
+```bash
+cd apps/api
+pnpm seed
+```
+
+This will populate the `stores` table with:
+- Store names and display names
+- Base URLs and logo URLs
+- Scraper types (f2f, 401, hobbies, binderpos)
+- Scraper configurations (search paths, etc.)
+
+## Testing
+
+### Unit Tests
+
+```bash
+# Run all unit tests
+pnpm test
+
+# Watch mode
+pnpm test:watch
+
+# With coverage
+pnpm test:cov
+
+# With UI
+pnpm test:ui
+```
+
+**Test Files**
+- `card.controller.spec.ts` - Controller tests
+- `card.service.spec.ts` - Service tests
+- `health.controller.spec.ts` - Health endpoint tests
+
+### E2E Tests
+
+```bash
+# Run E2E tests
+pnpm test:e2e
+```
+
+**Test Files**
+- `test/card.e2e-spec.ts` - Full API flow tests
+
+**E2E Test Setup**
+- Uses Vitest with Supertest
+- Separate config: `vitest.config.e2e.ts`
+- Requires Redis and PostgreSQL running
+
+## Building
+
+### Development Build
+
+```bash
+pnpm build
+```
+
+Output: `dist/` directory
+
+### Production Build with Docker
+
+```bash
+# Build image
+docker build -f apps/api/Dockerfile -t mtg-api .
+
+# Or use docker-compose
+docker-compose build api
+```
+
+**Dockerfile Features**
+- Multi-stage build for optimized image size
+- pnpm installation with frozen lockfile
+- Workspace dependencies properly linked
+- Non-root user for security
+- Health check built-in
+
+## How It Works
+
+### Card Search Flow
+
+1. **Request Received**
+   ```typescript
+   @Get(':cardName')
+   async searchCard(@Param('cardName') cardName: string)
+   ```
+
+2. **Cache Check**
+   ```typescript
+   const cached = await this.cacheService.get(`card:${cardName}`);
+   if (cached) return cached;
+   ```
+
+3. **Distributed Lock**
+   ```typescript
+   const lockKey = `scraping:${cardName}`;
+   const acquired = await this.cacheService.setNX(lockKey, 'true', 300);
+   ```
+
+4. **Enqueue Job** (if lock acquired)
+   ```typescript
+   await this.queueService.enqueue(QUEUE_NAMES.CARD_SCRAPE, {
+     jobName: JOB_NAMES.SCRAPE_CARD,
+     data: { cardName },
+     opts: { priority: 10 } // High priority for user requests
+   });
+   ```
+
+5. **Wait for Results** (via pub/sub)
+   ```typescript
+   const result = await this.cacheService.waitForKey(
+     `card:${cardName}`,
+     60000 // 60 second timeout
+   );
+   ```
+
+6. **Return Results**
+   ```typescript
+   return {
+     results: result.cards,
+     stats: this.calculateStats(result.cards)
+   };
+   ```
+
+### Concurrent Request Handling
+
+Multiple users searching for the same card:
+- First request acquires distributed lock
+- Subsequent requests wait on pub/sub
+- All receive results when scraping completes
+- Prevents duplicate scraping work
+
+### Error Handling
+
+```typescript
+try {
+  // Search logic
+} catch (error) {
+  if (error instanceof NotFoundException) {
+    throw new NotFoundException(`Card "${cardName}" not found`);
+  }
+  if (error instanceof RequestTimeoutException) {
+    throw new RequestTimeoutException('Search timeout');
+  }
+  throw new InternalServerErrorException('Search failed');
+}
+```
+
+## Performance Considerations
+
+### Caching Strategy
+
+- **Cache Key**: `card:{cardname}` (normalized)
+- **TTL**: 24 hours (86400 seconds)
+- **Eviction**: Automatic via Redis TTL
+- **Hit Rate**: ~80% for popular cards
+
+### Queue Priority
+
+User requests use priority 10 to ensure immediate processing:
+```typescript
+{ priority: 10 }  // User request
+{ priority: 1 }   // Scheduled background task
+```
+
+### Connection Pooling
+
+TypeORM connection pool configured for optimal performance:
+```typescript
+{
+  type: 'postgres',
+  poolSize: 10,
+  extra: {
+    max: 10,
+    idleTimeoutMillis: 30000
+  }
+}
+```
+
+## Monitoring
+
+### Health Checks
+
+The `/health` endpoint checks:
+- **Database**: TypeORM connection ping
+- **Redis**: Redis PING command
+- **Overall**: Returns `ok` only if all dependencies are healthy
+
+**Docker Health Check**
+```yaml
+healthcheck:
+  test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', ...)"]
+  interval: 30s
+  timeout: 3s
+  retries: 3
+```
+
+### Logging
+
+NestJS built-in logger with context:
+```typescript
+this.logger.log(`Searching for card: ${cardName}`, 'CardService');
+this.logger.error(`Search failed: ${error.message}`, error.stack, 'CardService');
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Cannot connect to Redis**
+```bash
+# Check Redis is running
+docker-compose ps redis
+
+# Test connection
+docker-compose exec redis redis-cli ping
+```
+
+**Cannot connect to PostgreSQL**
+```bash
+# Check PostgreSQL is running
+docker-compose ps postgres
+
+# Test connection
+docker-compose exec postgres psql -U postgres -d mtg_scraper -c "SELECT 1"
+```
+
+**Scraper not processing jobs**
+```bash
+# Check queue status
+docker-compose exec redis redis-cli
+> LLEN bull:card-scrape:wait
+> LLEN bull:card-scrape:active
+
+# Check scraper logs
+docker-compose logs -f scraper
+```
+
+**Search timing out**
+- Increase `CACHE_WAIT_TIMEOUT` in CardService
+- Check scraper worker count (scale up if needed)
+- Verify stores are accessible
+
+## Related Documentation
+
+- [Root README](../../README.md) - Project overview and setup
+- [Scraper Service](../scraper/README.md) - Worker that processes jobs
+- [Scheduler Service](../scheduler/README.md) - Background task scheduler
+- [Core Package](../../packages/core/README.md) - Shared infrastructure
+- [Shared Package](../../packages/shared/README.md) - Shared types
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+ISC License - Copyright (c) Chris Payne

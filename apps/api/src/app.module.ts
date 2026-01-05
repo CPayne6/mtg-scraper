@@ -18,7 +18,7 @@ import { getDatabaseConfig } from '@mtg-scraper/core';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: getDatabaseConfig,
+      useFactory: getDatabaseConfig
     }),
     StoreModule,
     CardModule,

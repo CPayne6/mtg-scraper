@@ -1,7 +1,8 @@
 import { CardSearchResponse, CardWithStore } from "@mtg-scraper/shared"
 import { SetStateAction, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Box, Button, FormControl, Grid, MenuItem, Select, Stack, TextField, Typography } from "@mui/material"
+import { Box, Button, Collapse, FormControl, FormLabel, IconButton, Grid, MenuItem, Select, Skeleton, Stack, TextField, Typography } from "@mui/material"
+import { ExpandLess, ExpandMore } from '@mui/icons-material'
 import { CardList } from "../CardsList"
 import { StoreFilter } from "../StoreFilter"
 import { PreviewLibrary } from "../Library"
@@ -33,6 +34,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   const [listStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
   const cardNames = listStorage[listName] ?? []
   const [cardIndex, setCardIndex] = useState((isNaN(page) || page > cardNames.length || page <= 1) ? 0 : page - 1)
+  const [filterExpanded, setFilterExpanded] = useState(true)
 
   const [data, setDataState] = useState<DataState[]>(cardNames.map(name => ({
     cardName: name,
@@ -150,6 +152,12 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
       .sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
   , [cardNames])
 
+  // Check if we should show the filter sidebar (if any card has store data)
+  const hasStoreData = useMemo(() =>
+    data.some(card => card.data && card.data.stores.length > 0),
+    [data]
+  )
+
   // Filter cards by selected stores
   const filteredCards = useMemo(() => {
     if (!currentCardData?.data) return undefined
@@ -210,20 +218,71 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   return (
     <Grid container spacing={3}>
       {/* Left Sidebar - Filters */}
-      {!currentCardData.loading && currentCardData.data && currentCardData.data.stores.length > 0 && (
+      {hasStoreData && (
         <Grid item xs={12} md={3} lg={2}>
           <Stack spacing={2}>
-            <StoreFilter
-              stores={currentCardData.data.stores}
-              selectedStores={currentCardData.selectedStores || []}
-              onStoresChange={handleStoreFilterChange}
-            />
+            {currentCardData.loading || !currentCardData.data ? (
+              <Box
+                sx={{
+                  p: 2,
+                  bgcolor: 'background.paper',
+                  borderRadius: 2,
+                  boxShadow: 1,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setFilterExpanded(!filterExpanded)}
+                >
+                  <Box>
+                    <FormLabel
+                      component="legend"
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: '1rem',
+                        color: 'text.primary',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Filter by Store
+                    </FormLabel>
+                    <Skeleton variant="text" width={120} height={20} />
+                  </Box>
+                  <IconButton size="small">
+                    {filterExpanded ? <ExpandLess /> : <ExpandMore />}
+                  </IconButton>
+                </Box>
+
+                <Collapse in={filterExpanded}>
+                  <Box sx={{ mt: 2 }}>
+                    <Skeleton variant="rectangular" width="100%" height={32} sx={{ mb: 1, borderRadius: 1 }} />
+                    <Stack spacing={1} sx={{ mt: 2 }}>
+                      <Skeleton variant="text" width="100%" height={40} />
+                      <Skeleton variant="text" width="100%" height={40} />
+                      <Skeleton variant="text" width="100%" height={40} />
+                      <Skeleton variant="text" width="100%" height={40} />
+                    </Stack>
+                  </Box>
+                </Collapse>
+              </Box>
+            ) : currentCardData.data.stores.length > 0 ? (
+              <StoreFilter
+                stores={currentCardData.data.stores}
+                selectedStores={currentCardData.selectedStores || []}
+                onStoresChange={handleStoreFilterChange}
+              />
+            ) : null}
           </Stack>
         </Grid>
       )}
 
       {/* Main Content */}
-      <Grid item xs={12} md={currentCardData.data && currentCardData.data.stores.length > 0 ? 9 : 12} lg={currentCardData.data && currentCardData.data.stores.length > 0 ? 10 : 12}>
+      <Grid item xs={12} md={hasStoreData ? 9 : 12} lg={hasStoreData ? 10 : 12}>
         <Box sx={{ width: '100%' }}>
           <Stack
             direction={{ xs: 'column', lg: 'row' }}
@@ -238,14 +297,26 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
               boxShadow: 1
             }}
           >
-            <Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography
                 variant="h4"
                 sx={{
-                  fontSize: { xs: '1.5rem', md: '2rem' },
+                  fontSize: currentCardData.cardName.length > 40
+                    ? { xs: '1.1rem', md: '1.4rem' }
+                    : currentCardData.cardName.length > 25
+                    ? { xs: '1.3rem', md: '1.7rem' }
+                    : { xs: '1.5rem', md: '2rem' },
                   fontWeight: 600,
-                  mb: 1
+                  mb: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 1,
+                  WebkitBoxOrient: 'vertical',
+                  lineHeight: 1.2,
+                  minHeight: { xs: '1.8rem', md: '2.4rem' }
                 }}
+                title={currentCardData.cardName}
               >
                 {currentCardData.cardName}
               </Typography>
@@ -255,7 +326,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                 </Typography>
               ) : currentCardData.data ? (
                 <Typography variant="body2" color="text.secondary">
-                  {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)} • Avg: ${currentCardData.data.priceStats.avg.toFixed(2)} (all stores)
+                  {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)} (all stores)
                 </Typography>
               ) : null}
             </Box>

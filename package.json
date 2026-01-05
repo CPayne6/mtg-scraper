@@ -5,25 +5,12 @@
   "author": "Chris Payne",
   "license": "ISC",
   "packageManager": "pnpm@10.26.2",
-  "scripts": {
-    "dev": "pnpm --parallel -r dev",
-    "dev:api": "pnpm --filter api dev",
-    "dev:ui": "pnpm --filter ui dev",
-    "dev:scraper": "pnpm --filter scraper dev",
-    "dev:scheduler": "pnpm --filter scheduler dev",
-    "build": "pnpm -r build",
-    "build:api": "pnpm --filter api build",
-    "build:ui": "pnpm --filter ui build",
-    "build:scraper": "pnpm --filter scraper build",
-    "build:scheduler": "pnpm --filter scheduler build",
-    "start:api": "pnpm --filter api start:prod",
-    "start:ui": "pnpm --filter ui preview",
-    "start:scraper": "pnpm --filter scraper start:prod",
-    "start:scheduler": "pnpm --filter scheduler start:prod",
-    "lint": "pnpm -r lint"
-  },
+  "scripts": {},
   "devDependencies": {
     "@nx/js": "^22.3.3",
-    "nx": "^22.3.3"
+    "@vitest/ui": "^4.0.16",
+    "nx": "^22.3.3",
+    "vite-tsconfig-paths": "^6.0.3",
+    "vitest": "^4.0.16"
   }
 }

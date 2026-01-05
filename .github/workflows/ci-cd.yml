@@ -1,0 +1,481 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - refactor/nextjs-to-react-nest
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10.26.2'
+
+jobs:
+  # Job 1: Setup - Install dependencies once and cache for all jobs
+  setup:
+    name: Setup & Install Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.cache-keys.outputs.node-modules }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Calculate cache keys
+        id: cache-keys
+        run: |
+          echo "node-modules=${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
+          echo "pnpm-store=${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ steps.cache-keys.outputs.pnpm-store }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ steps.cache-keys.outputs.node-modules }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+  # Job 2: Lint all apps in parallel
+  lint:
+    name: Lint (Affected)
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for Nx affected commands
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Lint affected projects
+        run: pnpm nx affected --target=lint --base=origin/main --head=HEAD
+
+  # Job 3: Type check all apps in parallel
+  typecheck:
+    name: Type Check (Affected)
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for Nx affected commands
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Type check affected projects
+        run: |
+          # Get list of affected apps
+          AFFECTED=$(pnpm nx show projects --affected --base=origin/main --head=HEAD --type=app)
+          echo "Affected apps: $AFFECTED"
+
+          # Run typecheck for each affected app
+          for app in $AFFECTED; do
+            case $app in
+              api|scraper|scheduler)
+                echo "Type checking $app..."
+                pnpm --filter $app exec tsc --noEmit
+                ;;
+              ui)
+                echo "Type checking ui..."
+                cd apps/ui && pnpm exec tsc -b --noEmit
+                cd ../..
+                ;;
+            esac
+          done
+
+  # Job 4: Run unit tests for affected apps
+  test-unit:
+    name: Unit Tests (Affected)
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for Nx affected commands
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Run unit tests for affected projects
+        run: |
+          # Add coverage flag only for non-PR events
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            pnpm nx affected --target=test --base=origin/main --head=HEAD
+          else
+            pnpm nx affected --target=test --base=origin/main --head=HEAD -- --coverage
+          fi
+
+  # Job 5: Run E2E tests (only on push, not PRs)
+  test-e2e:
+    name: E2E Tests (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    needs: setup
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, scraper]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mtg_scraper_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Check if app is affected
+        id: check-affected
+        run: |
+          AFFECTED=$(pnpm nx show projects --affected --base=origin/main --head=HEAD --type=app)
+          if echo "$AFFECTED" | grep -q "${{ matrix.app }}"; then
+            echo "affected=true" >> $GITHUB_OUTPUT
+          else
+            echo "affected=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create test environment file
+        if: steps.check-affected.outputs.affected == 'true'
+        run: |
+          cat > apps/${{ matrix.app }}/.env.test << EOF
+          NODE_ENV=test
+          DATABASE_HOST=localhost
+          DATABASE_PORT=5432
+          DATABASE_NAME=mtg_scraper_test
+          DATABASE_USER=postgres
+          DATABASE_PASSWORD=postgres
+          DATABASE_SYNCHRONIZE=true
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          EOF
+
+      - name: Run E2E tests for ${{ matrix.app }}
+        if: steps.check-affected.outputs.affected == 'true'
+        run: pnpm --filter ${{ matrix.app }} test:e2e
+        env:
+          NODE_ENV: test
+
+  # Job 6: Build affected apps using Nx with caching
+  build:
+    name: Build (Affected)
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test-unit]
+    # Also needs test-e2e but only when it runs
+    outputs:
+      build-cache-key: ${{ steps.build-cache.outputs.cache-primary-key }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for Nx affected commands
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+          fail-on-cache-miss: true
+
+      - name: Restore Nx cache
+        id: nx-cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-
+
+      - name: Build affected packages and apps
+        run: pnpm nx affected --target=build --base=origin/main --head=HEAD
+
+      - name: Cache build outputs
+        id: build-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/api/dist
+            apps/ui/dist
+            apps/scraper/dist
+            apps/scheduler/dist
+            packages/core/dist
+            packages/shared/dist
+          key: ${{ runner.os }}-build-${{ github.sha }}
+
+      - name: Upload build artifacts (only on push)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            apps/api/dist
+            apps/ui/dist
+            apps/scraper/dist
+            apps/scheduler/dist
+            packages/core/dist
+            packages/shared/dist
+          retention-days: 7
+
+  # Job 7: Build and push Docker images (only on push, skip PRs entirely)
+  docker:
+    name: Docker (${{ matrix.service.name }})
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: api
+            dockerfile: apps/api/Dockerfile
+          - name: ui
+            dockerfile: apps/ui/Dockerfile
+          - name: scraper
+            dockerfile: apps/scraper/Dockerfile
+          - name: scheduler
+            dockerfile: apps/scheduler/Dockerfile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/mtg-scraper-${{ matrix.service.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+          platforms: linux/amd64
+
+      - name: Generate image summary
+        run: |
+          echo "## Docker Image: ${{ matrix.service.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pushed:** true" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Job 8: Trigger deployment (only on push to main)
+  deploy:
+    name: Trigger Deployment
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Portainer webhook
+        if: secrets.PORTAINER_WEBHOOK_URL != ''
+        run: |
+          curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" || echo "Webhook failed, but continuing"
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Triggered 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "New Docker images have been pushed and deployment webhook has been triggered." >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Job 9: Pipeline summary
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test-unit, build]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Actor:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Lint: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Type Check: ${{ needs.typecheck.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Unit Tests: ${{ needs.test-unit.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "**Note:** Fast PR validation - E2E tests and Docker builds skipped" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "**Note:** Full pipeline executed with E2E tests and Docker push 🚀" >> $GITHUB_STEP_SUMMARY
+          fi

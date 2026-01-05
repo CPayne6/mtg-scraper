@@ -31,21 +31,20 @@ export function Card(props: CardProps) {
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
-        transition: 'all 0.3s ease',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: 4
-        }
+        borderRadius: '12px'
       }}
     >
       <Box sx={{
         width: '100%',
         bgcolor: 'background.default',
-        aspectRatio: '5/7'
+        aspectRatio: '5/7',
+        borderRadius: '12px',
+        overflow: 'hidden'
       }}>
         <Image
           src={props.image}
           alt={props.title}
+          style={{ borderRadius: '12px' }}
         />
       </Box>
       <CardContent sx={{
@@ -111,7 +110,8 @@ export function Card(props: CardProps) {
             variant="body2"
             sx={{
               color: 'text.primary',
-              fontSize: '0.875rem'
+              fontSize: '0.875rem',
+              textTransform: 'uppercase'
             }}
           >
             | {props.condition}
