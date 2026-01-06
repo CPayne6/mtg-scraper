@@ -1,7 +1,8 @@
+import { Proxy } from "@/scraper/proxy";
 import { APILoader, searchReplace } from "../APILoader";
 
 export class HobbiesLoader extends APILoader {
-  constructor(){
+  constructor(proxy: Proxy){
     super({
       initial: {
         baseUrl: 'https://hobbiesville.com',
@@ -25,7 +26,8 @@ export class HobbiesLoader extends APILoader {
           ['name', searchReplace],
           ['q', searchReplace]
         ]
-      }
+      },
+      proxy
     })
   }
 }

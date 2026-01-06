@@ -1,3 +1,4 @@
+import { Proxy } from "@/scraper/proxy";
 import { HTTPLoader } from "../HTTPLoader";
 
 // 1 day cache timeout
@@ -16,7 +17,8 @@ export interface APILoaderConfig {
     params?: RegExp | [string, string | RegExp][],
     body?: RegExp | [string, any | RegExp][],
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  }
+  },
+  proxy?: Proxy
   cacheTimeout?: number
 }
 
@@ -29,7 +31,7 @@ export class APILoader extends HTTPLoader {
   cacheTimestamp: number
 
   constructor(protected apiConfig: APILoaderConfig) {
-    super()
+    super(!!apiConfig.proxy, apiConfig.proxy)
     this.cacheTimestamp = 0
     this.cachedPage = ''
   }

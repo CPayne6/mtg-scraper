@@ -1,7 +1,8 @@
 import { APILoader, searchReplace } from "../APILoader";
+import { Proxy } from "@/scraper/proxy";
 
 export class _401Loader extends APILoader {
-  constructor() {
+  constructor(proxy?: Proxy) {
     super({
       initial: {
         baseUrl: 'https://store.401games.ca',
@@ -21,7 +22,8 @@ export class _401Loader extends APILoader {
           ['products_per_page', '40'],
           ['q', searchReplace]
         ]
-      }
+      },
+      proxy
     })
   }
 }

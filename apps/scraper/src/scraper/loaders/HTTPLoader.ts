@@ -1,11 +1,11 @@
 import * as undici from 'undici'
-import { getProxy, disableProxy, Proxy } from '../proxy'
+import { Proxy } from '../proxy'
 
 export abstract class HTTPLoader {
   protected proxy: Proxy | undefined
 
-  constructor(protected readonly useProxy: boolean = true) {
-    this.proxy = getProxy()
+  constructor(protected readonly useProxy: boolean = true, proxy?: Proxy) {
+    this.proxy = proxy
   }
 
   private createAgent(): undici.ProxyAgent | undefined {
@@ -26,7 +26,6 @@ export abstract class HTTPLoader {
    * @returns 
    */
   private async fetchWithRetry(input: undici.RequestInfo, options?: undici.RequestInit, retries = 1): Promise<undici.Response> {
-    const fetchProxy = this.proxy;
     try {
       const res = await undici.fetch(input, {
         ...options,
@@ -36,10 +35,6 @@ export abstract class HTTPLoader {
     } catch (error) {
       if (retries > 0) {
         console.warn(`Fetch failed for ${input}. Retrying... (${retries} retries left)`);
-        if (this.useProxy) {
-          disableProxy(fetchProxy!, 1000);
-          this.proxy = getProxy();
-        }
         return this.fetchWithRetry(input, options, retries - 1);
       } else {
         console.error(`Fetch failed for ${input}. No more retries left.`);

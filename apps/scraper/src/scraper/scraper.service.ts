@@ -15,6 +15,7 @@ import {
   HobbiesParser,
   Parser,
 } from './parsers';
+import { ProxyService } from './proxy/proxy.service';
 
 interface Store {
   name: string;
@@ -34,7 +35,7 @@ export class ScraperService implements OnModuleInit {
   private readonly cache = new Map<string, CacheValue>();
   private readonly cacheTTL = 86400000; // 1 day
 
-  constructor(private readonly storeService: StoreService) {}
+  constructor(private readonly storeService: StoreService, private readonly proxyService: ProxyService) {}
 
   async onModuleInit() {
     await this.loadStoresFromDatabase();
@@ -58,20 +59,20 @@ export class ScraperService implements OnModuleInit {
 
     switch (dbStore.scraperType) {
       case 'f2f':
-        loader = new F2FLoader();
+        loader = new F2FLoader(this.proxyService.getProxy());
         parser = new F2FSearchParser();
         break;
       case '401':
-        loader = new _401Loader();
+        loader = new _401Loader(this.proxyService.getProxy());
         parser = new _401Parser();
         break;
       case 'hobbies':
-        loader = new HobbiesLoader();
+        loader = new HobbiesLoader(this.proxyService.getProxy());
         parser = new HobbiesParser();
         break;
       case 'binderpos':
         const searchPath = dbStore.scraperConfig?.searchPath || 'search';
-        loader = new BinderPOSLoader(dbStore.baseUrl, searchPath);
+        loader = new BinderPOSLoader(dbStore.baseUrl, searchPath, this.proxyService.getProxy());
         parser = new BinderPOSParser(dbStore.baseUrl);
         break;
       default:
@@ -90,24 +91,25 @@ export class ScraperService implements OnModuleInit {
     this.stores = [
       {
         name: 'Face to Face Games',
-        loader: new F2FLoader(),
+        loader: new F2FLoader(this.proxyService.getProxy()),
         parser: new F2FSearchParser(),
       },
       {
         name: '401 Games',
-        loader: new _401Loader(),
+        loader: new _401Loader(this.proxyService.getProxy()),
         parser: new _401Parser(),
       },
       {
         name: 'Hobbiesville',
-        loader: new HobbiesLoader(),
+        loader: new HobbiesLoader(this.proxyService.getProxy()),
         parser: new HobbiesParser(),
       },
       {
         name: 'House of Cards',
         loader: new BinderPOSLoader(
           'https://houseofcards.ca',
-          'mtg-advanced-search'
+          'mtg-advanced-search',
+          this.proxyService.getProxy()
         ),
         parser: new BinderPOSParser('https://houseofcards.ca'),
       },
@@ -115,20 +117,22 @@ export class ScraperService implements OnModuleInit {
         name: 'Black Knight Games',
         loader: new BinderPOSLoader(
           'https://blackknightgames.ca',
-          'magic-the-gathering-search'
+          'magic-the-gathering-search',
+          this.proxyService.getProxy()
         ),
         parser: new BinderPOSParser('https://blackknightgames.ca'),
       },
       {
         name: 'Exor Games',
-        loader: new BinderPOSLoader('https://exorgames.com', 'advanced-search'),
+        loader: new BinderPOSLoader('https://exorgames.com', 'advanced-search', this.proxyService.getProxy()),
         parser: new BinderPOSParser('https://exorgames.com'),
       },
       {
         name: 'Game Knight',
         loader: new BinderPOSLoader(
           'https://gameknight.ca',
-          'magic-the-gathering-singles'
+          'magic-the-gathering-singles',
+          this.proxyService.getProxy()
         ),
         parser: new BinderPOSParser('https://gameknight.ca'),
       },

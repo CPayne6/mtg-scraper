@@ -1,8 +1,9 @@
+import { Proxy } from "@/scraper/proxy";
 import { APILoader, searchReplace } from "../APILoader";
 
 
 export class BinderPOSLoader extends APILoader {
-  constructor(storeURL: string, page: string) {
+  constructor(storeURL: string, page: string, proxy: Proxy) {
     super({
       initial: {
         baseUrl: storeURL,
@@ -29,7 +30,8 @@ export class BinderPOSLoader extends APILoader {
           ['title', searchReplace]
         ],
         method: 'POST'
-      }
+      },
+      proxy
     })
   }
 }

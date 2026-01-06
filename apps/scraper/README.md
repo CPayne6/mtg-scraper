@@ -42,7 +42,7 @@ The Scraper Service is a dedicated worker that listens to the `card-scrape` queu
 │                                        │
 │  ┌──────────────────────────────────┐ │
 │  │  ProxyService (Optional)         │ │
-│  │  - Webshare / Oxylabs            │ │
+│  │  - Webshare                      │ │
 │  └──────────────────────────────────┘ │
 └────────────────────────────────────────┘
 ```
