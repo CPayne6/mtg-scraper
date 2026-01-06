@@ -4,7 +4,7 @@ import './index.css'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { ThemeProvider } from 'next-themes'
 import { Provider } from './components/ui/provider'
-import { LibraryProvider } from './context'
+import { LibraryProvider, SetsProvider } from './context'
 
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
@@ -23,9 +23,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <Provider>
-        <LibraryProvider>
-          <RouterProvider router={router} />
-        </LibraryProvider>
+        <SetsProvider>
+          <LibraryProvider>
+            <RouterProvider router={router} />
+          </LibraryProvider>
+        </SetsProvider>
       </Provider>
     </ThemeProvider>
   </StrictMode>,

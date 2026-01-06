@@ -1,5 +1,3 @@
-"use client"
-
 import MuiAutocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import { useEffect, useState } from "react"

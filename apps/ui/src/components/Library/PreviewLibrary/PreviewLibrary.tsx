@@ -1,5 +1,3 @@
-"use client"
-
 import { useContext, useMemo, useState } from "react"
 import { Box, IconButton, Menu, MenuItem, Stack, Tooltip } from "@mui/material"
 import { BsClipboard2CheckFill, BsClipboard2X, BsThreeDotsVertical } from 'react-icons/bs'

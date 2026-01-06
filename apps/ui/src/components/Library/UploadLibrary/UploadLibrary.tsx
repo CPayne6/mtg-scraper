@@ -1,5 +1,3 @@
-"use client"
-
 import { useContext, useState } from "react"
 import { Button, Popover } from "@mui/material"
 import { Dropzone } from "@/components/Dropzone"
@@ -36,7 +34,16 @@ export const UploadLibrary = () => {
 
   return (
     <>
-      <Button onClick={handleClearLibrary} variant="outlined">
+      <Button
+        onClick={handleClearLibrary}
+        variant="outlined"
+        sx={{
+          '&:hover': {
+            bgcolor: 'action.hover',
+            borderColor: 'currentColor'
+          }
+        }}
+      >
         CLEAR LIBRARY
       </Button>
       <Button onClick={(e) => setAnchorEl(e.currentTarget)} variant="contained">

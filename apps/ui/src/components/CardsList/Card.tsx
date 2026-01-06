@@ -7,8 +7,10 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Box from "@mui/material/Box";
 import Tooltip from "@mui/material/Tooltip";
+import { Theme } from "@mui/material/styles";
 import { Image } from "../Image";
 import { BsClipboard2Plus } from "react-icons/bs";
+import { useSets } from "@/context";
 
 interface CardProps {
   title: string;
@@ -23,6 +25,8 @@ interface CardProps {
 }
 
 export function Card(props: CardProps) {
+  const { getSetName } = useSets();
+  const setName = getSetName(props.set);
   return (
     <MuiCard
       sx={{
@@ -31,20 +35,21 @@ export function Card(props: CardProps) {
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
-        borderRadius: '12px'
+        borderRadius: '8px',
+        boxShadow: (theme: Theme) => theme.palette.mode === 'dark' ? 6 : 2
       }}
     >
       <Box sx={{
         width: '100%',
         bgcolor: 'background.default',
         aspectRatio: '5/7',
-        borderRadius: '12px',
+        borderRadius: '8px',
         overflow: 'hidden'
       }}>
         <Image
           src={props.image}
-          alt={props.title}
-          style={{ borderRadius: '12px' }}
+          alt={`${props.title} from ${setName}`}
+          style={{ borderRadius: '8px' }}
         />
       </Box>
       <CardContent sx={{
@@ -54,37 +59,15 @@ export function Card(props: CardProps) {
         flex: 1,
         pb: 1
       }}>
-        <Tooltip title={`${props.title} (${props.set})`}>
-          <Typography
-            variant="h6"
-            component="div"
-            sx={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              fontWeight: 700,
-              lineHeight: 1.3,
-              fontSize: '1.1rem',
-              color: 'text.primary',
-              minHeight: '2.86em'
-            }}
-          >
-            {props.title}
-          </Typography>
-        </Tooltip>
         <Typography
-          variant="body2"
+          variant="h6"
           sx={{
             color: 'text.primary',
-            fontWeight: 500,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-            fontSize: '0.85rem'
+            fontWeight: 600,
+            fontSize: '1rem'
           }}
         >
-          {props.set}
+          {props.store}
         </Typography>
         <Typography
           variant="body2"
@@ -93,7 +76,7 @@ export function Card(props: CardProps) {
             fontSize: '0.875rem'
           }}
         >
-          {props.store}
+          {setName}
         </Typography>
         <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mt: 'auto', pt: 0.5 }}>
           <Typography

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Box, Button, FormControl, FormHelperText, FormLabel, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, FormControl, FormHelperText, FormLabel, Stack, TextField, Typography, useTheme } from '@mui/material'
 import { UploadLibrary } from '../components'
+import { SavedDecklistsMenu } from '../components/SavedDecklistsMenu'
 import SkryfallAutocomplete from '../components/SkryfallAutocomplete/SkryfallAutocomplete'
 import { useLocalStorage } from '../hooks'
 import { generateRandomName } from '../utils/randomNameGenerator'
@@ -13,6 +14,7 @@ export const Route = createFileRoute('/')({
 })
 
 function Home() {
+  const theme = useTheme()
   const [listName, setListName] = useState<string>('')
   const [cardsList, setCardsList] = useState<string>('')
   const [cardName, setCardName] = useState<string>('')
@@ -81,7 +83,7 @@ function Home() {
         <Stack direction="column" spacing={{ xs: 3, md: 4 }} alignItems="center">
           <Box
             component="img"
-            src="/ScoutLGS-logo-transparent.png"
+            src={theme.palette.mode === 'dark' ? '/Scout-logo-icon-light.png' : '/Scout-logo-icon.png'}
             alt="ScoutLGS Logo"
             sx={{
               height: { xs: 150, md: 180, lg: 220 },
@@ -111,8 +113,9 @@ function Home() {
               lineHeight: 1.6
             }}
           >
-            Scout your local game stores - Search across Hobbiesville, 401 Games and FacetoFace Games
+            Scout your local game stores - Search across Hobbiesville, 401 Games and FacetoFace Games and more!
           </Typography>
+          <SavedDecklistsMenu />
         </Stack>
 
         {/* Two Column Layout for Desktop */}
@@ -130,11 +133,6 @@ function Home() {
               borderRadius: 3,
               p: { xs: 2.5, md: 3.5, lg: 4 },
               boxShadow: 2,
-              transition: 'all 0.3s ease',
-              '&:hover': {
-                boxShadow: 4,
-                transform: 'translateY(-2px)'
-              },
               height: 'fit-content'
             }}
           >
@@ -162,7 +160,7 @@ function Home() {
               <TextField
                 multiline
                 rows={8}
-                placeholder="4x Lightning Bolt&#10;2x Counterspell&#10;1x Black Lotus&#10;3x Brainstorm"
+                placeholder="4 Lightning Bolt&#10;2 Counterspell&#10;1 Black Lotus&#10;3 Brainstorm"
                 value={cardsList}
                 onChange={(e) => setCardsList(e.target.value)}
                 onKeyDown={(e) => {
@@ -216,11 +214,6 @@ function Home() {
               borderRadius: 3,
               p: { xs: 2.5, md: 3.5, lg: 4 },
               boxShadow: 2,
-              transition: 'all 0.3s ease',
-              '&:hover': {
-                boxShadow: 4,
-                transform: 'translateY(-2px)'
-              },
               height: 'fit-content'
             }}
           >

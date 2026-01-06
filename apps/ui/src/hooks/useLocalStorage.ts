@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useState } from "react"
 
 export const useLocalStorage = <T extends Record<string, any>>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] => {

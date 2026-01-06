@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Box, Button, Stack, Typography } from '@mui/material'
+import { Box, Button, Stack, Typography, useTheme } from '@mui/material'
 import { DeckDisplay } from '../components/DeckDisplay/DeckDisplay'
 
 export const Route = createFileRoute('/list/$listName')({
@@ -16,6 +16,7 @@ export const Route = createFileRoute('/list/$listName')({
 function ListPage() {
   const { listName } = Route.useParams()
   const decodedListName = decodeURI(listName)
+  const theme = useTheme()
 
   return (
     <Box sx={{
@@ -50,11 +51,11 @@ function ListPage() {
           <Stack direction="row" spacing={2} alignItems="center">
             <Box
               component="img"
-              src="/scanner.png"
-              alt="logo"
+              src={theme.palette.mode === 'dark' ? '/Scout-logo-icon-light.png' : '/Scout-logo-icon.png'}
+              alt="ScoutLGS Logo"
               sx={{
                 height: { xs: 60, md: 80 },
-                width: { xs: 60, md: 80 },
+                width: 'auto',
                 objectFit: 'contain'
               }}
             />
@@ -66,7 +67,7 @@ function ListPage() {
                   fontWeight: 600
                 }}
               >
-                Browse Cards
+                ScoutLGS
               </Typography>
               <Typography
                 variant="body2"

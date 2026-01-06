@@ -1,5 +1,3 @@
-"use client"
-
 import { LibraryEntry, LibraryStorage } from '@/components'
 import { formatStorageName, LIBRARY_KEY } from '@/components/Library/library.utils';
 import { useLocalStorage } from '@/hooks';

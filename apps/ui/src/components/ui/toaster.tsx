@@ -1,5 +1,3 @@
-"use client"
-
 import { SnackbarProvider, useSnackbar, SnackbarKey } from 'notistack';
 import React from 'react';
 

@@ -1,10 +1,9 @@
-import { CardSearchResponse, CardWithStore } from "@scoutlgs/shared"
+import { CardSearchResponse } from "@scoutlgs/shared"
 import { SetStateAction, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Box, Button, Collapse, FormControl, FormLabel, IconButton, Grid, MenuItem, Select, Skeleton, Stack, TextField, Typography } from "@mui/material"
-import { ExpandLess, ExpandMore } from '@mui/icons-material'
+import { Box, Button, FormControl, Grid, MenuItem, Select, Stack, TextField, Typography } from "@mui/material"
 import { CardList } from "../CardsList"
-import { StoreFilter } from "../StoreFilter"
+import { StoreFilter, StoreFilterSkeleton } from "../StoreFilter"
 import { PreviewLibrary } from "../Library"
 import { useLocalStorage } from "@/hooks"
 
@@ -34,7 +33,6 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   const [listStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
   const cardNames = listStorage[listName] ?? []
   const [cardIndex, setCardIndex] = useState((isNaN(page) || page > cardNames.length || page <= 1) ? 0 : page - 1)
-  const [filterExpanded, setFilterExpanded] = useState(true)
 
   const [data, setDataState] = useState<DataState[]>(cardNames.map(name => ({
     cardName: name,
@@ -222,54 +220,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
         <Grid item xs={12} md={3} lg={2}>
           <Stack spacing={2}>
             {currentCardData.loading || !currentCardData.data ? (
-              <Box
-                sx={{
-                  p: 2,
-                  bgcolor: 'background.paper',
-                  borderRadius: 2,
-                  boxShadow: 1,
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setFilterExpanded(!filterExpanded)}
-                >
-                  <Box>
-                    <FormLabel
-                      component="legend"
-                      sx={{
-                        fontWeight: 600,
-                        fontSize: '1rem',
-                        color: 'text.primary',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Filter by Store
-                    </FormLabel>
-                    <Skeleton variant="text" width={120} height={20} />
-                  </Box>
-                  <IconButton size="small">
-                    {filterExpanded ? <ExpandLess /> : <ExpandMore />}
-                  </IconButton>
-                </Box>
-
-                <Collapse in={filterExpanded}>
-                  <Box sx={{ mt: 2 }}>
-                    <Skeleton variant="rectangular" width="100%" height={32} sx={{ mb: 1, borderRadius: 1 }} />
-                    <Stack spacing={1} sx={{ mt: 2 }}>
-                      <Skeleton variant="text" width="100%" height={40} />
-                      <Skeleton variant="text" width="100%" height={40} />
-                      <Skeleton variant="text" width="100%" height={40} />
-                      <Skeleton variant="text" width="100%" height={40} />
-                    </Stack>
-                  </Box>
-                </Collapse>
-              </Box>
+              <StoreFilterSkeleton />
             ) : currentCardData.data.stores.length > 0 ? (
               <StoreFilter
                 stores={currentCardData.data.stores}
@@ -326,7 +277,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                 </Typography>
               ) : currentCardData.data ? (
                 <Typography variant="body2" color="text.secondary">
-                  {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)} (all stores)
+                  {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)}
                 </Typography>
               ) : null}
             </Box>
@@ -382,7 +333,13 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                   disabled={cardIndex === 0}
                   variant="outlined"
                   size="small"
-                  sx={{ flex: { xs: 1, sm: 0 } }}
+                  sx={{
+                    flex: { xs: 1, sm: 0 },
+                    minWidth: { sm: '85px' },
+                    '&:hover': {
+                      bgcolor: 'action.hover'
+                    }
+                  }}
                 >
                   Previous
                 </Button>
@@ -391,7 +348,12 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                   variant="outlined"
                   size="small"
                   disabled={cardIndex >= cardNames.length - 1}
-                  sx={{ flex: { xs: 1, sm: 0 } }}
+                  sx={{
+                    flex: { xs: 1, sm: 0 },
+                    '&:hover': {
+                      bgcolor: 'action.hover'
+                    }
+                  }}
                 >
                   Next
                 </Button>

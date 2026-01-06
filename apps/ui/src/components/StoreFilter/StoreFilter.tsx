@@ -9,8 +9,23 @@ interface StoreFilterProps {
   onStoresChange: (storeNames: string[]) => void;
 }
 
+const STORAGE_KEY = 'store-filter-expanded';
+
 export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFilterProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored !== null ? JSON.parse(stored) : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleExpanded = () => {
+    const newExpanded = !expanded;
+    setExpanded(newExpanded);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newExpanded));
+  };
 
   const handleToggleStore = (storeName: string) => {
     const isSelected = selectedStores.includes(storeName);
@@ -61,7 +76,7 @@ export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFil
           justifyContent: 'space-between',
           cursor: 'pointer',
         }}
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleToggleExpanded}
       >
         <Box>
           <FormLabel

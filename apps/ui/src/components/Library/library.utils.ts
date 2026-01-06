@@ -1,5 +1,3 @@
-"use client"
-
 import { LibraryEntry } from "./library.types"
 import { parseManaboxCsv, parseManaboxTxt } from "@/utils/manabox"
 

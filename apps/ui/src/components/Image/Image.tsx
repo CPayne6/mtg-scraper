@@ -1,5 +1,3 @@
-"use client"
-
 import { ReactEventHandler, useState } from "react"
 import Skeleton from '@mui/material/Skeleton'
 import Box from '@mui/material/Box'

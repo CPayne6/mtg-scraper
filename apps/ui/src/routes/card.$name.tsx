@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Box, Button, Stack, Typography } from '@mui/material'
+import { Box, Button, Stack, Typography, useTheme } from '@mui/material'
 import { CardDisplay } from '../components/CardDisplay/CardDisplay'
 
 export const Route = createFileRoute('/card/$name')({
@@ -10,6 +10,7 @@ export const Route = createFileRoute('/card/$name')({
 function CardPage() {
   const { name } = Route.useParams()
   const decodedName = decodeURIComponent(name)
+  const theme = useTheme()
 
   return (
     <Box sx={{
@@ -44,11 +45,11 @@ function CardPage() {
           <Stack direction="row" spacing={2} alignItems="center">
             <Box
               component="img"
-              src="/scanner.png"
-              alt="logo"
+              src={theme.palette.mode === 'dark' ? '/Scout-logo-icon-light.png' : '/Scout-logo-icon.png'}
+              alt="ScoutLGS Logo"
               sx={{
                 height: { xs: 60, md: 80 },
-                width: { xs: 60, md: 80 },
+                width: 'auto',
                 objectFit: 'contain'
               }}
             />

@@ -1,5 +1,3 @@
-"use client"
-
 import IconButton from '@mui/material/IconButton';
 import Skeleton from '@mui/material/Skeleton';
 import { ThemeProvider, useTheme } from "next-themes"

@@ -227,7 +227,7 @@ export function CardDisplay(props: CardDisplayProps) {
                 </Typography>
               ) : data ? (
                 <Typography variant="body2" color="text.secondary">
-                  {filteredCards?.length || 0} / {data.priceStats.count} results • ${data.priceStats.min.toFixed(2)} - ${data.priceStats.max.toFixed(2)} • Avg: ${data.priceStats.avg.toFixed(2)} (all stores)
+                  {filteredCards?.length || 0} / {data.priceStats.count} results • ${data.priceStats.min.toFixed(2)} - ${data.priceStats.max.toFixed(2)}
                 </Typography>
               ) : null}
             </Box>

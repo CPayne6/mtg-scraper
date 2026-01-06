@@ -5,13 +5,13 @@ const lightThemeOptions: ThemeOptions = {
   palette: {
     mode: 'light',
     primary: {
-      main: '#0d9488', // Ocean teal
+      main: '#4a6741', // Forest green accent
     },
     secondary: {
-      main: '#8b5cf6', // Purple
+      main: '#34d399', // Lighter green
     },
     background: {
-      default: '#f0fdfa', // Aqua tint
+      default: '#f5f5f5',
       paper: '#ffffff',
     },
   },
@@ -54,6 +54,25 @@ const lightThemeOptions: ThemeOptions = {
       xl: 1536,
     },
   },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: `
+        a {
+          color: inherit;
+          text-decoration: none;
+        }
+        a:hover {
+          text-decoration: none;
+          color: inherit;
+        }
+      `,
+    },
+    MuiButtonBase: {
+      defaultProps: {
+        disableRipple: true,
+      },
+    },
+  },
 };
 
 // Define dark mode theme
@@ -61,19 +80,38 @@ const darkThemeOptions: ThemeOptions = {
   palette: {
     mode: 'dark',
     primary: {
-      main: '#5eead4', // Light teal
+      main: '#248721', // Forest green (brighter for dark mode)
     },
     secondary: {
-      main: '#c4b5fd', // Light purple
+      main: '#6ee7b7', // Lighter green (brighter for dark mode)
     },
     background: {
-      default: '#134e4a', // Deep ocean
-      paper: '#1e40af', // Deep teal-blue
+      default: '#121212',
+      paper: '#1e1e1e',
     },
   },
   typography: lightThemeOptions.typography,
   spacing: lightThemeOptions.spacing,
   breakpoints: lightThemeOptions.breakpoints,
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: `
+        a {
+          color: inherit;
+          text-decoration: none;
+        }
+        a:hover {
+          text-decoration: none;
+          color: inherit;
+        }
+      `,
+    },
+    MuiButtonBase: {
+      defaultProps: {
+        disableRipple: true,
+      },
+    },
+  },
 };
 
 export const lightTheme = createTheme(lightThemeOptions);
