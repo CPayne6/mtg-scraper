@@ -14,7 +14,6 @@ env:
   REGISTRY: ghcr.io
   NODE_VERSION: '20'
   PNPM_VERSION: '10.26.2'
-
 jobs:
   # Job 1: Setup - Install dependencies once and cache for all jobs
   setup:
@@ -441,7 +440,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Trigger Portainer webhook
-        if: secrets.PORTAINER_WEBHOOK_URL != ''
+        if: ${{ secrets.PORTAINER_WEBHOOK_URL }} != ''
         run: |
           curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" || echo "Webhook failed, but continuing"
 
