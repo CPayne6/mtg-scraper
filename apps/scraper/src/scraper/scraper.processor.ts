@@ -1,4 +1,4 @@
-import { OnQueueActive, OnQueueCompleted, OnQueueFailed, Process, Processor } from '@nestjs/bull';
+import { Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import {
@@ -19,7 +19,10 @@ export class ScrapeCardProcessor {
     private readonly cacheService: CacheService,
   ) {}
 
-  @Process(JOB_NAMES.SCRAPE_CARD)
+  @Process({
+    name: JOB_NAMES.SCRAPE_CARD,
+    concurrency: 3
+  })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
     const { cardName, requestId } = job.data;
 

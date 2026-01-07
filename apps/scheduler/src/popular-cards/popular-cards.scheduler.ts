@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PopularCardsService } from './popular-cards.service';
-import { QueueService } from '../queue/queue.service';
+import { QueueService } from '@scoutlgs/core';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
@@ -17,7 +17,7 @@ export class PopularCardsScheduler implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    const cronTime = this.configService.get<string>('schedule.dailyScrapeTime');
+    const cronTime = this.configService.getOrThrow<string>('schedule.dailyScrapeTime');
     this.logger.log(`Daily popular cards scrape scheduled at cron time: ${cronTime}`);
 
     const job = CronJob.from({
@@ -27,6 +27,7 @@ export class PopularCardsScheduler implements OnModuleInit {
     });
 
     this.schedulerRegistry.addCronJob('daily-cards-scrape', job);
+    job.start();
   }
 
   async scrapePopularCards() {

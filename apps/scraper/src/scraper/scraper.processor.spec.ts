@@ -4,7 +4,7 @@ import { ScraperService } from './scraper.service';
 import { CacheService } from '@scoutlgs/core';
 import { Job } from 'bullmq';
 import { ScrapeCardJobData, ScrapeCardJobResult } from '@scoutlgs/shared';
-import { mockCardWithStore, mockMultipleCards } from '@scoutlgs/core/test';
+import { mockCardWithStore, mockMultipleCards } from '@scoutlgs/core/src/test';
 
 describe('ScrapeCardProcessor', () => {
   let processor: ScrapeCardProcessor;

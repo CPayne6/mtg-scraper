@@ -1,9 +1,14 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "resolvePackageJsonExports": true,
+    "target": "ES2023",
     "rootDir": "./src",
     "outDir": "./dist",
     "baseUrl": "./",
+    "strictNullChecks": true,
     "incremental": false,
     "paths": {
       "@/*": ["src/*"]

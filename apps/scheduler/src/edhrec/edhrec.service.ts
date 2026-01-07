@@ -44,8 +44,8 @@ export class EdhrecService {
   private readonly maxPages: number;
 
   constructor(private readonly configService: ConfigService) {
-    this.baseUrl = this.configService.get<string>('popularCards.edhrecBaseUrl');
-    this.maxPages = this.configService.get<number>('popularCards.edhrecPages');
+    this.baseUrl = this.configService.getOrThrow<string>('popularCards.edhrecBaseUrl');
+    this.maxPages = this.configService.getOrThrow<number>('popularCards.edhrecPages');
   }
 
   /**
@@ -62,7 +62,7 @@ export class EdhrecService {
 
     for (let batchStart = 1; batchStart <= this.maxPages; batchStart += batchSize) {
       const batchEnd = Math.min(batchStart + batchSize - 1, this.maxPages);
-      const batchPages = [];
+      const batchPages: number[] = [];
 
       // Create array of page numbers for this batch
       for (let page = batchStart; page <= batchEnd; page++) {
@@ -141,7 +141,7 @@ export class EdhrecService {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data: EdhrecResponse = await response.json();
+    const data: EdhrecResponse = await response.json() as any;
 
     // Parse the nested structure to extract card names
     const cardlists = data.cardviews ?? [];

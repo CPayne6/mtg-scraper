@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
 # Copy workspace configuration
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/core/package.json ./packages/core/
 COPY apps/scheduler/package.json ./apps/scheduler/
 
 # Install dependencies
@@ -26,6 +27,7 @@ COPY --from=deps /app ./
 
 # Copy source code (overwrites placeholder package.json files with full source)
 COPY packages/shared ./packages/shared
+COPY packages/core ./packages/core
 COPY apps/scheduler ./apps/scheduler
 COPY tsconfig.json ./
 
@@ -50,6 +52,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/packages/core/package.json ./packages/core/
 COPY --from=builder /app/apps/scheduler/package.json ./apps/scheduler/
 
 # Install production dependencies only
@@ -58,6 +61,8 @@ RUN pnpm install --frozen-lockfile --prod
 # Copy built artifacts
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/core/package.json ./packages/core/
 COPY --from=builder /app/apps/scheduler/dist ./apps/scheduler/dist
 
 # Set working directory to Scheduler app
