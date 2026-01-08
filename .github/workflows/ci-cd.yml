@@ -273,12 +273,18 @@ jobs:
             exit 1
           else
             echo "✓ CF_ACCESS_CLIENT_ID is set (length: ${#CF_ACCESS_CLIENT_ID})"
+            echo "  First 8 chars: ${CF_ACCESS_CLIENT_ID:0:8}..."
+            echo "  Has leading whitespace: $(echo "$CF_ACCESS_CLIENT_ID" | grep -q '^[[:space:]]' && echo "YES" || echo "NO")"
+            echo "  Has trailing whitespace: $(echo "$CF_ACCESS_CLIENT_ID" | grep -q '[[:space:]]$' && echo "YES" || echo "NO")"
           fi
           if [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
             echo "ERROR: CF_ACCESS_CLIENT_SECRET is not set"
             exit 1
           else
             echo "✓ CF_ACCESS_CLIENT_SECRET is set (length: ${#CF_ACCESS_CLIENT_SECRET})"
+            echo "  First 8 chars: ${CF_ACCESS_CLIENT_SECRET:0:8}..."
+            echo "  Has leading whitespace: $(echo "$CF_ACCESS_CLIENT_SECRET" | grep -q '^[[:space:]]' && echo "YES" || echo "NO")"
+            echo "  Has trailing whitespace: $(echo "$CF_ACCESS_CLIENT_SECRET" | grep -q '[[:space:]]$' && echo "YES" || echo "NO")"
           fi
 
       - name: Test SSH connection
