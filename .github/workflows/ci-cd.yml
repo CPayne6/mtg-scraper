@@ -244,33 +244,17 @@ jobs:
           cloudflared --version
 
       - name: Setup SSH with Cloudflare Tunnel
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Create wrapper script that sets environment variables for cloudflared
-          cat > ~/.ssh/cloudflared-proxy.sh << 'WRAPPER_EOF'
-          #!/bin/bash
-          export CF_ACCESS_CLIENT_ID="PLACEHOLDER_CLIENT_ID"
-          export CF_ACCESS_CLIENT_SECRET="PLACEHOLDER_CLIENT_SECRET"
-          exec cloudflared access ssh --hostname "$@"
-          WRAPPER_EOF
-
-          # Replace placeholders with actual values
-          sed -i "s|PLACEHOLDER_CLIENT_ID|${CF_ACCESS_CLIENT_ID}|g" ~/.ssh/cloudflared-proxy.sh
-          sed -i "s|PLACEHOLDER_CLIENT_SECRET|${CF_ACCESS_CLIENT_SECRET}|g" ~/.ssh/cloudflared-proxy.sh
-          chmod +x ~/.ssh/cloudflared-proxy.sh
-
-          # Create SSH config with Cloudflare Tunnel proxy using wrapper script
+          # Create SSH config with Cloudflare Tunnel proxy using service token flags
           cat > ~/.ssh/config << EOF
           Host scoutlgs-prod
             HostName ${{ secrets.DEPLOY_HOST }}
             User ${{ secrets.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
-            ProxyCommand ~/.ssh/cloudflared-proxy.sh %h
+            ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
             StrictHostKeyChecking no
             UserKnownHostsFile=/dev/null
           EOF
