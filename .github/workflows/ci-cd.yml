@@ -263,24 +263,32 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Set Cloudflare Access credentials for non-interactive auth
-          echo "CF_ACCESS_CLIENT_ID=${{ secrets.CF_ACCESS_CLIENT_ID }}" >> $GITHUB_ENV
-          echo "CF_ACCESS_CLIENT_SECRET=${{ secrets.CF_ACCESS_CLIENT_SECRET }}" >> $GITHUB_ENV
-
       - name: Test SSH connection
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "echo 'SSH connection successful'"
 
       - name: Copy deployment script to server
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           scp scripts/deploy.sh scoutlgs-prod:${{ secrets.PROJECT_DIR }}/
 
       - name: Make deployment script executable
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "chmod +x ${{ secrets.PROJECT_DIR }}/deploy.sh"
 
       - name: Run deployment
         id: deploy
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "cd ${{ secrets.PROJECT_DIR }} && PROJECT_DIR=${{ secrets.PROJECT_DIR }} ./deploy.sh"
 
