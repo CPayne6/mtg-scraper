@@ -254,7 +254,7 @@ jobs:
             HostName ${{ secrets.DEPLOY_HOST }}
             User ${{ secrets.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
-            ProxyCommand cloudflared access ssh --hostname %h --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+            ProxyCommand cloudflared access ssh --hostname ${{ secrets.DEPLOY_HOST }} --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
             StrictHostKeyChecking no
             UserKnownHostsFile=/dev/null
           EOF
