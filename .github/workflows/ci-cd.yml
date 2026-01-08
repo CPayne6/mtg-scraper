@@ -437,10 +437,10 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/refactor/nextjs-to-react-nest'
     environment:
       name: production
-      url: https://yourdomain.com
+      url: https://scoutlgs.com
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -508,7 +508,7 @@ jobs:
           sleep 5
 
           # Check API health through Cloudflare Tunnel
-          if curl -f -s https://yourdomain.com/api/health > /dev/null; then
+          if curl -f -s https://scoutlgs.com/api/health > /dev/null; then
             echo "✅ API is healthy"
           else
             echo "❌ API health check failed"
@@ -516,7 +516,7 @@ jobs:
           fi
 
           # Check UI through Cloudflare Tunnel
-          if curl -f -s https://yourdomain.com > /dev/null; then
+          if curl -f -s https://scoutlgs.com > /dev/null; then
             echo "✅ UI is accessible"
           else
             echo "❌ UI health check failed"
@@ -534,8 +534,8 @@ jobs:
           echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Services:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Application: https://yourdomain.com" >> $GITHUB_STEP_SUMMARY
-          echo "- API: https://yourdomain.com/api" >> $GITHUB_STEP_SUMMARY
+          echo "- Application: https://scoutlgs.com" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://scoutlgs.com/api" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.deploy.outcome }}" == "success" ]; then
             echo "✅ Deployment completed successfully" >> $GITHUB_STEP_SUMMARY
