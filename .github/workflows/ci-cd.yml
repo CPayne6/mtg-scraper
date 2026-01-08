@@ -244,24 +244,28 @@ jobs:
           cloudflared --version
 
       - name: Setup SSH with Cloudflare Tunnel
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Create SSH config with Cloudflare Tunnel proxy using service token flags
+          # Write SSH private key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Create SSH config with Cloudflare Tunnel proxy
+          # The ProxyCommand will use env variables set in each step
           cat > ~/.ssh/config << EOF
           Host scoutlgs-prod
             HostName ${{ secrets.DEPLOY_HOST }}
             User ${{ secrets.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
-            ProxyCommand cloudflared access ssh --hostname ${{ secrets.DEPLOY_HOST }} --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+            ProxyCommand cloudflared access ssh --hostname ${{ secrets.DEPLOY_HOST }}
             StrictHostKeyChecking no
             UserKnownHostsFile=/dev/null
           EOF
-
-          # Write SSH private key
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
 
       - name: Verify Cloudflare Access credentials
         env:
@@ -288,19 +292,31 @@ jobs:
           fi
 
       - name: Test SSH connection
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "echo 'SSH connection successful'"
 
       - name: Copy deployment script to server
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           scp scripts/deploy.sh scoutlgs-prod:${{ secrets.PROJECT_DIR }}/
 
       - name: Make deployment script executable
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "chmod +x ${{ secrets.PROJECT_DIR }}/deploy.sh"
 
       - name: Run deployment
         id: deploy
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "cd ${{ secrets.PROJECT_DIR }} && PROJECT_DIR=${{ secrets.PROJECT_DIR }} ./deploy.sh"
 
