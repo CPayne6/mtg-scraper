@@ -35,6 +35,10 @@ COPY tsconfig.json ./
 WORKDIR /app/packages/shared
 RUN pnpm build
 
+# Build core package
+WORKDIR /app/packages/core
+RUN pnpm build
+
 # Build Scheduler
 WORKDIR /app/apps/scheduler
 RUN pnpm build
