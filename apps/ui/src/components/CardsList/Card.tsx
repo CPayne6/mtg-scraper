@@ -84,20 +84,31 @@ export function Card(props: CardProps) {
             sx={{
               color: 'text.primary',
               fontWeight: 600,
-              fontSize: '1rem'
+              fontSize: '1rem',
             }}
           >
             ${props.price.toFixed(2)}
           </Typography>
           <Typography
-            variant="body2"
+            variant="body1"
             sx={{
               color: 'text.primary',
-              fontSize: '0.875rem',
-              textTransform: 'uppercase'
+              fontWeight: 600,
+              fontSize: '1rem',
             }}
           >
-            | {props.condition}
+            |
+          </Typography>
+          <Typography
+            variant="body1"
+            sx={{
+              color: 'text.primary',
+              fontSize: '1rem',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+            }}
+          >
+            {props.condition}
           </Typography>
         </Stack>
       </CardContent>

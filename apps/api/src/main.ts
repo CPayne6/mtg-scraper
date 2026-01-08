@@ -26,6 +26,10 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Add global prefix for Cloudflare Tunnel path-based routing
+  // All API routes will be accessible under /api (e.g., /api/cards, /api/health)
+  app.setGlobalPrefix('api');
+
   const port = configService.get<number>('port') ?? 5000;
   await app.listen(port);
   logger.log(`API is running on: http://localhost:${port}`);

@@ -40,9 +40,7 @@ services:
 
   # API Service
   api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-yourusername}/scoutlgs-api:${IMAGE_TAG:-latest}
     container_name: scoutlgs-api
     ports:
       - "5000:5000"
@@ -70,9 +68,7 @@ services:
 
   # UI Service
   ui:
-    build:
-      context: .
-      dockerfile: apps/ui/Dockerfile
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-yourusername}/scoutlgs-ui:${IMAGE_TAG:-latest}
     container_name: scoutlgs-ui
     ports:
       - "3000:3000"
@@ -92,9 +88,7 @@ services:
 
   # Scheduler Service
   scheduler:
-    build:
-      context: .
-      dockerfile: apps/scheduler/Dockerfile
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-yourusername}/scoutlgs-scheduler:${IMAGE_TAG:-latest}
     container_name: scoutlgs-scheduler
     env_file:
       - apps/scheduler/.env
@@ -119,9 +113,7 @@ services:
   # Scale scraper workers based on load
   # Use: docker-compose up --scale scraper=3
   scraper:
-    build:
-      context: .
-      dockerfile: apps/scraper/Dockerfile
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-yourusername}/scoutlgs-scraper:${IMAGE_TAG:-latest}
     env_file:
       - apps/scraper/.env
     environment:
@@ -145,6 +137,26 @@ services:
       start_period: 30s
     deploy:
       replicas: 3
+
+  # Cloudflare Tunnel - Secure public access via Cloudflare
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: scoutlgs-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - scoutlgs-network
+    restart: unless-stopped
+    depends_on:
+      - api
+      - ui
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 networks:
   scoutlgs-network:
