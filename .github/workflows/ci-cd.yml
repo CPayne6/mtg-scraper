@@ -440,7 +440,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Trigger Portainer webhook
-        if: ${{ secrets.PORTAINER_WEBHOOK_URL }} != ''
+        if: ${{ secrets.PORTAINER_WEBHOOK_URL != '' }}
         run: |
           curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" || echo "Webhook failed, but continuing"
 
