@@ -118,11 +118,12 @@ deploy() {
     fi
 
     # Run database migrations
-    log_info "Running database migrations..."
-    if ! docker compose -f "$COMPOSE_FILE" run --rm api npm run migration:run; then
-        log_error "Database migrations failed"
-        exit 1
-    fi
+    # TODO: Uncomment when ready to enable automated migrations
+    # log_info "Running database migrations..."
+    # if ! docker compose -f "$COMPOSE_FILE" run --rm api npm run migration:run; then
+    #     log_error "Database migrations failed"
+    #     exit 1
+    # fi
 
     # Deploy services with zero downtime
     log_info "Deploying updated services..."
