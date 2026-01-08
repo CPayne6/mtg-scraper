@@ -3,11 +3,11 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - main
+      - master
       - refactor/nextjs-to-react-nest
   pull_request:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 env:
@@ -100,7 +100,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Lint affected projects
-        run: pnpm nx affected --target=lint --base=origin/main --head=HEAD
+        run: pnpm nx affected --target=lint --base=origin/master --head=HEAD
 
   # Job 3: Type check all apps in parallel
   typecheck:
@@ -136,7 +136,7 @@ jobs:
       - name: Type check affected projects
         run: |
           # Get list of affected apps
-          AFFECTED=$(pnpm nx show projects --affected --base=origin/main --head=HEAD --type=app)
+          AFFECTED=$(pnpm nx show projects --affected --base=origin/master --head=HEAD --type=app)
           echo "Affected apps: $AFFECTED"
 
           # Run typecheck for each affected app
@@ -189,9 +189,9 @@ jobs:
         run: |
           # Add coverage flag only for non-PR events
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            pnpm nx affected --target=test --base=origin/main --head=HEAD
+            pnpm nx affected --target=test --base=origin/master --head=HEAD
           else
-            pnpm nx affected --target=test --base=origin/main --head=HEAD -- --coverage
+            pnpm nx affected --target=test --base=origin/master --head=HEAD -- --coverage
           fi
 
   # Job 5: Run E2E tests (only on push, not PRs)
@@ -259,7 +259,7 @@ jobs:
       - name: Check if app is affected
         id: check-affected
         run: |
-          AFFECTED=$(pnpm nx show projects --affected --base=origin/main --head=HEAD --type=app)
+          AFFECTED=$(pnpm nx show projects --affected --base=origin/master --head=HEAD --type=app)
           if echo "$AFFECTED" | grep -q "${{ matrix.app }}"; then
             echo "affected=true" >> $GITHUB_OUTPUT
           else
@@ -331,7 +331,7 @@ jobs:
             ${{ runner.os }}-nx-
 
       - name: Build affected packages and apps
-        run: pnpm nx affected --target=build --base=origin/main --head=HEAD
+        run: pnpm nx affected --target=build --base=origin/master --head=HEAD
 
       - name: Cache build outputs
         id: build-cache
@@ -432,7 +432,7 @@ jobs:
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  # Job 8: Deploy to production via SSH (only on push to main)
+  # Job 8: Deploy to production via SSH (only on push to master) TODO: set back to master
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
@@ -572,6 +572,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "**Note:** Fast PR validation - E2E tests and Docker builds skipped" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          elif [ "${{ github.ref }}" == "refs/heads/master" ]; then
             echo "**Note:** Full pipeline executed with E2E tests and Docker push 🚀" >> $GITHUB_STEP_SUMMARY
           fi
