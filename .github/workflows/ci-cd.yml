@@ -263,6 +263,24 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+      - name: Verify Cloudflare Access credentials
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          if [ -z "$CF_ACCESS_CLIENT_ID" ]; then
+            echo "ERROR: CF_ACCESS_CLIENT_ID is not set"
+            exit 1
+          else
+            echo "✓ CF_ACCESS_CLIENT_ID is set (length: ${#CF_ACCESS_CLIENT_ID})"
+          fi
+          if [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
+            echo "ERROR: CF_ACCESS_CLIENT_SECRET is not set"
+            exit 1
+          else
+            echo "✓ CF_ACCESS_CLIENT_SECRET is set (length: ${#CF_ACCESS_CLIENT_SECRET})"
+          fi
+
       - name: Test SSH connection
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
