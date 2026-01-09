@@ -8,21 +8,29 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-# Handle both Windows and Unix paths
-if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-    # Running on Windows (Git Bash/MSYS)
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -W 2>/dev/null || pwd)"
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -W 2>/dev/null || pwd)"
-else
-    # Running on Unix/Linux/macOS
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Project Root Directory (where this script is located)
+# Handle both Git Bash and PowerShell-invoked bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -W 2>/dev/null || pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -W 2>/dev/null || pwd)"
+
+# Convert Windows paths to Unix paths for Git Bash compatibility
+# Handles both C:\path and C:/path formats
+if [[ "$SCRIPT_DIR" =~ ^[A-Za-z]: ]]; then
+    # Convert C:\path or C:/path to /c/path
+    SCRIPT_DIR="$(echo "$SCRIPT_DIR" | sed 's|^\([A-Za-z]\):|/\L\1|' | sed 's|\\|/|g')"
 fi
 
-REMOTE_USER="${DEPLOY_USER:-deploy}"
-REMOTE_HOST="${DEPLOY_HOST:-}"
-REMOTE_PROJECT_DIR="${PROJECT_DIR:-/home/deploy/scoutlgs}"
+if [[ "$PROJECT_ROOT" =~ ^[A-Za-z]: ]]; then
+    # Convert C:\path or C:/path to /c/path
+    PROJECT_ROOT="$(echo "$PROJECT_ROOT" | sed 's|^\([A-Za-z]\):|/\L\1|' | sed 's|\\|/|g')"
+fi
+
+# SSH Configuration
+# Use SSH config host by default, fallback to direct connection
+SSH_CONFIG_HOST="${SSH_CONFIG_HOST:-scoutlgs_lan}"
+REMOTE_HOST="${DEPLOY_HOST:-${SSH_CONFIG_HOST}}"
+REMOTE_USER="${DEPLOY_USER:-}"  # Will be read from SSH config if not set
+REMOTE_PROJECT_DIR="${PROJECT_DIR:-/home/deploy/mtg-scraper}"
 
 # Logging functions
 # Use printf instead of echo -e for better Windows compatibility
@@ -69,14 +77,23 @@ check_requirements() {
 validate_config() {
     log_step "Validating configuration..."
 
+    # Prompt for SSH host if not set
     if [ -z "${REMOTE_HOST:-}" ]; then
-        log_error "DEPLOY_HOST environment variable is required"
-        log_error "Set it in your shell or pass it to this script"
-        exit 1
+        log_warn "No deployment target specified"
+        echo ""
+        printf "Enter SSH config host or hostname [scoutlgs_lan]: "
+        read -r input_host
+        REMOTE_HOST="${input_host:-scoutlgs_lan}"
+        echo ""
     fi
 
-    log_info "Using remote host: $REMOTE_HOST"
-    log_info "Using remote user: $REMOTE_USER"
+    log_info "Using SSH target: $REMOTE_HOST"
+
+    # Display additional info if using SSH config host
+    if [ "$REMOTE_HOST" = "scoutlgs_lan" ] || [ "$REMOTE_HOST" = "scoutlgs_prod" ]; then
+        log_info "Using SSH config host (see ~/.ssh/config)"
+    fi
+
     log_info "Using remote project directory: $REMOTE_PROJECT_DIR"
 }
 
@@ -107,7 +124,7 @@ create_docker_secret() {
 
     # Create secret on remote server
     # Using printf to handle multiline values and special characters
-    if ssh "${REMOTE_USER}@${REMOTE_HOST}" "printf '%s' '$secret_value' | docker secret create '$secret_name' - 2>/dev/null"; then
+    if ssh "${REMOTE_HOST}" "printf '%s' '$secret_value' | docker secret create '$secret_name' - 2>/dev/null"; then
         log_info "✓ Created secret: $secret_name"
         return 0
     else
@@ -125,15 +142,137 @@ update_docker_secret() {
     log_info "Updating secret: $secret_name"
 
     # Remove old secret (ignore errors if it doesn't exist)
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "docker secret rm '$secret_name' 2>/dev/null || true"
+    ssh "${REMOTE_HOST}" "docker secret rm '$secret_name' 2>/dev/null || true"
 
     # Create new secret
-    if ssh "${REMOTE_USER}@${REMOTE_HOST}" "printf '%s' '$secret_value' | docker secret create '$secret_name' -"; then
+    if ssh "${REMOTE_HOST}" "printf '%s' '$secret_value' | docker secret create '$secret_name' -"; then
         log_info "✓ Updated secret: $secret_name"
         return 0
     else
         log_error "Failed to update secret: $secret_name"
         return 1
+    fi
+}
+
+# Function to upsert Docker secret (create or update if exists)
+upsert_docker_secret() {
+    local secret_name=$1
+    local secret_value=$2
+
+    # Try to create the secret first
+    # Use -n flag to prevent SSH from consuming stdin (important when called in while loop)
+    if ssh -n "${REMOTE_HOST}" "printf '%s' '$secret_value' | docker secret create '$secret_name' - 2>/dev/null"; then
+        log_info "✓ Created secret: $secret_name"
+        return 0
+    else
+        # Secret already exists, update it
+        log_info "Secret '$secret_name' exists, updating..."
+
+        # Remove old secret
+        ssh -n "${REMOTE_HOST}" "docker secret rm '$secret_name' 2>/dev/null || true"
+
+        # Create new secret
+        if ssh -n "${REMOTE_HOST}" "printf '%s' '$secret_value' | docker secret create '$secret_name' -"; then
+            log_info "✓ Updated secret: $secret_name"
+            return 0
+        else
+            log_error "Failed to update secret: $secret_name"
+            return 1
+        fi
+    fi
+}
+
+# Function to process secrets based on JSON mapping file
+process_secret_mappings() {
+    local mappings_file="$PROJECT_ROOT/scripts/secret-mappings.json"
+
+    if [ ! -f "$mappings_file" ]; then
+        log_error "Secret mappings file not found: $mappings_file"
+        log_error "Please create $mappings_file with secret mappings"
+        exit 1
+    fi
+
+    # Check if Node.js is available
+    if ! command -v node &> /dev/null; then
+        log_error "Node.js is required but not installed"
+        log_error "Please install Node.js: https://nodejs.org/"
+        exit 1
+    fi
+
+    # Check if reader script exists
+    local reader_script="$PROJECT_ROOT/scripts/read-secret-mappings.js"
+    if [ ! -f "$reader_script" ]; then
+        log_error "Secret mappings reader script not found: $reader_script"
+        exit 1
+    fi
+
+    local secrets_created=0
+    local secrets_failed=0
+    local secrets_skipped=0
+    local missing_required_secrets=()
+
+    log_step "Processing secrets from mapping file..."
+
+    # Use Node.js to read JSON and output pipe-delimited format
+    while IFS='|' read -r secret_name env_file env_var optional; do
+        # Skip empty lines
+        if [ -z "$secret_name" ]; then
+            continue
+        fi
+
+        # Resolve full path to env file
+        local full_env_path="$PROJECT_ROOT/$env_file"
+
+        # Check if env file exists
+        if [ ! -f "$full_env_path" ]; then
+            if [ "$optional" = "true" ]; then
+                log_info "Skipping optional secret (file not found): $secret_name"
+                secrets_skipped=$((secrets_skipped + 1))
+                continue
+            else
+                log_error "Env file not found: $full_env_path (for secret: $secret_name)"
+                missing_required_secrets+=("$secret_name")
+                continue
+            fi
+        fi
+
+        # Extract value from env file (handles quotes properly)
+        local value=$(grep "^${env_var}=" "$full_env_path" | head -1 | cut -d'=' -f2- | sed 's/^["'\''[:space:]]*//;s/["'\''[:space:]]*$//')
+
+        if [ -z "$value" ]; then
+            if [ "$optional" = "true" ]; then
+                log_info "Skipping optional secret (variable not found): $secret_name"
+                secrets_skipped=$((secrets_skipped + 1))
+                continue
+            else
+                log_error "Variable $env_var not found or empty in $env_file (for secret: $secret_name)"
+                missing_required_secrets+=("$secret_name")
+                continue
+            fi
+        fi
+
+        # Create/update the secret
+        if upsert_docker_secret "$secret_name" "$value"; then
+            secrets_created=$((secrets_created + 1))
+        else
+            secrets_failed=$((secrets_failed + 1))
+        fi
+    done < <(node "$reader_script" "$mappings_file")
+
+    echo ""
+    log_info "========================================="
+    log_info "Summary: $secrets_created created/updated, $secrets_skipped skipped (optional), $secrets_failed failed"
+    log_info "========================================="
+
+    if [ ${#missing_required_secrets[@]} -gt 0 ]; then
+        echo ""
+        log_error "Missing required secrets:"
+        for secret in "${missing_required_secrets[@]}"; do
+            log_error "  - $secret"
+        done
+        echo ""
+        log_error "Deployment will fail without these secrets!"
+        exit 1
     fi
 }
 
@@ -175,10 +314,10 @@ process_env_file() {
         secret_name=$(echo "$secret_name" | tr '[:upper:]' '[:lower:]')
 
         # Create the secret
-        if create_docker_secret "$secret_name" "$value"; then
-            ((secrets_created++))
+        if upsert_docker_secret "$secret_name" "$value"; then
+            secrets_created=$((secrets_created + 1))
         else
-            ((secrets_failed++))
+            secrets_failed=$((secrets_failed + 1))
         fi
 
     done < <(parse_env_file "$env_file")
@@ -218,10 +357,10 @@ process_global_secrets() {
         # Create secret name in lowercase
         local secret_name=$(echo "$key" | tr '[:upper:]' '[:lower:]')
 
-        if create_docker_secret "$secret_name" "$value"; then
-            ((secrets_created++))
+        if upsert_docker_secret "$secret_name" "$value"; then
+            secrets_created=$((secrets_created + 1))
         else
-            ((secrets_failed++))
+            secrets_failed=$((secrets_failed + 1))
         fi
 
     done < <(parse_env_file "$root_env")
@@ -244,21 +383,22 @@ main() {
     validate_config
 
     # Test SSH connection
-    log_step "Testing SSH connection..."
-    if ! ssh "${REMOTE_USER}@${REMOTE_HOST}" "echo 'SSH connection successful'" > /dev/null 2>&1; then
+    log_step "Testing SSH connection to ${REMOTE_HOST}..."
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "${REMOTE_HOST}" "echo 'SSH connection successful'" > /dev/null 2>&1; then
         log_error "Cannot connect to remote server"
         log_error "Make sure SSH is configured correctly"
+        log_error "Test manually with: ssh ${REMOTE_HOST}"
         exit 1
     fi
     log_info "SSH connection verified"
 
     # Check if Docker Swarm is initialized
     log_step "Checking Docker Swarm status..."
-    if ! ssh "${REMOTE_USER}@${REMOTE_HOST}" "docker info --format '{{.Swarm.LocalNodeState}}' | grep -q active"; then
+    if ! ssh "${REMOTE_HOST}" "docker info --format '{{.Swarm.LocalNodeState}}' | grep -q active"; then
         log_warn "Docker Swarm is not initialized"
         log_info "Initializing Docker Swarm mode..."
 
-        if ssh "${REMOTE_USER}@${REMOTE_HOST}" "docker swarm init"; then
+        if ssh "${REMOTE_HOST}" "docker swarm init"; then
             log_info "✓ Docker Swarm initialized"
         else
             log_error "Failed to initialize Docker Swarm"
@@ -270,41 +410,15 @@ main() {
     fi
 
     echo ""
-    log_step "Creating secrets from local .env files..."
-    echo ""
 
-    # Process global secrets
-    process_global_secrets
+    # Process secrets based on mappings file
+    process_secret_mappings
 
-    echo ""
-
-    # Process API secrets
-    process_env_file "$PROJECT_ROOT/apps/api/.env" "api"
-
-    echo ""
-
-    # Process UI secrets
-    process_env_file "$PROJECT_ROOT/apps/ui/.env" "ui"
-
-    echo ""
-
-    # Process Scraper secrets
-    process_env_file "$PROJECT_ROOT/apps/scraper/.env" "scraper"
-
-    echo ""
-
-    # Process Scheduler secrets
-    process_env_file "$PROJECT_ROOT/apps/scheduler/.env" "scheduler"
-
-    echo ""
-    log_info "========================================="
-    log_info "Secrets setup completed!"
-    log_info "========================================="
     echo ""
 
     # List all secrets
     log_info "Current secrets on server:"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "docker secret ls"
+    ssh "${REMOTE_HOST}" "docker secret ls"
 
     echo ""
     log_warn "Important Notes:"
@@ -318,16 +432,41 @@ main() {
 
 # Handle script arguments
 case "${1:-}" in
+    --debug)
+        echo "Debug Information:"
+        echo "  SCRIPT_DIR: $SCRIPT_DIR"
+        echo "  PROJECT_ROOT: $PROJECT_ROOT"
+        echo "  REMOTE_HOST: $REMOTE_HOST"
+        echo "  REMOTE_PROJECT_DIR: $REMOTE_PROJECT_DIR"
+        echo "  SSH_CONFIG_HOST: $SSH_CONFIG_HOST"
+        echo ""
+        echo "Checking .env files:"
+        echo "  Root .env: $([ -f "$PROJECT_ROOT/.env" ] && echo "EXISTS" || echo "NOT FOUND")"
+        echo "  API .env: $([ -f "$PROJECT_ROOT/apps/api/.env" ] && echo "EXISTS" || echo "NOT FOUND")"
+        echo "  UI .env: $([ -f "$PROJECT_ROOT/apps/ui/.env" ] && echo "EXISTS" || echo "NOT FOUND")"
+        echo "  Scraper .env: $([ -f "$PROJECT_ROOT/apps/scraper/.env" ] && echo "EXISTS" || echo "NOT FOUND")"
+        echo "  Scheduler .env: $([ -f "$PROJECT_ROOT/apps/scheduler/.env" ] && echo "EXISTS" || echo "NOT FOUND")"
+        exit 0
+        ;;
     --help|-h)
-        echo "Usage: $0"
+        echo "Usage: $0 [--debug|--help]"
         echo ""
         echo "Environment variables:"
-        echo "  DEPLOY_HOST       Remote server hostname (required)"
+        echo "  DEPLOY_HOST       Remote server hostname (will prompt if not set)"
         echo "  DEPLOY_USER       Remote server username (default: deploy)"
-        echo "  PROJECT_DIR       Remote project directory (default: /home/deploy/scoutlgs)"
+        echo "  PROJECT_DIR       Remote project directory (default: /home/deploy/mtg-scraper)"
+        echo ""
+        echo "SSH Configuration:"
+        echo "  This script uses the SSH key: ~/.ssh/scoutlgs_deploy_key"
+        echo "  Generate it with:"
+        echo "    ssh-keygen -t ed25519 -C \"scoutlgs-deployment\" -f ~/.ssh/scoutlgs_deploy_key"
+        echo "  Copy to server:"
+        echo "    ssh-copy-id -i ~/.ssh/scoutlgs_deploy_key.pub deploy@your-server.com"
         echo ""
         echo "Example:"
         echo "  DEPLOY_HOST=ssh.example.com ./scripts/setup-secrets.sh"
+        echo "  # Or just run it and follow the prompts:"
+        echo "  ./scripts/setup-secrets.sh"
         exit 0
         ;;
     *)

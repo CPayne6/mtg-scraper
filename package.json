@@ -6,9 +6,10 @@
   "license": "ISC",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
-    "secrets:setup": "bash scripts/setup-secrets.sh",
-    "secrets:setup:help": "bash scripts/setup-secrets.sh --help",
-    "secrets:setup:win": "bash scripts/setup-secrets.sh"
+    "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
+    "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
+    "secrets:setup:win": "node scripts/run-bash.js setup-secrets.sh",
+    "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"
   },
   "devDependencies": {
     "@nx/js": "^22.3.3",

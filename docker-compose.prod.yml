@@ -129,8 +129,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - USE_DOCKER_SECRETS=true
-    secrets:
-      - scheduler_redis_password
     networks:
       - scoutlgs-network
     healthcheck:
@@ -235,11 +233,6 @@ secrets:
   ui_vite_api_url:
     external: true
     name: ui_vite_api_url
-
-  # Scheduler secrets
-  scheduler_redis_password:
-    external: true
-    name: scheduler_redis_password
 
   # Scraper secrets
   scraper_database_password:
