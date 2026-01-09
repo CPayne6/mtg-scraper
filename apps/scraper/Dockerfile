@@ -60,6 +60,10 @@ COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/core/package.json ./packages/core/
 COPY --from=builder /app/apps/scraper/dist ./apps/scraper/dist
 
+# Copy shared entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Set working directory to Scraper app
 WORKDIR /app/apps/scraper
 
@@ -76,5 +80,6 @@ USER scraper
 HEALTHCHECK --interval=60s --timeout=3s --start-period=30s --retries=3 \
   CMD pgrep -f "node dist/main.js" || exit 1
 
-# Start the application
+# Start the application using entrypoint script
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/main.js"]

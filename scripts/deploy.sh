@@ -1,5 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
+set -eu
 
 # Colors for output
 RED='\033[0;31m'
@@ -96,14 +96,26 @@ deploy() {
     # Create backup
     create_backup
 
-    # Pull latest docker-compose.yml from repository
-    log_info "Pulling latest docker-compose.yml from repository..."
+    # Pull latest docker-compose file from repository
+    log_info "Pulling latest docker-compose.prod.yml from repository..."
     git fetch origin
-    git checkout origin/main -- docker-compose.yml
+    git checkout origin/refactor/nextjs-to-react-nest -- docker-compose.prod.yml
 
     # Load environment variables for Docker image references
     if [ -f "${PROJECT_DIR}/.env" ]; then
         export $(grep -v '^#' "${PROJECT_DIR}/.env" | xargs)
+    fi
+
+    # Production always uses Docker Swarm mode with secrets
+    log_info "Using Docker Swarm mode with Docker Secrets"
+    COMPOSE_FILE="${PROJECT_DIR}/docker-compose.prod.yml"
+    STACK_NAME="scoutlgs"
+
+    # Check if Swarm is initialized
+    if ! docker info --format '{{.Swarm.LocalNodeState}}' | grep -q active; then
+        log_error "Docker Swarm is not initialized"
+        log_error "Initialize it with: docker swarm init"
+        exit 1
     fi
 
     # Pull latest Docker images from GHCR
@@ -111,31 +123,37 @@ deploy() {
     log_info "Using repository owner: ${GITHUB_REPOSITORY_OWNER:-unknown}"
     log_info "Using image tag: ${IMAGE_TAG:-latest}"
 
-    if ! docker compose -f "$COMPOSE_FILE" pull; then
-        log_error "Failed to pull Docker images"
-        log_error "Make sure GITHUB_REPOSITORY_OWNER is set correctly in .env"
-        exit 1
-    fi
+    # Pull images for all services
+    # Note: docker stack deploy pulls images automatically, but we do it explicitly for visibility
+    for service in api ui scheduler scraper; do
+        image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/scoutlgs-${service}:${IMAGE_TAG:-latest}"
+        log_info "Pulling ${image}..."
+        if ! docker pull "$image"; then
+            log_warn "Failed to pull ${image} - will retry during stack deploy"
+        fi
+    done
 
     # Run database migrations
     # TODO: Uncomment when ready to enable automated migrations
     # log_info "Running database migrations..."
-    # if ! docker compose -f "$COMPOSE_FILE" run --rm api npm run migration:run; then
+    # if ! docker service create --name migration-runner --rm --network scoutlgs_scoutlgs-network \
+    #     --mount type=bind,source=${PROJECT_DIR},target=/app \
+    #     ghcr.io/${GITHUB_REPOSITORY_OWNER}/scoutlgs-api:${IMAGE_TAG:-latest} \
+    #     npm run migration:run; then
     #     log_error "Database migrations failed"
     #     exit 1
     # fi
 
-    # Deploy services with zero downtime
-    log_info "Deploying updated services..."
-    if ! docker compose -f "$COMPOSE_FILE" up -d --remove-orphans; then
-        log_error "Docker compose up failed"
+    # Deploy stack with Docker Swarm
+    log_info "Deploying stack to Docker Swarm..."
+    if ! docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"; then
+        log_error "Docker stack deploy failed"
         rollback
         exit 1
     fi
 
-    # Wait for services to be ready
     log_info "Waiting for services to be ready..."
-    sleep 10
+    sleep 20
 
     # Health checks
     log_info "Performing health checks..."

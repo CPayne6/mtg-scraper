@@ -5,7 +5,11 @@
   "author": "Chris Payne",
   "license": "ISC",
   "packageManager": "pnpm@10.26.2",
-  "scripts": {},
+  "scripts": {
+    "secrets:setup": "bash scripts/setup-secrets.sh",
+    "secrets:setup:help": "bash scripts/setup-secrets.sh --help",
+    "secrets:setup:win": "bash scripts/setup-secrets.sh"
+  },
   "devDependencies": {
     "@nx/js": "^22.3.3",
     "@vitest/ui": "^4.0.16",
