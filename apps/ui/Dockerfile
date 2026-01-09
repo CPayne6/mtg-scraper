@@ -46,7 +46,7 @@ COPY apps/ui/nginx.conf /etc/nginx/conf.d/default.conf
 # Copy built static files
 COPY --from=builder /app/apps/ui/dist /usr/share/nginx/html
 
-# Create non-root user
+# Create non-root user and set permissions for nginx
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 react && \
     chown -R react:nodejs /usr/share/nginx/html && \
@@ -54,7 +54,9 @@ RUN addgroup --system --gid 1001 nodejs && \
     chown -R react:nodejs /var/log/nginx && \
     chown -R react:nodejs /etc/nginx/conf.d && \
     touch /var/run/nginx.pid && \
-    chown -R react:nodejs /var/run/nginx.pid
+    chown -R react:nodejs /var/run/nginx.pid && \
+    touch /run/nginx.pid && \
+    chown -R react:nodejs /run/nginx.pid
 
 USER react
 
