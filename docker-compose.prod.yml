@@ -53,7 +53,7 @@ services:
 
   # API Service
   api:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-api:${IMAGE_TAG:-refactor-nextjs-to-react-nest}
     ports:
       - "5000:5000"
     environment:
@@ -92,7 +92,7 @@ services:
 
   # UI Service
   ui:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-ui:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-ui:${IMAGE_TAG:-refactor-nextjs-to-react-nest}
     ports:
       - "3000:3000"
     environment:
@@ -122,7 +122,7 @@ services:
 
   # Scheduler Service
   scheduler:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-scheduler:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-scheduler:${IMAGE_TAG:-refactor-nextjs-to-react-nest}
     environment:
       - NODE_ENV=production
       - SERVICE_NAME=scheduler
@@ -146,7 +146,7 @@ services:
 
   # Scraper Worker Service
   scraper:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-scraper:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-scraper:${IMAGE_TAG:-refactor-nextjs-to-react-nest}
     environment:
       - NODE_ENV=production
       - SERVICE_NAME=scraper
