@@ -52,11 +52,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     chown -R react:nodejs /usr/share/nginx/html && \
     chown -R react:nodejs /var/cache/nginx && \
     chown -R react:nodejs /var/log/nginx && \
-    chown -R react:nodejs /etc/nginx/conf.d && \
-    touch /var/run/nginx.pid && \
-    chown -R react:nodejs /var/run/nginx.pid && \
-    touch /run/nginx.pid && \
-    chown -R react:nodejs /run/nginx.pid
+    chown -R react:nodejs /etc/nginx/conf.d
 
 USER react
 
@@ -67,5 +63,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start nginx with pid file in /tmp (writable by non-root user)
+CMD ["nginx", "-g", "daemon off; pid /tmp/nginx.pid;"]

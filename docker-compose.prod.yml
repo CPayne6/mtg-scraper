@@ -189,7 +189,7 @@ services:
     networks:
       - scoutlgs-network
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "cloudflared"]
+      test: ["CMD", "cloudflared", "--version"]
       interval: 30s
       timeout: 10s
       retries: 3
