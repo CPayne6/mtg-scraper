@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-PROJECT_DIR="${PROJECT_DIR:-/home/deploy/scoutlgs}"
+PROJECT_DIR="${PROJECT_DIR:-/home/deploy/mtg-scraper}"
 COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
 BACKUP_DIR="${PROJECT_DIR}/backups"
 MAX_WAIT_TIME=120  # seconds
