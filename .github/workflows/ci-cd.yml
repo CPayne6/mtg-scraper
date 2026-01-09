@@ -202,6 +202,8 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
           platforms: linux/amd64
+          build-args: |
+            ${{ matrix.service.name == 'ui' && 'VITE_API_URL=https://scoutlgs.ca/api' || '' }}
 
       - name: Generate image summary
         run: |

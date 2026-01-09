@@ -62,6 +62,7 @@ services:
       - DATABASE_USER=postgres
       - DATABASE_SYNCHRONIZE=false
       - USE_DOCKER_SECRETS=true
+      - FRONTEND_URL=https://scoutlgs.ca
     secrets:
       - api_frontend_url
       - api_database_password
@@ -173,7 +174,7 @@ services:
   # Cloudflare Tunnel - Secure public access via Cloudflare
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate --protocol http2 run
     environment:
       - TUNNEL_TOKEN_FILE=/run/secrets/cloudflare_tunnel_token
     secrets:
