@@ -40,8 +40,8 @@ RUN pnpm build
 # Stage 3: Runner (Nginx)
 FROM nginx:alpine AS runner
 
-# Copy custom nginx config
-COPY apps/ui/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy custom nginx config (full config, not just server block)
+COPY apps/ui/nginx.conf /etc/nginx/nginx.conf
 
 # Copy built static files
 COPY --from=builder /app/apps/ui/dist /usr/share/nginx/html
@@ -63,5 +63,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
-# Start nginx with pid file in /tmp (writable by non-root user)
-CMD ["nginx", "-g", "daemon off; pid /tmp/nginx.pid;"]
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
