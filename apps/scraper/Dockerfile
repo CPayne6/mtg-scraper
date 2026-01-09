@@ -76,10 +76,6 @@ USER scraper
 
 # No port exposure needed (scraper doesn't listen on any port)
 
-# Health check (checks if process is running)
-HEALTHCHECK --interval=60s --timeout=3s --start-period=30s --retries=3 \
-  CMD pgrep -f "node dist/main.js" || exit 1
-
 # Start the application using entrypoint script
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/main.js"]
