@@ -1,0 +1,271 @@
+# Production Docker Compose for Docker Swarm
+# Deploy with: docker stack deploy -c docker-compose.prod.yml scoutlgs
+# TODO: Make the github username variable work
+services:
+  # PostgreSQL - Store configuration and metadata
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=scoutlgs
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    volumes:
+      - scoutlgs-postgres-data:/var/lib/postgresql/data
+    networks:
+      - postgres-network
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 1G
+
+  # Redis - Used for both caching and queue
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction --notify-keyspace-events AKE
+    volumes:
+      - scoutlgs-redis-data:/data
+    networks:
+      - redis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 3G
+
+  # API Service
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-api:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - SERVICE_NAME=api
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+      - PORT=5000
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs
+      - DATABASE_USER=postgres
+      - DATABASE_SYNCHRONIZE=false
+      - USE_DOCKER_SECRETS=true
+      - FRONTEND_URL=https://scoutlgs.ca
+    secrets:
+      - api_frontend_url
+      - api_database_password
+    networks:
+      - redis-network
+      - postgres-network
+      - tunnel-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 2G
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+
+  # UI Service
+  ui:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-ui:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - SERVICE_NAME=ui
+      - USE_DOCKER_SECRETS=true
+    secrets:
+      - ui_vite_api_url
+    networks:
+      - tunnel-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 512M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+
+  # Scheduler Service
+  scheduler:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-scheduler:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - SERVICE_NAME=scheduler
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - USE_DOCKER_SECRETS=true
+    networks:
+      - redis-network
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node dist/main.js"]
+      interval: 60s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 512M
+
+  # Scraper Worker Service
+  scraper:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-scraper:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - SERVICE_NAME=scraper
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs
+      - DATABASE_USER=postgres
+      - WEBSHARE_PORT=80
+      - WEBSHARE_HOST=p.webshare.io
+      - USE_DOCKER_SECRETS=true
+    secrets:
+      - scraper_database_password
+      - scraper_webshare_username
+      - scraper_webshare_password
+    networks:
+      - redis-network
+      - postgres-network
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node dist/main.js"]
+      interval: 60s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 2G
+
+  # Cloudflare Tunnel - Secure public access via Cloudflare
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN_FILE=/run/secrets/cloudflare_tunnel_token
+    secrets:
+      - cloudflare_tunnel_token
+    networks:
+      - tunnel-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "cloudflared", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  # Redis access: api, scheduler, scraper only
+  redis-network:
+    driver: overlay
+  # Postgres access: api, scraper only
+  postgres-network:
+    driver: overlay
+  # Tunnel routing: cloudflared, ui, api
+  tunnel-network:
+    driver: overlay
+
+volumes:
+  scoutlgs-redis-data:
+  scoutlgs-postgres-data:
+
+# Docker Secrets Configuration
+# Secrets must be created before deployment using scripts/setup-secrets.sh
+secrets:
+  # Global secrets
+  postgres_password:
+    external: true
+    name: postgres_password
+  cloudflare_tunnel_token:
+    external: true
+    name: cloudflare_tunnel_token
+
+  # API secrets
+  api_frontend_url:
+    external: true
+    name: api_frontend_url
+  api_database_password:
+    external: true
+    name: api_database_password
+
+  # UI secrets
+  ui_vite_api_url:
+    external: true
+    name: ui_vite_api_url
+
+  # Scraper secrets
+  scraper_database_password:
+    external: true
+    name: scraper_database_password
+  scraper_webshare_username:
+    external: true
+    name: scraper_webshare_username
+  scraper_webshare_password:
+    external: true
+    name: scraper_webshare_password

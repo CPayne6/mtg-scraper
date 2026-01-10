@@ -1,35 +1,21 @@
 {
-  "name": "mtg-scraper",
-  "version": "0.1.0",
-  "private": true,
-  "main": "main/main.js",
+  "name": "scoutlgs",
+  "version": "1.0.0",
+  "description": "ScoutLGS - MTG Card Finder - Search across multiple Toronto area stores",
   "author": "Chris Payne",
-  "description": "A mtg scraper for Toronto area",
+  "license": "ISC",
+  "packageManager": "pnpm@10.26.2",
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@chakra-ui/react": "^3.26.0",
-    "@emotion/react": "^11.14.0",
-    "cron": "^4.3.3",
-    "next": "^15.5.7",
-    "next-themes": "^0.4.6",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "react-icons": "^5.5.0",
-    "undici": "^7.16.0"
+    "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
+    "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
+    "secrets:setup:win": "node scripts/run-bash.js setup-secrets.sh",
+    "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@types/cron": "^2.0.1",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.2",
-    "typescript": "^5"
+    "@nx/js": "^22.3.3",
+    "@vitest/ui": "^4.0.16",
+    "nx": "^22.3.3",
+    "vite-tsconfig-paths": "^6.0.3",
+    "vitest": "^4.0.16"
   }
 }

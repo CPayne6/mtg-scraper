@@ -1,0 +1,175 @@
+services:
+  # PostgreSQL - Store configuration and metadata
+  postgres:
+    image: postgres:16-alpine
+    container_name: scoutlgs-postgres-dev
+    environment:
+      - POSTGRES_DB=scoutlgs
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - scoutlgs-postgres-data-dev:/var/lib/postgresql/data
+    networks:
+      - scoutlgs-network-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Redis - Used for both caching and queue
+  redis:
+    image: redis:7-alpine
+    container_name: scoutlgs-redis-dev
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction --notify-keyspace-events AKE
+    ports:
+      - "6379:6379"
+    volumes:
+      - scoutlgs-redis-data-dev:/data
+    networks:
+      - scoutlgs-network-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # API Service (Development mode with hot reload)
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    container_name: scoutlgs-api-dev
+    ports:
+      - "5000:5000"
+    env_file:
+      - apps/api/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/api/src:/app/apps/api/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./packages/core/dist:/app/packages/core/dist:delegated
+      # Mount config files
+      - ./apps/api/tsconfig.json:/app/apps/api/tsconfig.json:ro
+      - ./apps/api/nest-cli.json:/app/apps/api/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
+
+  # UI Service (Development mode with Vite hot reload)
+  ui:
+    build:
+      context: .
+      dockerfile: apps/ui/Dockerfile.dev
+    container_name: scoutlgs-ui-dev
+    ports:
+      - "3000:3000"
+    env_file:
+      - apps/ui/.env
+    environment:
+      - NODE_ENV=development
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/ui/src:/app/apps/ui/src:delegated
+      - ./apps/ui/public:/app/apps/ui/public:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      # Mount config files
+      - ./apps/ui/vite.config.ts:/app/apps/ui/vite.config.ts:ro
+      - ./apps/ui/tsconfig.json:/app/apps/ui/tsconfig.json:ro
+      - ./apps/ui/tsconfig.app.json:/app/apps/ui/tsconfig.app.json:ro
+      - ./apps/ui/index.html:/app/apps/ui/index.html:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      - api
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
+
+  # Scheduler Service (Development mode with hot reload)
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile.dev
+    container_name: scoutlgs-scheduler-dev
+    env_file:
+      - apps/scheduler/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      # Mount config files
+      - ./apps/scheduler/tsconfig.json:/app/apps/scheduler/tsconfig.json:ro
+      - ./apps/scheduler/nest-cli.json:/app/apps/scheduler/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
+
+  # Scraper Worker Service (Development mode with hot reload)
+  # Use: docker-compose -f docker-compose.dev.yml up --scale scraper=3
+  scraper:
+    build:
+      context: .
+      dockerfile: apps/scraper/Dockerfile.dev
+    env_file:
+      - apps/scraper/.env
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+    volumes:
+      # Mount source code for hot reload
+      - ./apps/scraper/src:/app/apps/scraper/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./packages/core/dist:/app/packages/core/dist:delegated
+      # Mount config files
+      - ./apps/scraper/tsconfig.json:/app/apps/scraper/tsconfig.json:ro
+      - ./apps/scraper/nest-cli.json:/app/apps/scraper/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
+    deploy:
+      replicas: 3
+
+networks:
+  scoutlgs-network-dev:
+    driver: bridge
+
+volumes:
+  scoutlgs-redis-data-dev:
+    driver: local
+  scoutlgs-postgres-data-dev:
+    driver: local

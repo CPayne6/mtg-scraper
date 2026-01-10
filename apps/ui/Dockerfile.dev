@@ -1,0 +1,31 @@
+FROM node:20
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+
+# Copy workspace configuration
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/ui/package.json ./apps/ui/
+
+# Install ALL dependencies (including dev dependencies)
+RUN pnpm install --frozen-lockfile
+
+# Copy all source code
+COPY packages/shared ./packages/shared
+COPY apps/ui ./apps/ui
+COPY tsconfig.json nx.json ./
+
+# Build using Nx (automatically builds dependencies)
+WORKDIR /app
+RUN pnpm nx build ui
+
+# Set working directory to UI
+WORKDIR /app/apps/ui
+
+# Expose Vite dev server port
+EXPOSE 3000
+
+# Start Vite dev server with hot reload
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]
