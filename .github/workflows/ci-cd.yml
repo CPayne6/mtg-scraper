@@ -14,6 +14,11 @@ env:
   REGISTRY: ghcr.io
   NODE_VERSION: '20'
   PNPM_VERSION: '10.26.2'
+  # Deployment configuration (non-sensitive)
+  PROJECT_DIR: /home/deploy/mtg-scraper
+  DEPLOY_HOST: ssh.scoutlgs.ca
+  DEPLOY_USER: deploy
+  PRODUCTION_URL: https://scoutlgs.ca
 jobs:
   # Job 1: Setup - Install dependencies once and cache for all jobs
   setup:
@@ -223,7 +228,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/refactor/nextjs-to-react-nest'
     environment:
       name: production
-      url: https://scoutlgs.com
+      url: https://scoutlgs.ca
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -258,10 +263,10 @@ jobs:
           # The ProxyCommand will use env variables set in each step
           cat > ~/.ssh/config << EOF
           Host scoutlgs-prod
-            HostName ${{ secrets.DEPLOY_HOST }}
-            User ${{ secrets.DEPLOY_USER }}
+            HostName ${{ env.DEPLOY_HOST }}
+            User ${{ env.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
-            ProxyCommand cloudflared access ssh --hostname ${{ secrets.DEPLOY_HOST }} --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+            ProxyCommand cloudflared access ssh --hostname ${{ env.DEPLOY_HOST }} --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
             StrictHostKeyChecking no
             UserKnownHostsFile=/dev/null
           EOF
@@ -272,24 +277,24 @@ jobs:
 
       - name: Copy deployment files to server
         run: |
-          scp scripts/deploy.sh scoutlgs-prod:${{ secrets.PROJECT_DIR }}/scripts/
-          scp docker-compose.prod.yml scoutlgs-prod:${{ secrets.PROJECT_DIR }}/
+          scp scripts/deploy.sh scoutlgs-prod:${{ env.PROJECT_DIR }}/scripts/
+          scp docker-compose.prod.yml scoutlgs-prod:${{ env.PROJECT_DIR }}/
 
       - name: Make deployment script executable
         run: |
-          ssh scoutlgs-prod "chmod +x ${{ secrets.PROJECT_DIR }}/scripts/deploy.sh"
+          ssh scoutlgs-prod "chmod +x ${{ env.PROJECT_DIR }}/scripts/deploy.sh"
 
       - name: Run deployment
         id: deploy
         run: |
-          ssh scoutlgs-prod "cd ${{ secrets.PROJECT_DIR }} && PROJECT_DIR=${{ secrets.PROJECT_DIR }} ./deploy.sh"
+          ssh scoutlgs-prod "cd ${{ env.PROJECT_DIR }} && PROJECT_DIR=${{ env.PROJECT_DIR }} ./scripts/deploy.sh"
 
       - name: Verify deployment
         run: |
           sleep 15
 
           # Check API health through Cloudflare Tunnel
-          if curl -f -s https://scoutlgs.com/api/health > /dev/null; then
+          if curl -f -s ${{ env.PRODUCTION_URL }}/api/health > /dev/null; then
             echo "✅ API is healthy"
           else
             echo "❌ API health check failed"
@@ -297,7 +302,7 @@ jobs:
           fi
 
           # Check UI through Cloudflare Tunnel
-          if curl -f -s https://scoutlgs.com > /dev/null; then
+          if curl -f -s ${{ env.PRODUCTION_URL }} > /dev/null; then
             echo "✅ UI is accessible"
           else
             echo "❌ UI health check failed"
@@ -315,8 +320,8 @@ jobs:
           echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Services:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Application: https://scoutlgs.com" >> $GITHUB_STEP_SUMMARY
-          echo "- API: https://scoutlgs.com/api" >> $GITHUB_STEP_SUMMARY
+          echo "- Application: ${{ env.PRODUCTION_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "- API: ${{ env.PRODUCTION_URL }}/api" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.deploy.outcome }}" == "success" ]; then
             echo "✅ Deployment completed successfully" >> $GITHUB_STEP_SUMMARY
