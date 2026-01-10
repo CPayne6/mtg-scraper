@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - production
   pull_request:
     branches:
       - production
@@ -224,7 +225,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     environment:
       name: production
       url: https://scoutlgs.ca
