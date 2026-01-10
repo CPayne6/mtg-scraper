@@ -246,9 +246,6 @@ jobs:
           cloudflared --version
 
       - name: Setup SSH with Cloudflare Tunnel
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
@@ -264,67 +261,31 @@ jobs:
             HostName ${{ secrets.DEPLOY_HOST }}
             User ${{ secrets.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
-            ProxyCommand cloudflared access ssh --hostname ${{ secrets.DEPLOY_HOST }}
+            ProxyCommand cloudflared access ssh --hostname ${{ secrets.DEPLOY_HOST }} --id ${{ secrets.CF_ACCESS_CLIENT_ID }} --secret ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
             StrictHostKeyChecking no
             UserKnownHostsFile=/dev/null
           EOF
 
-      - name: Verify Cloudflare Access credentials
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          if [ -z "$CF_ACCESS_CLIENT_ID" ]; then
-            echo "ERROR: CF_ACCESS_CLIENT_ID is not set"
-            exit 1
-          else
-            echo "✓ CF_ACCESS_CLIENT_ID is set (length: ${#CF_ACCESS_CLIENT_ID})"
-            echo "  First 8 chars: ${CF_ACCESS_CLIENT_ID:0:8}..."
-            echo "  Has leading whitespace: $(echo "$CF_ACCESS_CLIENT_ID" | grep -q '^[[:space:]]' && echo "YES" || echo "NO")"
-            echo "  Has trailing whitespace: $(echo "$CF_ACCESS_CLIENT_ID" | grep -q '[[:space:]]$' && echo "YES" || echo "NO")"
-          fi
-          if [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
-            echo "ERROR: CF_ACCESS_CLIENT_SECRET is not set"
-            exit 1
-          else
-            echo "✓ CF_ACCESS_CLIENT_SECRET is set (length: ${#CF_ACCESS_CLIENT_SECRET})"
-            echo "  First 8 chars: ${CF_ACCESS_CLIENT_SECRET:0:8}..."
-            echo "  Has leading whitespace: $(echo "$CF_ACCESS_CLIENT_SECRET" | grep -q '^[[:space:]]' && echo "YES" || echo "NO")"
-            echo "  Has trailing whitespace: $(echo "$CF_ACCESS_CLIENT_SECRET" | grep -q '[[:space:]]$' && echo "YES" || echo "NO")"
-          fi
-
       - name: Test SSH connection
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "echo 'SSH connection successful'"
 
       - name: Copy deployment script to server
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           scp scripts/deploy.sh scoutlgs-prod:${{ secrets.PROJECT_DIR }}/
 
       - name: Make deployment script executable
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "chmod +x ${{ secrets.PROJECT_DIR }}/deploy.sh"
 
       - name: Run deployment
         id: deploy
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           ssh scoutlgs-prod "cd ${{ secrets.PROJECT_DIR }} && PROJECT_DIR=${{ secrets.PROJECT_DIR }} ./deploy.sh"
 
       - name: Verify deployment
         run: |
-          sleep 5
+          sleep 15
 
           # Check API health through Cloudflare Tunnel
           if curl -f -s https://scoutlgs.com/api/health > /dev/null; then

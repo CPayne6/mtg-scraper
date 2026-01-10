@@ -202,6 +202,8 @@ services:
       - cloudflare_tunnel_token
     networks:
       - tunnel-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "cloudflared", "--version"]
       interval: 30s
