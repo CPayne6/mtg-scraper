@@ -270,13 +270,14 @@ jobs:
         run: |
           ssh scoutlgs-prod "echo 'SSH connection successful'"
 
-      - name: Copy deployment script to server
+      - name: Copy deployment files to server
         run: |
-          scp scripts/deploy.sh scoutlgs-prod:${{ secrets.PROJECT_DIR }}/
+          scp scripts/deploy.sh scoutlgs-prod:${{ secrets.PROJECT_DIR }}/scripts/
+          scp docker-compose.prod.yml scoutlgs-prod:${{ secrets.PROJECT_DIR }}/
 
       - name: Make deployment script executable
         run: |
-          ssh scoutlgs-prod "chmod +x ${{ secrets.PROJECT_DIR }}/deploy.sh"
+          ssh scoutlgs-prod "chmod +x ${{ secrets.PROJECT_DIR }}/scripts/deploy.sh"
 
       - name: Run deployment
         id: deploy
