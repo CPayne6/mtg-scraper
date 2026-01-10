@@ -220,7 +220,7 @@ jobs:
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  # Job 4: Deploy to production via SSH (only on push to master) TODO: set back to master
+  # Job 4: Deploy to production via SSH (on push to production)
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
@@ -289,7 +289,7 @@ jobs:
       - name: Run deployment
         id: deploy
         run: |
-          ssh scoutlgs-prod "cd ${{ env.PROJECT_DIR }} && PROJECT_DIR=${{ env.PROJECT_DIR }} ./scripts/deploy.sh"
+          ssh scoutlgs-prod "cd ${{ env.PROJECT_DIR }} && PROJECT_DIR=${{ env.PROJECT_DIR }} IMAGE_TAG=production ./scripts/deploy.sh"
 
       - name: Verify deployment
         run: |
@@ -356,7 +356,13 @@ jobs:
           echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "**Note:** Fast PR validation - Docker builds skipped" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.base_ref }}" == "production" ]; then
+              echo "**Note:** PR to production - Docker images built and pushed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**Note:** PR validation only" >> $GITHUB_STEP_SUMMARY
+            fi
           elif [ "${{ github.ref }}" == "refs/heads/master" ]; then
-            echo "**Note:** Full pipeline executed with Docker push 🚀" >> $GITHUB_STEP_SUMMARY
+            echo "**Note:** Full pipeline executed with Docker push" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.ref }}" == "refs/heads/production" ]; then
+            echo "**Note:** Production deployment triggered" >> $GITHUB_STEP_SUMMARY
           fi
