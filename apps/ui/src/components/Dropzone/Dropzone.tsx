@@ -1,8 +1,8 @@
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Paper from '@mui/material/Paper'
+import CloudUpload from '@mui/icons-material/CloudUpload'
 import { useDropzone } from 'react-dropzone'
-import { BsUpload } from 'react-icons/bs'
 
 interface DropzoneProps {
   onFileUpload: (files: FileList | null) => void;
@@ -50,7 +50,7 @@ export function Dropzone({
     >
       <input {...getInputProps()} />
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <BsUpload size={32} style={{ color: 'inherit', opacity: 0.6 }} />
+        <CloudUpload sx={{ fontSize: 32, opacity: 0.6 }} />
         <Typography variant="body1">
           Drag and drop manabox file here (more to be supported soon)
         </Typography>

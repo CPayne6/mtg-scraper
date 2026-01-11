@@ -9,7 +9,7 @@ import Box from "@mui/material/Box";
 import Tooltip from "@mui/material/Tooltip";
 import { Theme } from "@mui/material/styles";
 import { Image } from "../Image";
-import { BsClipboard2Plus } from "react-icons/bs";
+import AssignmentAdd from "@mui/icons-material/AssignmentAdd";
 import { useSets } from "@/context";
 
 interface CardProps {
@@ -144,7 +144,7 @@ export function Card(props: CardProps) {
                   }
                 }}
               >
-                <BsClipboard2Plus />
+                <AssignmentAdd />
               </IconButton>
             </span>
           </Tooltip>

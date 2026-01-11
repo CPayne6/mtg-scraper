@@ -1,6 +1,8 @@
 import { useContext, useMemo, useState } from "react"
 import { Box, IconButton, Menu, MenuItem, Stack, Tooltip } from "@mui/material"
-import { BsClipboard2CheckFill, BsClipboard2X, BsThreeDotsVertical } from 'react-icons/bs'
+import AssignmentTurnedIn from '@mui/icons-material/AssignmentTurnedIn'
+import AssignmentLate from '@mui/icons-material/AssignmentLate'
+import MoreVert from '@mui/icons-material/MoreVert'
 import { Image } from '@/components'
 import { LibraryContext } from "@/context"
 import { formatStorageName } from "../library.utils"
@@ -47,23 +49,28 @@ export const PreviewLibrary = ({ name }: PreviewLibraryProps) => {
 
   return (
     <Box sx={{ position: 'relative' }}>
-      <Stack direction="row" spacing={0} justifyContent="center">
-        <Tooltip title={!!item ? "Card is in your collection" : "Card not in collection"}>
-          <IconButton
-            size="large"
+      <Stack direction="row" spacing={0} justifyContent="center" alignItems="center">
+        <Tooltip title={!!item ? "Card is in your collection" : "Card not in collection"} placement="top" enterDelay={500}>
+          <Box
             onMouseEnter={() => setShowImage(true)}
             onMouseLeave={() => setShowImage(false)}
-            sx={{ color: !!item ? 'black' : 'grey.500' }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 1,
+              color: !!item ? 'success.main' : 'text.disabled',
+            }}
           >
-            {!!item ? <BsClipboard2CheckFill /> : <BsClipboard2X />}
-          </IconButton>
+            {!!item ? <AssignmentTurnedIn /> : <AssignmentLate />}
+          </Box>
         </Tooltip>
         <IconButton
           disabled={!item}
           onClick={(e) => setAnchorEl(e.currentTarget)}
           size="small"
         >
-          <BsThreeDotsVertical />
+          <MoreVert />
         </IconButton>
         <Menu
           anchorEl={anchorEl}
@@ -73,20 +80,29 @@ export const PreviewLibrary = ({ name }: PreviewLibraryProps) => {
           <MenuItem onClick={handleRemoveFromLibrary}>Delete</MenuItem>
         </Menu>
       </Stack>
-      <Box
-        sx={{
-          width: '200px',
-          position: 'absolute',
-          top: '110%',
-          right: '100%',
-          zIndex: 10
-        }}
-      >
-        <Image
-          src={formatScryfallImage(name, item)}
-          hidden={item === undefined || !showImage}
-        />
-      </Box>
+      {item && showImage && (
+        <Box
+          sx={{
+            width: '200px',
+            position: 'absolute',
+            top: '110%',
+            right: { xs: 'auto', sm: '100%' },
+            left: { xs: '50%', sm: 'auto' },
+            transform: { xs: 'translateX(-50%)', sm: 'none' },
+            zIndex: 10,
+            borderRadius: '8px',
+            overflow: 'hidden',
+            boxShadow: 3,
+            border: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Image
+            src={formatScryfallImage(name, item)}
+            style={{ borderRadius: '8px' }}
+          />
+        </Box>
+      )}
     </Box>
   )
 }
