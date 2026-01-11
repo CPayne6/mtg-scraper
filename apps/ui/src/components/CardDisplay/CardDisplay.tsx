@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { Box, Grid, Stack, Typography } from "@mui/material"
 import { CardList } from "../CardsList"
 import { StoreFilter } from "../StoreFilter"
-import { PreviewLibrary } from ".."
+import { PreviewLibrary } from "../Library/PreviewLibrary"
 import SkryfallAutocomplete from "../SkryfallAutocomplete/SkryfallAutocomplete"
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'

@@ -1,4 +1,4 @@
-import { LibraryEntry, LibraryStorage } from '@/components'
+import { LibraryEntry, LibraryStorage } from '@/components/Library/library.types'
 import { formatStorageName, LIBRARY_KEY } from '@/components/Library/library.utils';
 import { useLocalStorage } from '@/hooks';
 import React from 'react'
