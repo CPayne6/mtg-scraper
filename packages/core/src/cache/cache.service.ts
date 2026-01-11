@@ -305,4 +305,27 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
   }
+
+  /**
+   * Check Redis health by pinging the connection
+   * Returns status object for use in health checks
+   */
+  async checkHealth(): Promise<{ status: 'up' | 'down'; message?: string }> {
+    try {
+      const redis = await this.queue.client;
+      const pong = await redis.ping();
+
+      if (pong === 'PONG') {
+        return { status: 'up' };
+      }
+
+      return { status: 'down', message: 'Unexpected ping response' };
+    } catch (error) {
+      this.logger.error('Redis health check failed:', error);
+      return {
+        status: 'down',
+        message: error instanceof Error ? error.message : 'Redis connection failed',
+      };
+    }
+  }
 }
