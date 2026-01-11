@@ -41,16 +41,26 @@ export class ScraperService implements OnModuleInit {
     await this.loadStoresFromDatabase();
   }
 
+  /**
+   * Wait until stores have been successfully loaded from the database.
+   * Use this to ensure the service is ready before processing requests.
+   */
+  async waitUntilReady(): Promise<void> {
+    await this.storeService.waitUntilReady();
+  }
+
+  /**
+   * Check if stores have been successfully loaded.
+   */
+  ready(): boolean {
+    return this.storeService.ready();
+  }
+
   private async loadStoresFromDatabase() {
-    try {
-      const dbStores = await this.storeService.findAllActive();
-      this.stores = dbStores.map((store) => this.buildStoreConfig(store));
-      this.logger.log(`Loaded ${this.stores.length} stores from database`);
-    } catch (error) {
-      this.logger.error('Failed to load stores from database:', error);
-      this.logger.warn('Falling back to hardcoded stores');
-      this.loadHardcodedStores();
-    }
+    await this.storeService.waitUntilReady();
+    const dbStores = await this.storeService.findAllActive();
+    this.stores = dbStores.map((store) => this.buildStoreConfig(store));
+    this.logger.log(`Loaded ${this.stores.length} stores from database`);
   }
 
   private buildStoreConfig(dbStore: StoreEntity): Store {
@@ -84,60 +94,6 @@ export class ScraperService implements OnModuleInit {
       loader,
       parser,
     };
-  }
-
-  private loadHardcodedStores() {
-    // Fallback to existing hardcoded stores if database fails
-    this.stores = [
-      {
-        name: 'Face to Face Games',
-        loader: new F2FLoader(this.proxyService.getProxy()),
-        parser: new F2FSearchParser(),
-      },
-      {
-        name: '401 Games',
-        loader: new _401Loader(this.proxyService.getProxy()),
-        parser: new _401Parser(),
-      },
-      {
-        name: 'Hobbiesville',
-        loader: new HobbiesLoader(this.proxyService.getProxy()),
-        parser: new HobbiesParser(),
-      },
-      {
-        name: 'House of Cards',
-        loader: new BinderPOSLoader(
-          'https://houseofcards.ca',
-          'mtg-advanced-search',
-          this.proxyService.getProxy()
-        ),
-        parser: new BinderPOSParser('https://houseofcards.ca'),
-      },
-      {
-        name: 'Black Knight Games',
-        loader: new BinderPOSLoader(
-          'https://blackknightgames.ca',
-          'magic-the-gathering-search',
-          this.proxyService.getProxy()
-        ),
-        parser: new BinderPOSParser('https://blackknightgames.ca'),
-      },
-      {
-        name: 'Exor Games',
-        loader: new BinderPOSLoader('https://exorgames.com', 'advanced-search', this.proxyService.getProxy()),
-        parser: new BinderPOSParser('https://exorgames.com'),
-      },
-      {
-        name: 'Game Knight',
-        loader: new BinderPOSLoader(
-          'https://gameknight.ca',
-          'magic-the-gathering-singles',
-          this.proxyService.getProxy()
-        ),
-        parser: new BinderPOSParser('https://gameknight.ca'),
-      },
-    ];
-    this.logger.log(`Loaded ${this.stores.length} hardcoded stores as fallback`);
   }
 
   private async fetchCardFromStore(
