@@ -220,6 +220,140 @@ docker-compose down
 docker-compose down -v
 ```
 
+### Docker Swarm Production Deployment
+
+For production deployments, the application uses Docker Swarm with secrets management.
+
+#### Prerequisites
+
+- A server with Docker installed and Swarm initialized
+- SSH access to the server
+- All `.env` files configured locally
+
+#### 1. SSH Configuration
+
+Create an SSH key for deployment:
+
+```bash
+# Generate SSH key (Windows PowerShell)
+ssh-keygen -t ed25519 -C "deploy@scoutlgs" -f $env:USERPROFILE\.ssh\scoutlgs_deploy_key
+
+# Or on Linux/macOS/Git Bash
+ssh-keygen -t ed25519 -C "deploy@scoutlgs" -f ~/.ssh/scoutlgs_deploy_key
+```
+
+Copy the public key to your server:
+
+```bash
+ssh-copy-id -i ~/.ssh/scoutlgs_deploy_key.pub deploy@your-server.com
+```
+
+Add to your SSH config (`~/.ssh/config`):
+
+```
+Host scoutlgs-prod
+    HostName your-server.com
+    User deploy
+    IdentityFile ~/.ssh/scoutlgs_deploy_key
+
+# For local WSL testing
+Host wsl-local
+    HostName <WSL_IP_ADDRESS>
+    User <your_username>
+    IdentityFile ~/.ssh/wsl_local_key
+```
+
+#### 2. Initialize Docker Swarm (on server)
+
+```bash
+ssh scoutlgs-prod "docker swarm init"
+```
+
+#### 3. Set Up Docker Secrets
+
+The `secrets:setup` script reads from your local `.env` files and creates Docker secrets on the remote server.
+
+**For production deployment:**
+```bash
+DEPLOY_HOST=scoutlgs-prod pnpm secrets:setup
+```
+
+**For local WSL testing:**
+```bash
+DEPLOY_HOST=wsl-local pnpm secrets:setup
+```
+
+**Debug mode (shows paths and configuration):**
+```bash
+DEPLOY_HOST=wsl-local pnpm secrets:setup:debug
+```
+
+#### 4. Deploy the Stack
+
+The CI/CD pipeline handles production deployments automatically on push to the `production` branch. For manual deployment:
+
+```bash
+ssh scoutlgs-prod "cd /home/deploy/mtg-scraper && ./scripts/deploy.sh"
+```
+
+#### Local WSL Testing Setup
+
+To test Docker Swarm deployments locally using WSL:
+
+1. **Install and start SSH server in WSL:**
+   ```bash
+   sudo apt update && sudo apt install openssh-server -y
+   sudo service ssh start
+   ```
+
+2. **Get WSL IP address:**
+   ```bash
+   hostname -I
+   ```
+
+3. **Create SSH key and copy to WSL (from PowerShell):**
+   ```powershell
+   # Generate key
+   ssh-keygen -t ed25519 -C "local@wsl" -f $env:USERPROFILE\.ssh\wsl_local_key
+
+   # Copy public key to WSL
+   type $env:USERPROFILE\.ssh\wsl_local_key.pub | wsl -d Ubuntu -- bash -c "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+   ```
+
+4. **Add to SSH config** (`C:\Users\<username>\.ssh\config`):
+   ```
+   Host wsl-local
+       HostName <WSL_IP_FROM_STEP_2>
+       User <your_wsl_username>
+       IdentityFile ~/.ssh/wsl_local_key
+   ```
+
+5. **Initialize Swarm in WSL:**
+   ```bash
+   ssh wsl-local "docker swarm init"
+   ```
+
+6. **Run secrets setup:**
+   ```bash
+   DEPLOY_HOST=wsl-local pnpm secrets:setup
+   ```
+
+#### Troubleshooting SSH/Secrets Setup
+
+**SSH config not found:**
+- The script uses Git Bash which reads from `C:\Users\<username>\.ssh\config`
+- Ensure the config file exists and has correct permissions
+
+**Debug the setup script:**
+```bash
+DEPLOY_HOST=wsl-local pnpm secrets:setup:debug
+```
+
+**View script help:**
+```bash
+pnpm secrets:setup:help
+```
+
 ## Service Interaction Flow
 
 ### User Card Search (High Priority)
