@@ -15,7 +15,9 @@ import {
   DialogContent,
   DialogActions
 } from '@mui/material'
-import { BsTrash, BsChevronDown, BsPencil } from 'react-icons/bs'
+import Delete from '@mui/icons-material/Delete'
+import ExpandMore from '@mui/icons-material/ExpandMore'
+import Edit from '@mui/icons-material/Edit'
 import { useLocalStorage } from '@/hooks'
 
 export function SavedDecklistsMenu() {
@@ -85,7 +87,7 @@ export function SavedDecklistsMenu() {
       <Button
         variant="outlined"
         onClick={handleClick}
-        endIcon={<BsChevronDown />}
+        endIcon={<ExpandMore />}
         sx={{
           textTransform: 'none',
           '&:hover': {
@@ -162,7 +164,7 @@ export function SavedDecklistsMenu() {
                   }
                 }}
               >
-                <BsPencil size={16} />
+                <Edit fontSize="small" />
               </IconButton>
               <IconButton
                 className="action-button"
@@ -178,7 +180,7 @@ export function SavedDecklistsMenu() {
                   }
                 }}
               >
-                <BsTrash size={18} />
+                <Delete fontSize="small" />
               </IconButton>
             </Box>
           </MenuItem>

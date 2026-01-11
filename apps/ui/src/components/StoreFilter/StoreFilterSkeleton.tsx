@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Box, Collapse, FormLabel, IconButton, Skeleton, Stack } from '@mui/material'
-import { ExpandLess, ExpandMore } from '@mui/icons-material'
+import ExpandLess from '@mui/icons-material/ExpandLess'
+import ExpandMore from '@mui/icons-material/ExpandMore'
 
 const STORAGE_KEY = 'store-filter-expanded';
 

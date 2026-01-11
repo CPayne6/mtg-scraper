@@ -1,7 +1,9 @@
-import { Suspense } from 'react'
+import { lazy, Suspense } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Box, Button, Stack, Typography, useTheme } from '@mui/material'
-import { DeckDisplay } from '../components/DeckDisplay/DeckDisplay'
+import { Box, Stack, Typography, useTheme } from '@mui/material'
+import { SavedDecklistsMenu } from '../components/SavedDecklistsMenu'
+
+const DeckDisplay = lazy(() => import('../components/DeckDisplay/DeckDisplay').then(m => ({ default: m.DeckDisplay })))
 
 export const Route = createFileRoute('/list/$listName')({
   component: ListPage,
@@ -33,63 +35,58 @@ function ListPage() {
         borderBottom: 1,
         borderColor: 'divider',
         py: { xs: 2, md: 3 },
-        px: { xs: 2, sm: 3, md: 4 },
         position: 'sticky',
         top: 0,
         zIndex: 10,
         boxShadow: 1
       }}>
-        <Box sx={{
-          maxWidth: '1400px',
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          justifyContent: 'space-between',
-          gap: 2
-        }}>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Box
-              component="img"
-              src={theme.palette.mode === 'dark' ? '/Scout-logo-icon-light.png' : '/Scout-logo-icon.png'}
-              alt="ScoutLGS Logo"
-              sx={{
-                height: { xs: 60, md: 80 },
-                width: 'auto',
-                objectFit: 'contain'
-              }}
-            />
-            <Stack>
-              <Typography
-                variant="h4"
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          sx={{
+            width: '100%',
+            maxWidth: '1400px',
+            margin: '0 auto',
+            px: { xs: 2, sm: 3, md: 4 },
+          }}
+        >
+          <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ cursor: 'pointer', width: 'fit-content' }}>
+              <Box
+                component="img"
+                src={theme.palette.mode === 'dark' ? '/Scout-logo-icon-light.png' : '/Scout-logo-icon.png'}
+                alt="ScoutLGS Logo"
                 sx={{
-                  fontSize: { xs: '1.5rem', md: '2rem' },
-                  fontWeight: 600
+                  height: { xs: 60, md: 80 },
+                  width: 'auto',
+                  objectFit: 'contain'
                 }}
-              >
-                ScoutLGS
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  color: 'text.secondary',
-                  display: { xs: 'none', sm: 'block' }
-                }}
-              >
-                Find the cards you want at the best prices
-              </Typography>
+              />
+              <Stack>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontSize: { xs: '1.5rem', md: '2rem' },
+                    fontWeight: 600
+                  }}
+                >
+                  ScoutLGS
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                    display: { xs: 'none', sm: 'block' }
+                  }}
+                >
+                  Find the cards you want at the best prices
+                </Typography>
+              </Stack>
             </Stack>
-          </Stack>
-          <Button
-            component={Link}
-            to="/"
-            variant="outlined"
-            size="medium"
-            sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
-          >
-            Back to Home
-          </Button>
-        </Box>
+          </Link>
+          <SavedDecklistsMenu />
+        </Stack>
       </Box>
 
       <Box sx={{
@@ -105,7 +102,7 @@ function ListPage() {
             <Typography variant="h6" color="text.secondary">Loading card list...</Typography>
           </Box>
         }>
-          <DeckDisplay listName={decodedListName} />
+          <DeckDisplay key={decodedListName} listName={decodedListName} />
         </Suspense>
       </Box>
     </Box>

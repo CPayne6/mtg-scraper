@@ -1,11 +1,12 @@
 import { CardSearchResponse } from "@scoutlgs/shared"
 import { SetStateAction, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Box, Button, FormControl, Grid, MenuItem, Select, Stack, TextField, Typography } from "@mui/material"
+import { Box, Button, FormControl, MenuItem, Select, Stack, TextField, Typography } from "@mui/material"
 import { CardList } from "../CardsList"
 import { StoreFilter, StoreFilterSkeleton } from "../StoreFilter"
 import { PreviewLibrary } from "../Library"
 import { useLocalStorage } from "@/hooks"
+import { toaster } from "../ui/toaster"
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -14,10 +15,17 @@ interface DataState {
   data: null | CardSearchResponse;
   loading: boolean;
   selectedStores: string[];
+  error?: string;
 }
 
-const fetchCardData = async (name: string) => {
+const fetchCardData = async (name: string): Promise<CardSearchResponse> => {
   const response = await fetch(`${API_URL}/card/${encodeURIComponent(name)}`)
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Card "${name}" not found`)
+    }
+    throw new Error(`Failed to fetch card: ${response.status}`)
+  }
   return await response.json() as CardSearchResponse
 }
 
@@ -88,10 +96,13 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
         selectedStores: []
       }))
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch card data'
       console.error(err)
+      toaster.error({ title: errorMessage })
       setDataStateByIndex(index, (prev) => ({
         ...prev,
-        loading: false
+        loading: false,
+        error: errorMessage
       }))
     } finally {
       fetchingRef.current.delete(index)
@@ -118,13 +129,14 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
         name: cardName
       })
     })
+    fetchCardFromIndex(index)
   }
 
   const onPageChange = (pageStr: string) => {
     const page = Math.max(Math.min(Number(pageStr), cardNames.length), 1)
-    updatePage(page - 1)
     preloadPage(page - 2)
     preloadPage(page)
+    updatePage(page - 1)
   }
 
   const onNextPage = () => {
@@ -148,13 +160,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   const sortedCardNames = useMemo(() =>
     cardNames.map((name, index) => ({ label: name, value: (index + 1).toString() }))
       .sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
-  , [cardNames])
-
-  // Check if we should show the filter sidebar (if any card has store data)
-  const hasStoreData = useMemo(() =>
-    data.some(card => card.data && card.data.stores.length > 0),
-    [data]
-  )
+    , [cardNames])
 
   // Filter cards by selected stores
   const filteredCards = useMemo(() => {
@@ -163,7 +169,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
     const { selectedStores, data: cardData } = currentCardData
 
     // If no stores selected or all stores selected, return all cards
-    if (selectedStores.length === 0 || selectedStores.length === cardData.stores.length) {
+    if (selectedStores.length === 0 || selectedStores.length === (cardData.stores?.length ?? 0)) {
       return cardData.results
     }
 
@@ -214,27 +220,24 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   }
 
   return (
-    <Grid container spacing={3}>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, width: '100%' }}>
       {/* Left Sidebar - Filters */}
-      {hasStoreData && (
-        <Grid item xs={12} md={3} lg={2}>
-          <Stack spacing={2}>
-            {currentCardData.loading || !currentCardData.data ? (
-              <StoreFilterSkeleton />
-            ) : currentCardData.data.stores.length > 0 ? (
-              <StoreFilter
-                stores={currentCardData.data.stores}
-                selectedStores={currentCardData.selectedStores || []}
-                onStoresChange={handleStoreFilterChange}
-              />
-            ) : null}
-          </Stack>
-        </Grid>
-      )}
+      <Box sx={{ width: { xs: '100%', md: '200px' }, flexShrink: 0 }}>
+        <Stack spacing={2}>
+          {currentCardData.loading || !currentCardData.data ? (
+            <StoreFilterSkeleton />
+          ) : (
+            <StoreFilter
+              stores={currentCardData.data.stores}
+              selectedStores={currentCardData.selectedStores || []}
+              onStoresChange={handleStoreFilterChange}
+            />
+          )}
+        </Stack>
+      </Box>
 
       {/* Main Content */}
-      <Grid item xs={12} md={hasStoreData ? 9 : 12} lg={hasStoreData ? 10 : 12}>
-        <Box sx={{ width: '100%' }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack
             direction={{ xs: 'column', lg: 'row' }}
             spacing={{ xs: 2, md: 3 }}
@@ -255,8 +258,8 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                   fontSize: currentCardData.cardName.length > 40
                     ? { xs: '1.1rem', md: '1.4rem' }
                     : currentCardData.cardName.length > 25
-                    ? { xs: '1.3rem', md: '1.7rem' }
-                    : { xs: '1.5rem', md: '2rem' },
+                      ? { xs: '1.3rem', md: '1.7rem' }
+                      : { xs: '1.5rem', md: '2rem' },
                   fontWeight: 600,
                   mb: 1,
                   overflow: 'hidden',
@@ -275,7 +278,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                 <Typography variant="body2" color="text.secondary">
                   Loading price data...
                 </Typography>
-              ) : currentCardData.data ? (
+              ) : currentCardData.data?.priceStats ? (
                 <Typography variant="body2" color="text.secondary">
                   {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)}
                 </Typography>
@@ -361,9 +364,8 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
               <PreviewLibrary name={currentCardData.cardName} />
             </Stack>
           </Stack>
-          <CardList cards={filteredCards} loading={currentCardData.loading} />
-        </Box>
-      </Grid>
-    </Grid>
+        <CardList cards={filteredCards} loading={currentCardData.loading} />
+      </Box>
+    </Box>
   )
 }
