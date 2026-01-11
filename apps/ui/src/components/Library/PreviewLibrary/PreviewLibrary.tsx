@@ -3,7 +3,7 @@ import { Box, IconButton, Menu, MenuItem, Stack, Tooltip } from "@mui/material"
 import AssignmentTurnedIn from '@mui/icons-material/AssignmentTurnedIn'
 import AssignmentLate from '@mui/icons-material/AssignmentLate'
 import MoreVert from '@mui/icons-material/MoreVert'
-import { Image } from '@/components'
+import { Image } from '@/components/Image'
 import { LibraryContext } from "@/context"
 import { formatStorageName } from "../library.utils"
 import { LibraryEntry } from "../library.types"
