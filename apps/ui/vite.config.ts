@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    TanStackRouterVite(),
+    tanstackRouter(),
     react()
   ],
   resolve: {
@@ -20,5 +20,17 @@ export default defineConfig({
     watch: {
       usePolling: true, // Enable polling for Docker volumes
     },
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-mui': ['@mui/material', '@mui/icons-material'],
+          'vendor-emotion': ['@emotion/react', '@emotion/styled'],
+          'vendor-router': ['@tanstack/react-router'],
+        },
+      },
+    },
+  },
 })
