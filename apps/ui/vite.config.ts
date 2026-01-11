@@ -21,16 +21,4 @@ export default defineConfig({
       usePolling: true, // Enable polling for Docker volumes
     },
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-mui': ['@mui/material', '@mui/icons-material'],
-          'vendor-emotion': ['@emotion/react', '@emotion/styled'],
-          'vendor-router': ['@tanstack/react-router'],
-        },
-      },
-    },
-  },
 })
