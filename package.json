@@ -8,7 +8,6 @@
   "scripts": {
     "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
-    "secrets:setup:win": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"
   },
   "devDependencies": {
