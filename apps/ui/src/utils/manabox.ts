@@ -1,4 +1,4 @@
-import { LibraryEntry } from "@/components"
+import { LibraryEntry } from "@/components/Library/library.types"
 import { readCSVString } from "./csv"
 
 export type ExportKey = 'Binder Name' | 'Binder Type' | 'Name' | 'Set code' | 'Set name' | 'Collector number' | 'Foil' | 'Rarity' | 'Quantity' | 'ManaBox ID' | 'Scryfall ID' | 'Purchase price' | 'Misprint' | 'Altered' | 'Condition' | 'Language' | 'Purchase price currency'
