@@ -21,7 +21,7 @@ export class ScrapeCardProcessor {
 
   @Process({
     name: JOB_NAMES.SCRAPE_CARD,
-    concurrency: 3
+    concurrency: 5
   })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
     const { cardName, requestId } = job.data;
