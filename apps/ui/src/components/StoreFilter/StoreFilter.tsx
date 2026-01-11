@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Box, Button, Checkbox, Collapse, FormControl, FormControlLabel, FormGroup, FormLabel, IconButton, Typography } from '@mui/material'
-import { ExpandLess, ExpandMore } from '@mui/icons-material'
+import ExpandLess from '@mui/icons-material/ExpandLess'
+import ExpandMore from '@mui/icons-material/ExpandMore'
 import { StoreInfo } from '@scoutlgs/shared'
 
 interface StoreFilterProps {
@@ -60,6 +61,8 @@ export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFil
     [selectedStores.length]
   );
 
+  const hasStores = stores.length > 0;
+
   return (
     <Box
       sx={{
@@ -74,9 +77,9 @@ export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFil
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          cursor: 'pointer',
+          cursor: hasStores ? 'pointer' : 'default',
         }}
-        onClick={handleToggleExpanded}
+        onClick={hasStores ? handleToggleExpanded : undefined}
       >
         <Box>
           <FormLabel
@@ -85,64 +88,68 @@ export function StoreFilter({ stores, selectedStores, onStoresChange }: StoreFil
               fontWeight: 600,
               fontSize: '1rem',
               color: 'text.primary',
-              cursor: 'pointer',
+              cursor: hasStores ? 'pointer' : 'default',
             }}
           >
             Filter by Store
           </FormLabel>
           <Typography variant="caption" color="text.secondary">
-            {displayText} ({selectedCount} cards)
+            {hasStores ? `${displayText} (${selectedCount} cards)` : 'No stores available'}
           </Typography>
         </Box>
-        <IconButton size="small">
-          {expanded ? <ExpandLess /> : <ExpandMore />}
-        </IconButton>
+        {hasStores && (
+          <IconButton size="small">
+            {expanded ? <ExpandLess /> : <ExpandMore />}
+          </IconButton>
+        )}
       </Box>
 
-      <Collapse in={expanded}>
-        <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
-          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-            <Button size="small" onClick={handleClearAll} disabled={selectedStores.length === 0}>
-              Clear
-            </Button>
-          </Box>
+      {hasStores && (
+        <Collapse in={expanded}>
+          <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
+            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+              <Button size="small" onClick={handleClearAll} disabled={selectedStores.length === 0}>
+                Clear
+              </Button>
+            </Box>
 
-          <FormGroup>
-            {stores.map((store) => {
-              const isSelected = selectedStores.length > 0 && selectedStores.includes(store.displayName);
-              return (
-                <FormControlLabel
-                  key={store.id}
-                  control={
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={() => handleToggleStore(store.displayName)}
-                    />
-                  }
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2">{store.displayName}</Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: 1,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {store.cardCount}
-                      </Typography>
-                    </Box>
-                  }
-                />
-              );
-            })}
-          </FormGroup>
-        </FormControl>
-      </Collapse>
+            <FormGroup>
+              {stores.map((store) => {
+                const isSelected = selectedStores.length > 0 && selectedStores.includes(store.displayName);
+                return (
+                  <FormControlLabel
+                    key={store.id}
+                    control={
+                      <Checkbox
+                        checked={isSelected}
+                        onChange={() => handleToggleStore(store.displayName)}
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2">{store.displayName}</Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            bgcolor: 'primary.main',
+                            color: 'primary.contrastText',
+                            px: 1,
+                            py: 0.25,
+                            borderRadius: 1,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {store.cardCount}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                );
+              })}
+            </FormGroup>
+          </FormControl>
+        </Collapse>
+      )}
     </Box>
   );
 }
