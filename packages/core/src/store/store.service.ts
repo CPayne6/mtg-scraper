@@ -104,4 +104,34 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Invalidating store cache');
     await this.refreshCache();
   }
+
+  /**
+   * Check database health by verifying stores exist
+   * Returns status object for use in health checks
+   */
+  async checkHealth(): Promise<{ status: 'up' | 'down'; message?: string; storeCount?: number }> {
+    try {
+      // Try to count stores from database (bypasses cache)
+      const count = await this.storeRepository.count();
+
+      if (count === 0) {
+        return {
+          status: 'down',
+          message: 'No stores found in database',
+          storeCount: 0,
+        };
+      }
+
+      return {
+        status: 'up',
+        storeCount: count,
+      };
+    } catch (error) {
+      this.logger.error('Database health check failed:', error);
+      return {
+        status: 'down',
+        message: error instanceof Error ? error.message : 'Database connection failed',
+      };
+    }
+  }
 }

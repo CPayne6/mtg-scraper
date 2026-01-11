@@ -29,6 +29,40 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Function to validate required Docker secrets exist
+validate_secrets() {
+    log_info "Validating required secrets exist..."
+
+    REQUIRED_SECRETS=(
+        "postgres_password"
+        "cloudflare_tunnel_token"
+        "api_frontend_url"
+        "api_database_password"
+        "ui_vite_api_url"
+        "scraper_database_password"
+        "scraper_webshare_username"
+        "scraper_webshare_password"
+    )
+
+    MISSING_SECRETS=()
+    for secret in "${REQUIRED_SECRETS[@]}"; do
+        if ! docker secret inspect "$secret" > /dev/null 2>&1; then
+            MISSING_SECRETS+=("$secret")
+        fi
+    done
+
+    if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+        log_error "Missing required secrets:"
+        for secret in "${MISSING_SECRETS[@]}"; do
+            log_error "  - $secret"
+        done
+        log_error "Create secrets using: scripts/setup-secrets.sh"
+        exit 1
+    fi
+
+    log_info "All required secrets exist"
+}
+
 # Function to check if a service is healthy via Docker Swarm
 check_service_health() {
     local service=$1
@@ -63,10 +97,44 @@ create_backup() {
     log_info "Creating backup of current deployment state..."
     mkdir -p "$BACKUP_DIR"
 
-    # Save current service state
-    docker stack services "$STACK_NAME" --format "{{.Name}} {{.Image}}" > "${BACKUP_DIR}/services_backup_$(date +%Y%m%d_%H%M%S).txt" 2>/dev/null || true
+    BACKUP_FILE="${BACKUP_DIR}/backup_$(date +%Y%m%d_%H%M%S).txt"
 
-    log_info "Backup created successfully"
+    # Save current service state with full image info
+    docker stack services "$STACK_NAME" --format "{{.Name}} {{.Image}}" > "$BACKUP_FILE" 2>/dev/null || true
+
+    # Save the IMAGE_TAG that was used for this deployment
+    echo "IMAGE_TAG=${IMAGE_TAG:-latest}" >> "$BACKUP_FILE"
+
+    log_info "Backup created: $BACKUP_FILE"
+}
+
+# Function to run database migrations
+# Returns 1 on failure to trigger rollback
+run_migrations() {
+    log_info "Running database migrations..."
+
+    # Wait for API container to be fully ready
+    sleep 5
+
+    # Get API container ID (may have multiple replicas, get the first running one)
+    API_CONTAINER=$(docker ps -q -f name="${STACK_NAME}_api" | head -1)
+
+    if [ -z "$API_CONTAINER" ]; then
+        log_error "API container not found - cannot run migrations"
+        return 1
+    fi
+
+    log_info "Running migrations in container: $API_CONTAINER"
+
+    # Run production migrations inside the container
+    # Uses compiled JS files via migration:run:prod script
+    if docker exec "$API_CONTAINER" npm run migration:run:prod; then
+        log_info "Migrations completed successfully"
+        return 0
+    else
+        log_error "Migration failed - this is a critical error"
+        return 1
+    fi
 }
 
 # Function to rollback deployment
@@ -100,6 +168,9 @@ rollback() {
 # Main deployment function
 deploy() {
     log_info "Starting deployment process..."
+
+    # Validate secrets exist before proceeding
+    validate_secrets
 
     # Change to project directory
     cd "$PROJECT_DIR" || {
@@ -157,6 +228,25 @@ deploy() {
     # Health checks using Swarm service status
     log_info "Performing health checks..."
 
+    # Check infrastructure services first
+    if ! check_service_health "postgres"; then
+        rollback
+        exit 1
+    fi
+
+    if ! check_service_health "redis"; then
+        rollback
+        exit 1
+    fi
+
+    # Run database migrations after postgres is healthy
+    # Migrations must complete successfully before API can serve traffic
+    if ! run_migrations; then
+        rollback
+        exit 1
+    fi
+
+    # Check application services
     if ! check_service_health "api"; then
         rollback
         exit 1
@@ -167,12 +257,12 @@ deploy() {
         exit 1
     fi
 
-    if ! check_service_health "postgres"; then
+    if ! check_service_health "scheduler"; then
         rollback
         exit 1
     fi
 
-    if ! check_service_health "redis"; then
+    if ! check_service_health "scraper"; then
         rollback
         exit 1
     fi
