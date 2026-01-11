@@ -10,16 +10,22 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
   private cacheTimestamp: number = 0;
   private readonly cacheTTL = 3600000; // 1 hour in milliseconds
   private refreshInterval: NodeJS.Timeout | null = null;
+  private isReady = false;
+  private readyPromise: Promise<void>;
+  private resolveReady!: () => void;
 
   constructor(
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
-  ) {}
+  ) {
+    this.readyPromise = new Promise((resolve) => {
+      this.resolveReady = resolve;
+    });
+  }
 
   async onModuleInit() {
-    // Pre-load stores on module initialization
-    await this.refreshCache();
-    this.logger.log(`Pre-loaded ${this.cachedStores.length} stores into cache`);
+    // Pre-load stores on module initialization with retry logic
+    await this.loadStoresWithRetry();
 
     // Set up automatic cache refresh before expiration (refresh at 50 minutes)
     const refreshIntervalMs = this.cacheTTL * 0.833; // 50 minutes
@@ -27,6 +33,62 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
       this.logger.debug('Auto-refreshing store cache');
       await this.refreshCache();
     }, refreshIntervalMs);
+  }
+
+  private async loadStoresWithRetry(): Promise<void> {
+    const maxRetries = 3;
+    const retryDelayMs = 2000;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.refreshCache();
+
+        if (this.cachedStores.length === 0) {
+          if (attempt < maxRetries) {
+            this.logger.warn(
+              `Attempt ${attempt}/${maxRetries}: No stores found in database, retrying in ${retryDelayMs}ms...`
+            );
+            await this.delay(retryDelayMs);
+            continue;
+          }
+          throw new Error('No stores found in database after all retry attempts');
+        }
+
+        this.logger.log(`Pre-loaded ${this.cachedStores.length} stores into cache`);
+        this.isReady = true;
+        this.resolveReady();
+        return;
+      } catch (error) {
+        if (attempt < maxRetries) {
+          this.logger.warn(
+            `Attempt ${attempt}/${maxRetries}: Failed to load stores from database, retrying in ${retryDelayMs}ms...`
+          );
+          await this.delay(retryDelayMs);
+        } else {
+          this.logger.error('Failed to load stores from database after all retry attempts:', error);
+          throw error;
+        }
+      }
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Wait until stores have been successfully loaded from the database.
+   * Use this to ensure the service is ready before processing requests.
+   */
+  async waitUntilReady(): Promise<void> {
+    return this.readyPromise;
+  }
+
+  /**
+   * Check if stores have been successfully loaded.
+   */
+  ready(): boolean {
+    return this.isReady;
   }
 
   onModuleDestroy() {

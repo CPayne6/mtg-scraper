@@ -26,6 +26,9 @@ export class ScrapeCardProcessor {
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
     const { cardName, requestId } = job.data;
 
+    // Ensure stores are loaded before processing
+    await this.scraperService.waitUntilReady();
+
     this.logger.log(
       `Processing scrape job for: ${cardName} (Job ID: ${job.id}, Request ID: ${requestId || 'N/A'})`,
     );
