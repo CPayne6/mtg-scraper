@@ -1,11 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
+import { parseLogLevel } from '@scoutlgs/core';
 
 async function bootstrap() {
   const logger = new Logger('ScraperMicroservice');
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: parseLogLevel(process.env.LOG_LEVEL),
+  });
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

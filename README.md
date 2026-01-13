@@ -97,8 +97,8 @@ mtg-scraper/
 ├── packages/
 │   ├── core/         # Shared infrastructure & domain logic
 │   └── shared/       # Shared types & utilities
-├── docker-compose.yml      # Production setup
 ├── docker-compose.dev.yml  # Development with hot reload
+├── docker-compose.prod.yml # Production Docker Swarm setup
 └── package.json            # Root workspace config
 ```
 
@@ -134,16 +134,17 @@ mtg-scraper/
    docker-compose -f docker-compose.dev.yml up
    ```
 
+   Or use the convenience script:
+   ```bash
+   ./dev-start.sh
+   ```
+
 4. **Access the application**
    - UI: http://localhost:3000
    - API: http://localhost:5000
    - API Health: http://localhost:5000/health
 
-#### Production Mode
-
-```bash
-docker-compose up -d
-```
+> **Note:** For production deployment, see the [Docker Swarm Production Deployment](#docker-swarm-production-deployment) section below.
 
 ### Local Development (without Docker)
 
@@ -199,25 +200,6 @@ pnpm --filter api build
 pnpm --filter scheduler build
 pnpm --filter scraper build
 pnpm --filter ui build
-```
-
-### Docker Deployment
-
-```bash
-# Production build and start
-docker-compose up -d
-
-# Scale scraper workers based on load
-docker-compose up -d --scale scraper=5
-
-# View logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes (clean slate)
-docker-compose down -v
 ```
 
 ### Docker Swarm Production Deployment
@@ -452,7 +434,7 @@ Each scraper worker:
 
 ### Vertical Scaling - Resources
 
-Adjust Docker resource limits in `docker-compose.yml`:
+Adjust Docker resource limits in `docker-compose.prod.yml`:
 
 ```yaml
 scraper:
@@ -546,7 +528,7 @@ docker-compose exec redis redis-cli
 
 **Port already in use**
 ```bash
-# Change ports in docker-compose.yml
+# Change ports in docker-compose.dev.yml or docker-compose.prod.yml
 ports:
   - "5001:5000"  # Change external port
 ```

@@ -35,7 +35,7 @@ export class ScrapeCardProcessor {
 
     try {
       // Perform the scraping
-      const results = await this.scraperService.searchCard(cardName);
+      const { results, storeErrors } = await this.scraperService.searchCard(cardName);
 
       // Cache the results
       await this.cacheService.setCard(cardName, results);
@@ -50,6 +50,7 @@ export class ScrapeCardProcessor {
       return {
         cardName,
         results,
+        storeErrors,
         timestamp: Date.now(),
         success: true,
       };

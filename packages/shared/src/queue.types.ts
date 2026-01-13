@@ -14,10 +14,16 @@ export interface ScrapeCardJobData {
   requestId?: string;
 }
 
+export interface StoreError {
+  storeName: string;
+  error: string;
+}
+
 export interface ScrapeCardJobResult {
   cardName: string;
   results: CardWithStore[];
   timestamp: number;
   success: boolean;
   error?: string;
+  storeErrors?: StoreError[];
 }
