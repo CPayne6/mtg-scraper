@@ -1,24 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthController } from './health.controller';
-import { HealthCheckService, HealthCheckResult } from '@nestjs/terminus';
+import { HealthService, HealthStatus } from './health.service';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('HealthController', () => {
   let controller: HealthController;
-  let healthCheckService: ReturnType<typeof vi.mocked<HealthCheckService>>;
+  let healthService: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    const mockHealthCheckService = {
+    const mockHealthService = {
       check: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
-      providers: [{ provide: HealthCheckService, useValue: mockHealthCheckService }],
+      providers: [{ provide: HealthService, useValue: mockHealthService }],
     }).compile();
 
     controller = module.get<HealthController>(HealthController);
-    healthCheckService = module.get(HealthCheckService);
+    healthService = module.get(HealthService);
   });
 
   it('should be defined', () => {
@@ -27,48 +27,47 @@ describe('HealthController', () => {
 
   describe('check', () => {
     it('should return health check result with status ok', async () => {
-      const healthResult: HealthCheckResult = {
+      const healthResult: HealthStatus = {
         status: 'ok',
         info: {},
         error: {},
         details: {},
       };
-      healthCheckService.check.mockResolvedValue(healthResult);
+      healthService.check.mockResolvedValue(healthResult);
 
       const result = await controller.check();
 
-      expect(healthCheckService.check).toHaveBeenCalledWith([]);
+      expect(healthService.check).toHaveBeenCalled();
       expect(result.status).toBe('ok');
     });
 
     it('should return health check result with status error', async () => {
-      const healthResult: HealthCheckResult = {
+      const healthResult: HealthStatus = {
         status: 'error',
         info: {},
         error: { database: { status: 'down' } },
         details: { database: { status: 'down' } },
       };
-      healthCheckService.check.mockResolvedValue(healthResult);
+      healthService.check.mockResolvedValue(healthResult);
 
       const result = await controller.check();
 
-      expect(healthCheckService.check).toHaveBeenCalledWith([]);
+      expect(healthService.check).toHaveBeenCalled();
       expect(result.status).toBe('error');
     });
 
-    it('should call health check with empty indicators array', async () => {
-      const healthResult: HealthCheckResult = {
+    it('should call health check service', async () => {
+      const healthResult: HealthStatus = {
         status: 'ok',
         info: {},
         error: {},
         details: {},
       };
-      healthCheckService.check.mockResolvedValue(healthResult);
+      healthService.check.mockResolvedValue(healthResult);
 
       await controller.check();
 
-      expect(healthCheckService.check).toHaveBeenCalledWith([]);
-      expect(healthCheckService.check).toHaveBeenCalledTimes(1);
+      expect(healthService.check).toHaveBeenCalledTimes(1);
     });
   });
 });

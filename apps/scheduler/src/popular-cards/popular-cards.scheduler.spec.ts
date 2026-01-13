@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { PopularCardsScheduler } from './popular-cards.scheduler';
 import { PopularCardsService } from './popular-cards.service';
-import { QueueService } from '../queue/queue.service';
+import { QueueService } from '@scoutlgs/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('PopularCardsScheduler', () => {
@@ -19,6 +19,10 @@ describe('PopularCardsScheduler', () => {
         if (key === 'schedule.dailyScrapeTime') return '0 2 * * *';
         if (key === 'schedule.enabled') return true;
         return undefined;
+      }),
+      getOrThrow: vi.fn((key: string) => {
+        if (key === 'schedule.dailyScrapeTime') return '0 2 * * *';
+        throw new Error(`Missing config: ${key}`);
       }),
     };
 
@@ -66,15 +70,9 @@ describe('PopularCardsScheduler', () => {
     });
 
     it('should use configured cron time', () => {
-      const customCronTime = '0 3 * * *';
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'schedule.dailyScrapeTime') return customCronTime;
-        return undefined;
-      });
-
       scheduler.onModuleInit();
 
-      expect(configService.get).toHaveBeenCalledWith('schedule.dailyScrapeTime');
+      expect(configService.getOrThrow).toHaveBeenCalledWith('schedule.dailyScrapeTime');
     });
   });
 

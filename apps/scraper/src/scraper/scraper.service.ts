@@ -130,15 +130,24 @@ export class ScraperService implements OnModuleInit {
     }
   }
 
-  async searchCard(cardName: string): Promise<{ results: CardWithStore[]; storeErrors: StoreError[] }> {
-    this.logger.log(`Searching for card: ${cardName}`);
+  async searchCard(cardName: string, storeNames?: string[]): Promise<{ results: CardWithStore[]; storeErrors: StoreError[] }> {
+    // Filter stores if specific store names are provided
+    const storesToSearch = storeNames?.length
+      ? this.stores.filter((store) => storeNames.includes(store.name))
+      : this.stores;
+
+    if (storeNames?.length) {
+      this.logger.log(`Searching for card: ${cardName} in specific stores: ${storeNames.join(', ')}`);
+    } else {
+      this.logger.log(`Searching for card: ${cardName}`);
+    }
 
     const cards: CardWithStore[] = [];
     const storeErrors: StoreError[] = [];
 
-    // Fetch from all stores and track errors
+    // Fetch from stores and track errors
     const fetchResults = await Promise.all(
-      this.stores.map(async (store) => {
+      storesToSearch.map(async (store) => {
         const result = await this.fetchCardFromStore(cardName, store);
 
         if (result.error) {

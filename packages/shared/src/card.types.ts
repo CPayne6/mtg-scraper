@@ -37,6 +37,7 @@ export interface CardSearchResponse {
   priceStats: PriceStats;
   results: CardWithStore[];
   timestamp: number;
+  storeErrors?: { storeName: string; error: string }[];
 }
 
 export interface Set {

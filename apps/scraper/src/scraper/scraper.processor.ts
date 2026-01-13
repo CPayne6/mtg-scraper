@@ -24,36 +24,74 @@ export class ScrapeCardProcessor {
     concurrency: 5
   })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
-    const { cardName, requestId } = job.data;
+    const { cardName, requestId, stores } = job.data;
+    const isTargetedScrape = stores && stores.length > 0;
 
     // Ensure stores are loaded before processing
     await this.scraperService.waitUntilReady();
 
     this.logger.log(
-      `Processing scrape job for: ${cardName} (Job ID: ${job.id}, Request ID: ${requestId || 'N/A'})`,
+      `Processing scrape job for: ${cardName} (Job ID: ${job.id}, Request ID: ${requestId || 'N/A'}${isTargetedScrape ? `, Stores: ${stores.join(', ')}` : ''})`,
     );
 
     try {
-      // Perform the scraping
-      const { results, storeErrors } = await this.scraperService.searchCard(cardName);
+      // Perform the scraping (for specific stores or all stores)
+      const { results, storeErrors } = await this.scraperService.searchCard(cardName, stores);
 
-      // Cache the results
-      await this.cacheService.setCard(cardName, results);
+      if (isTargetedScrape) {
+        // For targeted scrapes, merge with existing cached data
+        const cached = await this.cacheService.getCachedResult(cardName);
 
-      // Mark scraping as complete
-      await this.cacheService.markScrapeComplete(cardName);
+        // Preserve the original timestamp from the initial scrape
+        const originalTimestamp = cached?.timestamp ?? Date.now();
 
-      this.logger.log(
-        `Successfully scraped ${results.length} results for: ${cardName}`,
-      );
+        // Remove old results from the stores we just scraped
+        const existingResults = cached?.results.filter(
+          (card) => !stores.includes(card.store)
+        ) ?? [];
 
-      return {
-        cardName,
-        results,
-        storeErrors,
-        timestamp: Date.now(),
-        success: true,
-      };
+        // Remove old errors from the stores we just scraped
+        const existingErrors = cached?.storeErrors?.filter(
+          (err) => !stores.includes(err.storeName)
+        ) ?? [];
+
+        // Merge results and sort by price
+        const mergedResults = [...existingResults, ...results].sort((a, b) => a.price - b.price);
+        const mergedErrors = [...existingErrors, ...storeErrors];
+
+        // Cache the merged results with the original timestamp
+        await this.cacheService.setCard(cardName, mergedResults, mergedErrors, originalTimestamp);
+
+        this.logger.log(
+          `Successfully scraped ${results.length} results from ${stores.length} store(s) for: ${cardName} (merged total: ${mergedResults.length})`,
+        );
+
+        return {
+          cardName,
+          results: mergedResults,
+          storeErrors: mergedErrors,
+          timestamp: originalTimestamp,
+          success: true,
+        };
+      } else {
+        // Full scrape - cache all results
+        await this.cacheService.setCard(cardName, results, storeErrors);
+
+        // Mark scraping as complete
+        await this.cacheService.markScrapeComplete(cardName);
+
+        this.logger.log(
+          `Successfully scraped ${results.length} results for: ${cardName}`,
+        );
+
+        return {
+          cardName,
+          results,
+          storeErrors,
+          timestamp: Date.now(),
+          success: true,
+        };
+      }
     } catch (error) {
       this.logger.error(
         `Failed to scrape ${cardName}:`,
@@ -61,7 +99,9 @@ export class ScrapeCardProcessor {
       );
 
       // Mark scraping as complete even on failure so waiting requests don't hang
-      await this.cacheService.markScrapeComplete(cardName);
+      if (!isTargetedScrape) {
+        await this.cacheService.markScrapeComplete(cardName);
+      }
 
       return {
         cardName,

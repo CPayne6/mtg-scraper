@@ -2,26 +2,40 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ScraperService } from './scraper.service';
 import { StoreService } from '@scoutlgs/core';
 import { mockStores } from '@scoutlgs/core/test';
-import { CardWithStore } from '@scoutlgs/shared';
+import { ProxyService } from './proxy/proxy.service';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('ScraperService', () => {
   let service: ScraperService;
   let storeService: ReturnType<typeof vi.fn>;
+  let proxyService: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     const mockStoreService = {
       findAllActive: vi.fn(),
+      waitUntilReady: vi.fn().mockResolvedValue(undefined),
+      ready: vi.fn().mockReturnValue(true),
+    };
+
+    const mockProxyService = {
+      getProxy: vi.fn().mockReturnValue({
+        name: 'test-proxy',
+        host: 'localhost',
+        port: 8080,
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ScraperService,
         { provide: StoreService, useValue: mockStoreService },
+        { provide: ProxyService, useValue: mockProxyService },
       ],
     }).compile();
 
     service = module.get<ScraperService>(ScraperService);
     storeService = module.get(StoreService);
+    proxyService = module.get(ProxyService);
   });
 
   it('should be defined', () => {
@@ -37,13 +51,11 @@ describe('ScraperService', () => {
       expect(storeService.findAllActive).toHaveBeenCalled();
     });
 
-    it('should fall back to hardcoded stores if database fails', async () => {
+    it('should throw if database fails to load stores', async () => {
       storeService.findAllActive.mockRejectedValue(new Error('Database error'));
 
-      await service.onModuleInit();
-
+      await expect(service.onModuleInit()).rejects.toThrow('Database error');
       expect(storeService.findAllActive).toHaveBeenCalled();
-      // Service should still be functional with fallback stores
     });
 
     it('should handle different scraper types', async () => {
@@ -67,67 +79,56 @@ describe('ScraperService', () => {
       await service.onModuleInit();
     });
 
-    it('should return empty array when no stores are configured', async () => {
-      const results = await service.searchCard('Lightning Bolt');
+    it('should return empty results when no stores are configured', async () => {
+      const { results } = await service.searchCard('Lightning Bolt');
 
       expect(results).toEqual([]);
     });
 
-    it('should sort results by price', async () => {
-      // This test would require mocking the loader/parser infrastructure
-      // For now, we'll test with no stores which returns empty
-      const results = await service.searchCard('Lightning Bolt');
+    it('should return results object with storeErrors', async () => {
+      const result = await service.searchCard('Lightning Bolt');
 
-      expect(Array.isArray(results)).toBe(true);
+      expect(result).toHaveProperty('results');
+      expect(result).toHaveProperty('storeErrors');
+      expect(Array.isArray(result.results)).toBe(true);
+      expect(Array.isArray(result.storeErrors)).toBe(true);
     });
 
     it('should handle store fetch failures gracefully', async () => {
       // Even if stores fail, searchCard should not throw
-      const results = await service.searchCard('Black Lotus');
+      const { results } = await service.searchCard('Black Lotus');
 
       expect(Array.isArray(results)).toBe(true);
     });
 
     it('should combine results from multiple stores', async () => {
       // This would require more complex mocking of the loader/parser chain
-      const results = await service.searchCard('Sol Ring');
+      const { results } = await service.searchCard('Sol Ring');
 
       expect(Array.isArray(results)).toBe(true);
     });
 
     it('should filter results by card name', async () => {
       // The service filters cards by name in fetchCardFromStore
-      const results = await service.searchCard('Counterspell');
+      const { results } = await service.searchCard('Counterspell');
 
       expect(Array.isArray(results)).toBe(true);
     });
   });
 
-  describe('cache behavior', () => {
-    beforeEach(async () => {
-      storeService.findAllActive.mockResolvedValue([]);
-      await service.onModuleInit();
+  describe('ready state', () => {
+    it('should report ready state from store service', () => {
+      storeService.ready.mockReturnValue(true);
+
+      expect(service.ready()).toBe(true);
     });
 
-    it('should cache results for subsequent requests', async () => {
-      const cardName = 'Lightning Bolt';
+    it('should wait until ready', async () => {
+      storeService.waitUntilReady.mockResolvedValue(undefined);
 
-      // First call
-      const firstResults = await service.searchCard(cardName);
+      await service.waitUntilReady();
 
-      // Second call - should use cache
-      const secondResults = await service.searchCard(cardName);
-
-      expect(Array.isArray(firstResults)).toBe(true);
-      expect(Array.isArray(secondResults)).toBe(true);
-    });
-
-    it('should respect cache TTL', async () => {
-      // This would require manipulating time or waiting for cache expiry
-      // For now, just verify the search works
-      const results = await service.searchCard('Black Lotus');
-
-      expect(Array.isArray(results)).toBe(true);
+      expect(storeService.waitUntilReady).toHaveBeenCalled();
     });
   });
 });

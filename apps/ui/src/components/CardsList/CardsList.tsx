@@ -59,9 +59,6 @@ export function CardList({ cards, loading }: CardListProps) {
           <Typography variant="h6" color="text.secondary">
             No cards found
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Try a different search term
-          </Typography>
         </Box>
       )
     }
