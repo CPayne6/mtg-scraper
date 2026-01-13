@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CacheService, CardWithStore, QueueService, StoreService } from '@scoutlgs/core';
-import { CardSearchResponse, StoreInfo, PriceStats } from '@scoutlgs/shared';
+import { CardSearchResponse, StoreInfo, PriceStats, StoreError } from '@scoutlgs/shared';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -14,13 +14,24 @@ export class CardService {
   ) {}
 
   async getCardByName(cardName: string): Promise<CardSearchResponse> {
-    // Try to get cached data
-    const cachedCards = await this.cacheService.getCard(cardName);
+    // Try to get cached data (including store errors)
+    const cachedResult = await this.cacheService.getCachedResult(cardName);
 
-    if (cachedCards) {
-      // Serve from cache
-      this.logger.debug(`Serving ${cardName} from cache`);
-      return this.buildResponse(cardName, cachedCards);
+    // Determine if we need to scrape and which stores
+    let storesToScrape: string[] | undefined;
+
+    if (cachedResult) {
+      // Check if there are store errors that need retrying
+      if (cachedResult.storeErrors && cachedResult.storeErrors.length > 0) {
+        storesToScrape = cachedResult.storeErrors.map((e) => e.storeName);
+        this.logger.log(
+          `Cached data for ${cardName} has ${storesToScrape.length} store error(s), retrying: ${storesToScrape.join(', ')}`,
+        );
+      } else {
+        // No store errors - serve from cache
+        this.logger.debug(`Serving ${cardName} from cache`);
+        return this.buildResponse(cardName, cachedResult.results, cachedResult.storeErrors);
+      }
     }
 
     // Check if already being scraped by another request
@@ -29,8 +40,9 @@ export class CardService {
     if (isBeingScraped) {
       // Another request is already scraping this card - wait for it
       this.logger.log(`${cardName} is already being scraped, waiting for completion`);
-      const cards = await this.cacheService.waitForScrapeCompletion(cardName);
-      return this.buildResponse(cardName, cards || []);
+      await this.cacheService.waitForScrapeCompletion(cardName);
+      const result = await this.cacheService.getCachedResult(cardName);
+      return this.buildResponse(cardName, result?.results || [], result?.storeErrors);
     }
 
     // Mark as being scraped and enqueue job
@@ -40,22 +52,29 @@ export class CardService {
     if (!marked) {
       // Race condition: another request just marked it - wait for that request
       this.logger.log(`${cardName} was just marked by another request, waiting for completion`);
-      const cards = await this.cacheService.waitForScrapeCompletion(cardName);
-      return this.buildResponse(cardName, cards || []);
+      await this.cacheService.waitForScrapeCompletion(cardName);
+      const result = await this.cacheService.getCachedResult(cardName);
+      return this.buildResponse(cardName, result?.results || [], result?.storeErrors);
     }
 
-    // We successfully marked it - enqueue the scrape job
-    this.logger.log(`Cache miss for ${cardName}, enqueueing scrape job (Request ID: ${requestId})`);
-    await this.queueService.enqueueScrapeJob(cardName, 10, requestId);
+    // We successfully marked it - enqueue the scrape job (with specific stores if retrying)
+    if (storesToScrape) {
+      this.logger.log(`Enqueueing retry scrape for ${cardName}, stores: ${storesToScrape.join(', ')} (Request ID: ${requestId})`);
+    } else {
+      this.logger.log(`Cache miss for ${cardName}, enqueueing scrape job (Request ID: ${requestId})`);
+    }
+    await this.queueService.enqueueScrapeJob(cardName, 10, requestId, storesToScrape);
 
     // Wait for the scrape to complete
-    const cards = await this.cacheService.waitForScrapeCompletion(cardName);
-    return this.buildResponse(cardName, cards || []);
+    await this.cacheService.waitForScrapeCompletion(cardName);
+    const result = await this.cacheService.getCachedResult(cardName);
+    return this.buildResponse(cardName, result?.results || [], result?.storeErrors);
   }
 
   private async buildResponse(
     cardName: string,
     cards: CardWithStore[],
+    storeErrors?: StoreError[],
   ): Promise<CardSearchResponse> {
     // Get all active stores from database (uses server-side cache)
     const allStores = await this.storeService.findAllActive();
@@ -105,6 +124,7 @@ export class CardService {
       priceStats,
       results: cards,
       timestamp: Date.now(),
+      storeErrors: storeErrors?.length ? storeErrors : undefined,
     };
   }
 }

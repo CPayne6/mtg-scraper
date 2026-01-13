@@ -42,13 +42,16 @@ export class PopularCardsScheduler implements OnModuleInit {
 
     try {
       const popularCards = await this.popularCardsService.getPopularCards();
-      this.logger.log(`Enqueueing ${popularCards.length} popular cards for scraping in batches of 50`);
+      const batchSize = this.configService.get<number>('popularCards.batchSize') ?? 50;
+      const batchDelayMs = this.configService.get<number>('popularCards.batchDelayMs') ?? 1000;
+
+      this.logger.log(`Enqueueing ${popularCards.length} popular cards for scraping in batches of ${batchSize}`);
+      this.logger.log(`Batch delay set to ${batchDelayMs}ms`);
 
       let enqueuedCount = 0;
       let skippedCount = 0;
-      const batchSize = 50;
 
-      // Process cards in batches of 50
+      // Process cards in batches
       for (let i = 0; i < popularCards.length; i += batchSize) {
         const batch = popularCards.slice(i, i + batchSize);
         const batchNumber = Math.floor(i / batchSize) + 1;
@@ -78,6 +81,12 @@ export class PopularCardsScheduler implements OnModuleInit {
         this.logger.log(
           `Batch ${batchNumber}/${totalBatches} complete: ${enqueuedCount} enqueued, ${skippedCount} skipped so far`
         );
+
+        // Wait before processing the next batch (unless this is the last batch)
+        if (i + batchSize < popularCards.length) {
+          this.logger.debug(`Waiting ${batchDelayMs}ms before next batch...`);
+          await this.sleep(batchDelayMs);
+        }
       }
 
       this.logger.log(
@@ -86,6 +95,10 @@ export class PopularCardsScheduler implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to execute daily popular cards scrape', error);
     }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

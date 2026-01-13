@@ -12,6 +12,13 @@ export interface ScrapeCardJobData {
   cardName: string;
   priority?: number;
   requestId?: string;
+  /** Optional list of store names to scrape. If not provided, scrapes all stores. */
+  stores?: string[];
+}
+
+export interface StoreError {
+  storeName: string;
+  error: string;
 }
 
 export interface ScrapeCardJobResult {
@@ -20,4 +27,5 @@ export interface ScrapeCardJobResult {
   timestamp: number;
   success: boolean;
   error?: string;
+  storeErrors?: StoreError[];
 }

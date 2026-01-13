@@ -12,14 +12,14 @@ describe('EdhrecService', () => {
 
   beforeEach(async () => {
     const mockConfigService = {
-      get: vi.fn((key: string) => {
+      getOrThrow: vi.fn((key: string) => {
         if (key === 'popularCards.edhrecBaseUrl') {
           return 'https://json.edhrec.com/pages/top/month-pastmonth';
         }
         if (key === 'popularCards.edhrecPages') {
           return 2;
         }
-        return undefined;
+        throw new Error(`Missing config: ${key}`);
       }),
     };
 
@@ -34,7 +34,7 @@ describe('EdhrecService', () => {
     configService = module.get(ConfigService);
 
     // Reset fetch mock before each test
-    (global.fetch as jest.Mock).mockClear();
+    vi.mocked(global.fetch).mockClear();
   });
 
   it('should be defined', () => {
@@ -51,10 +51,10 @@ describe('EdhrecService', () => {
         ],
       };
 
-      (global.fetch as jest.Mock).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const result = await service.fetchPopularCards();
 
@@ -79,15 +79,15 @@ describe('EdhrecService', () => {
         ],
       };
 
-      (global.fetch as jest.Mock)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => mockResponse1,
-        })
+        } as Response)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => mockResponse2,
-        });
+        } as Response);
 
       const result = await service.fetchPopularCards();
 
@@ -97,11 +97,11 @@ describe('EdhrecService', () => {
     });
 
     it('should handle HTTP errors gracefully', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 404,
         statusText: 'Not Found',
-      });
+      } as Response);
 
       const result = await service.fetchPopularCards();
 
@@ -110,7 +110,7 @@ describe('EdhrecService', () => {
     });
 
     it('should handle network errors', async () => {
-      (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
+      vi.mocked(global.fetch).mockRejectedValue(new Error('Network error'));
 
       const result = await service.fetchPopularCards();
 
@@ -122,10 +122,10 @@ describe('EdhrecService', () => {
         cardviews: [{ id: '1', name: 'Test Card' }],
       };
 
-      (global.fetch as jest.Mock).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const result = await service.fetchPopularCards();
 
@@ -139,10 +139,10 @@ describe('EdhrecService', () => {
         cardviews: [],
       };
 
-      (global.fetch as jest.Mock).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const result = await service.fetchPopularCards();
 
@@ -158,10 +158,10 @@ describe('EdhrecService', () => {
         ],
       };
 
-      (global.fetch as jest.Mock).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const result = await service.fetchPopularCards();
 
@@ -174,10 +174,10 @@ describe('EdhrecService', () => {
         cardviews: [{ id: '1', name: 'Test' }],
       };
 
-      (global.fetch as jest.Mock).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       await service.fetchPopularCards();
 
@@ -190,13 +190,13 @@ describe('EdhrecService', () => {
     });
 
     it('should handle partial page failures', async () => {
-      (global.fetch as jest.Mock)
+      vi.mocked(global.fetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
             cardviews: [{ id: '1', name: 'Success Card' }],
           }),
-        })
+        } as Response)
         .mockRejectedValueOnce(new Error('Page 2 failed'));
 
       const result = await service.fetchPopularCards();

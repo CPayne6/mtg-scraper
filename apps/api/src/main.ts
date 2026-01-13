@@ -3,9 +3,12 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { parseLogLevel } from '@scoutlgs/core';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: parseLogLevel(process.env.LOG_LEVEL),
+  });
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
 

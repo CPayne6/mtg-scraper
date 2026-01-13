@@ -4,6 +4,21 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { CacheService, QueueService, StoreService } from '@scoutlgs/core';
 import { mockCardWithStore, mockStores } from '@scoutlgs/core/test';
+import { ScrapeCardJobResult } from '@scoutlgs/shared';
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+
+// Helper to create a mock cached result
+const createCachedResult = (
+  cardName: string,
+  cards: typeof mockCardWithStore[],
+  storeErrors?: { storeName: string; error: string }[],
+): ScrapeCardJobResult => ({
+  cardName,
+  results: cards,
+  timestamp: Date.now(),
+  success: true,
+  storeErrors,
+});
 
 describe('Card API (e2e)', () => {
   let app: INestApplication;
@@ -17,18 +32,18 @@ describe('Card API (e2e)', () => {
     })
       .overrideProvider(CacheService)
       .useValue({
-        getCard: jest.fn(),
-        isBeingScraped: jest.fn(),
-        waitForScrapeCompletion: jest.fn(),
-        markAsBeingScraped: jest.fn(),
+        getCachedResult: vi.fn(),
+        isBeingScraped: vi.fn(),
+        waitForScrapeCompletion: vi.fn(),
+        markAsBeingScraped: vi.fn(),
       })
       .overrideProvider(QueueService)
       .useValue({
-        enqueueScrapeJob: jest.fn(),
+        enqueueScrapeJob: vi.fn(),
       })
       .overrideProvider(StoreService)
       .useValue({
-        findAllActive: jest.fn().mockResolvedValue(mockStores),
+        findAllActive: vi.fn().mockResolvedValue(mockStores),
       })
       .compile();
 
@@ -52,7 +67,7 @@ describe('Card API (e2e)', () => {
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('GET /card/:cardName', () => {
@@ -60,7 +75,9 @@ describe('Card API (e2e)', () => {
       const cardName = 'Black Lotus';
       const cachedCards = [{ ...mockCardWithStore, store: 'Face to Face Games' }];
 
-      (cacheService.getCard as jest.Mock).mockResolvedValue(cachedCards);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createCachedResult(cardName, cachedCards),
+      );
 
       const response = await request(app.getHttpServer())
         .get(`/card/${cardName}`)
@@ -78,10 +95,12 @@ describe('Card API (e2e)', () => {
       const cardName = 'Lightning Bolt';
       const scrapedCards = [{ ...mockCardWithStore, store: 'Face to Face Games' }];
 
-      (cacheService.getCard as jest.Mock).mockResolvedValue(null);
-      (cacheService.isBeingScraped as jest.Mock).mockResolvedValue(false);
-      (cacheService.markAsBeingScraped as jest.Mock).mockResolvedValue(true);
-      (cacheService.waitForScrapeCompletion as jest.Mock).mockResolvedValue(
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(createCachedResult(cardName, scrapedCards));
+      (cacheService.isBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+      (cacheService.markAsBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      (cacheService.waitForScrapeCompletion as ReturnType<typeof vi.fn>).mockResolvedValue(
         scrapedCards,
       );
 
@@ -94,33 +113,67 @@ describe('Card API (e2e)', () => {
         cardName,
         10,
         expect.any(String),
+        undefined,
       );
+    });
+
+    it('should retry failed stores when cached data has store errors', async () => {
+      const cardName = 'Sol Ring';
+      const cachedCards = [{ ...mockCardWithStore, store: 'Face to Face Games' }];
+      const storeErrors = [{ storeName: '401 Games', error: 'Network error' }];
+      const updatedCards = [
+        { ...mockCardWithStore, store: 'Face to Face Games' },
+        { ...mockCardWithStore, store: '401 Games' },
+      ];
+
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(createCachedResult(cardName, cachedCards, storeErrors))
+        .mockResolvedValueOnce(createCachedResult(cardName, updatedCards));
+      (cacheService.isBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+      (cacheService.markAsBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      (cacheService.waitForScrapeCompletion as ReturnType<typeof vi.fn>).mockResolvedValue(updatedCards);
+
+      const response = await request(app.getHttpServer())
+        .get(`/card/${cardName}`)
+        .expect(200);
+
+      expect(queueService.enqueueScrapeJob).toHaveBeenCalledWith(
+        cardName,
+        10,
+        expect.any(String),
+        ['401 Games'],
+      );
+      expect(response.body.results).toHaveLength(2);
     });
 
     it('should handle card names with spaces', async () => {
       const cardName = 'Command Tower';
-      (cacheService.getCard as jest.Mock).mockResolvedValue([]);
-      (cacheService.isBeingScraped as jest.Mock).mockResolvedValue(true);
-      (cacheService.waitForScrapeCompletion as jest.Mock).mockResolvedValue([]);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(createCachedResult(cardName, []));
+      (cacheService.isBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      (cacheService.waitForScrapeCompletion as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       await request(app.getHttpServer())
         .get(`/card/${encodeURIComponent(cardName)}`)
         .expect(200);
 
-      expect(cacheService.getCard).toHaveBeenCalledWith(cardName);
+      expect(cacheService.getCachedResult).toHaveBeenCalledWith(cardName);
     });
 
     it('should handle card names with special characters', async () => {
       const cardName = "Urza's Saga";
-      (cacheService.getCard as jest.Mock).mockResolvedValue([]);
-      (cacheService.isBeingScraped as jest.Mock).mockResolvedValue(true);
-      (cacheService.waitForScrapeCompletion as jest.Mock).mockResolvedValue([]);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(createCachedResult(cardName, []));
+      (cacheService.isBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      (cacheService.waitForScrapeCompletion as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
       await request(app.getHttpServer())
         .get(`/card/${encodeURIComponent(cardName)}`)
         .expect(200);
 
-      expect(cacheService.getCard).toHaveBeenCalledWith(cardName);
+      expect(cacheService.getCachedResult).toHaveBeenCalledWith(cardName);
     });
 
     it('should return correct price statistics', async () => {
@@ -131,7 +184,9 @@ describe('Card API (e2e)', () => {
         { ...mockCardWithStore, price: 150, store: 'Store C' },
       ];
 
-      (cacheService.getCard as jest.Mock).mockResolvedValue(cards);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createCachedResult(cardName, cards),
+      );
 
       const response = await request(app.getHttpServer())
         .get(`/card/${cardName}`)
@@ -151,7 +206,9 @@ describe('Card API (e2e)', () => {
         { ...mockCardWithStore, store: '401 Games' },
       ];
 
-      (cacheService.getCard as jest.Mock).mockResolvedValue(cards);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createCachedResult(cardName, cards),
+      );
 
       const response = await request(app.getHttpServer())
         .get(`/card/${cardName}`)
@@ -171,7 +228,9 @@ describe('Card API (e2e)', () => {
     it('should handle empty results', async () => {
       const cardName = 'NonexistentCard';
 
-      (cacheService.getCard as jest.Mock).mockResolvedValue([]);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createCachedResult(cardName, []),
+      );
 
       const response = await request(app.getHttpServer())
         .get(`/card/${cardName}`)
@@ -192,7 +251,9 @@ describe('Card API (e2e)', () => {
         { ...mockCardWithStore, store: 'Face to Face Games' },
       ];
 
-      (cacheService.getCard as jest.Mock).mockResolvedValue(cards);
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createCachedResult(cardName, cards),
+      );
 
       const response = await request(app.getHttpServer())
         .get(`/card/${cardName}`)
@@ -201,6 +262,25 @@ describe('Card API (e2e)', () => {
       expect(response.body.stores[0].displayName).toBe('401 Games');
       expect(response.body.stores[1].displayName).toBe('Face to Face Games');
       expect(response.body.stores[2].displayName).toBe('Hobbiesville');
+    });
+
+    it('should include store errors in response when retries still fail', async () => {
+      const cardName = 'Mox Diamond';
+      const cards = [{ ...mockCardWithStore, store: 'Face to Face Games' }];
+      const storeErrors = [{ storeName: '401 Games', error: 'Network error' }];
+
+      (cacheService.getCachedResult as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(createCachedResult(cardName, cards, storeErrors))
+        .mockResolvedValueOnce(createCachedResult(cardName, cards, storeErrors));
+      (cacheService.isBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+      (cacheService.markAsBeingScraped as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      (cacheService.waitForScrapeCompletion as ReturnType<typeof vi.fn>).mockResolvedValue(cards);
+
+      const response = await request(app.getHttpServer())
+        .get(`/card/${cardName}`)
+        .expect(200);
+
+      expect(response.body.storeErrors).toEqual(storeErrors);
     });
   });
 

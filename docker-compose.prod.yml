@@ -69,6 +69,7 @@ services:
       - DATABASE_SYNCHRONIZE=false
       - USE_DOCKER_SECRETS=true
       - FRONTEND_URL=https://scoutlgs.ca
+      - LOG_LEVEL=error,fatal
     secrets:
       - api_frontend_url
       - api_database_password
@@ -137,6 +138,7 @@ services:
       - REDIS_PORT=6379
       - USE_DOCKER_SECRETS=true
       - EDHREC_PAGES=100
+      - LOG_LEVEL=error,fatal
     networks:
       - redis-network
     healthcheck:
@@ -170,6 +172,7 @@ services:
       - WEBSHARE_PORT=80
       - WEBSHARE_HOST=p.webshare.io
       - USE_DOCKER_SECRETS=true
+      - LOG_LEVEL=error,fatal
     secrets:
       - scraper_database_password
       - scraper_webshare_username

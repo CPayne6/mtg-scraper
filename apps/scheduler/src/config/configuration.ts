@@ -12,6 +12,8 @@ export default () => ({
     limit: parseInt(process.env.POPULAR_CARDS_LIMIT ?? '1000', 10),
     // Batch size for enqueueing cards
     batchSize: parseInt(process.env.POPULAR_CARDS_BATCH_SIZE ?? '50', 10),
+    // Delay between batches in milliseconds (default: 1000ms = 1 second)
+    batchDelayMs: parseInt(process.env.BATCH_DELAY_MS ?? '1000', 10),
   },
   schedule: {
     // Enable/disable all scheduled tasks

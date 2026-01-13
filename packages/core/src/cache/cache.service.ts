@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES, ScrapeCardJobResult } from '@scoutlgs/shared';
+import { QUEUE_NAMES, ScrapeCardJobResult, StoreError } from '@scoutlgs/shared';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 
@@ -88,10 +88,10 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(`Pending suscription: ${!!pending}`)
       if (pending && (operation === 'set' || operation === 'setex')) {
         // Fetch the data once
-        const cards = await this.getCard(pending.cardName);
+        const result = await this.getCachedResult(pending.cardName);
 
         this.logger.debug(`Notifying ${pending.callbacks.size} waiting requests for: ${pending.cardName}`);
-        pending.callbacks.forEach(cb => cb(cards));
+        pending.callbacks.forEach(cb => cb(result?.results ?? null));
 
         // Clean up the subscription
         await this.cleanupSubscription(pending.keyspaceChannel);
@@ -120,32 +120,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('Cache service shutdown complete');
-  }
-
-  async getCard(cardName: string): Promise<CardWithStore[] | null> {
-    try {
-      const cacheKey = `${this.CACHE_KEY_PREFIX}${cardName.toLowerCase()}`;
-      const redis = await this.queue.client;
-      const cached = await redis.get(cacheKey);
-
-      if (!cached) {
-        this.logger.debug(`Cache miss for: ${cardName}`);
-        return null;
-      }
-
-      const result: ScrapeCardJobResult = JSON.parse(cached);
-
-      if (!result.success) {
-        this.logger.debug(`Cached failed result for: ${cardName}`);
-        return null;
-      }
-
-      this.logger.debug(`Cache hit for: ${cardName}`);
-      return result.results;
-    } catch (error) {
-      this.logger.error(`Error reading from cache for ${cardName}:`, error);
-      return null;
-    }
   }
 
   async isBeingScraped(cardName: string): Promise<boolean> {
@@ -271,7 +245,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     this.pendingSubscriptions.clear();
   }
 
-  async setCard(cardName: string, cards: CardWithStore[]): Promise<void> {
+  async setCard(cardName: string, cards: CardWithStore[], storeErrors?: StoreError[], timestamp?: number): Promise<void> {
     try {
       const cacheKey = `${this.CACHE_KEY_PREFIX}${cardName.toLowerCase()}`;
       const redis = await this.queue.client;
@@ -279,16 +253,47 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       const result: ScrapeCardJobResult = {
         cardName,
         results: cards,
-        timestamp: Date.now(),
+        timestamp: timestamp ?? Date.now(),
         success: true,
+        storeErrors,
       };
 
       // Cache for 24 hours
       await redis.setex(cacheKey, 86400, JSON.stringify(result));
-      this.logger.debug(`Cached ${cards.length} results for: ${cardName}`);
+      this.logger.debug(`Cached ${cards.length} results for: ${cardName}${storeErrors?.length ? ` (${storeErrors.length} store errors)` : ''}`);
     } catch (error) {
       this.logger.error(`Error caching results for ${cardName}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Get the full cached result including store errors.
+   * Use this when you need access to storeErrors for retry logic.
+   */
+  async getCachedResult(cardName: string): Promise<ScrapeCardJobResult | null> {
+    try {
+      const cacheKey = `${this.CACHE_KEY_PREFIX}${cardName.toLowerCase()}`;
+      const redis = await this.queue.client;
+      const cached = await redis.get(cacheKey);
+
+      if (!cached) {
+        this.logger.debug(`Cache miss for: ${cardName}`);
+        return null;
+      }
+
+      const result: ScrapeCardJobResult = JSON.parse(cached);
+
+      if (!result.success) {
+        this.logger.debug(`Cached failed result for: ${cardName}`);
+        return null;
+      }
+
+      this.logger.debug(`Cache hit for: ${cardName}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`Error reading from cache for ${cardName}:`, error);
+      return null;
     }
   }
 

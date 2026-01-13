@@ -33,38 +33,57 @@ export class HobbiesParser implements Parser {
     try {
       parsedData = JSON.parse(page)
     }catch(err){
-      console.error(err)
+      console.error('Hobbies Parser: JSON parse error', err)
       return {
         result: [],
-        error: err?.toString() as string
+        error: `JSON parse error: ${err?.toString() as string}`
       }
     }
-    
-    for(const product of parsedData?.products){
-      const variantInfo = product.variantInfo ?? product.variant_info
 
-      if(!variantInfo){
+    // Check if response has expected structure
+    if (!parsedData?.products) {
+      console.error('Hobbies Parser: Unexpected response structure - missing products', { parsedData })
+      return {
+        result: [],
+        error: 'API returned unexpected response structure'
+      }
+    }
+
+    // Empty results is valid - card not found in store
+    if (parsedData.products.length === 0) {
+      return { result: [] }
+    }
+
+    for(const product of parsedData.products){
+      try {
+        const variantInfo = product.variantInfo ?? product.variant_info
+
+        if(!variantInfo){
+          continue;
+        }
+
+        const innerCards: Card[] = []
+        for(const variant of variantInfo){
+          if(variant.inventory_quantity > 0){
+            const splitDisplayName = product.display_name.split('-')
+            innerCards.push({
+              price: variant.price,
+              currency: 'CAD',
+              image: product.imageUrl ?? product.image_url,
+              condition: variant.title.toLocaleLowerCase() as Condition,
+              title: product.display_name.match(nameRegex)?.[1] ?? product.display_name,
+              link: product.url,
+              set: splitDisplayName[0]?.substring(splitDisplayName[0].lastIndexOf('(') + 1, splitDisplayName[0].length) ?? 'Unknown',
+              card_number: String(Number(splitDisplayName[1]?.substring(0, splitDisplayName[1].indexOf(')'))))
+            })
+          }
+        }
+
+        cards.push(...innerCards)
+      } catch (err) {
+        console.error('Hobbies Parser: Unexpected product structure', { product, error: err })
         continue;
       }
-
-      const innerCards: Card[] = []
-      for(const variant of variantInfo){
-        if(variant.inventory_quantity > 0){
-          const splitDisplayName = product.display_name.split('-')
-          innerCards.push({
-            price: variant.price,
-            currency: 'CAD',
-            image: product.imageUrl ?? product.image_url,
-            condition: variant.title.toLocaleLowerCase() as Condition,
-            title: product.display_name.match(nameRegex)?.[1] ?? product.display_name,
-            link: product.url,
-            set: splitDisplayName[0]?.substring(splitDisplayName[0].lastIndexOf('(') + 1, splitDisplayName[0].length) ?? 'Unknown',
-            card_number: String(Number(splitDisplayName[1]?.substring(0, splitDisplayName[1].indexOf(')'))))
-          })
-        }
-      }
-
-      cards.push(...innerCards)
     }
     return { result: cards }
   }
