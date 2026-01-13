@@ -1,11 +1,12 @@
 
 TODOs:
-beef it up
-pull most used cards every day
-dropdown menu bug
+fix ui formatting
+beef it up - done
+pull most used cards every day - kinda done
+dropdown menu bug - not done
 ads
-migrate from nextjs to react node
-double sided card images
+migrate from nextjs to react node - done
+double sided card images - not supported
 decklist display on the side like hearthstone/arena
 Support other card games
 

@@ -2,9 +2,12 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { parseLogLevel } from '@scoutlgs/core';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: parseLogLevel(process.env.LOG_LEVEL),
+  });
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
 

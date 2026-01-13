@@ -1,9 +1,9 @@
 import { CardSearchResponse, CardWithStore } from "@scoutlgs/shared"
 import { useEffect, useState, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { Box, Grid, Stack, Typography } from "@mui/material"
+import { Box, Stack, Typography } from "@mui/material"
 import { CardList } from "../CardsList"
-import { StoreFilter } from "../StoreFilter"
+import { StoreFilter, StoreFilterSkeleton } from "../StoreFilter"
 import { PreviewLibrary } from "../Library/PreviewLibrary"
 import SkryfallAutocomplete from "../SkryfallAutocomplete/SkryfallAutocomplete"
 
@@ -180,76 +180,89 @@ export function CardDisplay(props: CardDisplayProps) {
   }
 
   return (
-    <Grid container spacing={3}>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, width: '100%' }}>
       {/* Left Sidebar - Filters */}
-      {!loading && data && data.stores.length > 0 && (
-        <Grid item xs={12} md={3} lg={2}>
-          <Stack spacing={2}>
+      <Box sx={{ width: { xs: '100%', md: '200px' }, flexShrink: 0 }}>
+        <Stack spacing={2}>
+          {loading || !data ? (
+            <StoreFilterSkeleton />
+          ) : (
             <StoreFilter
               stores={data.stores}
               selectedStores={getFilterValue('stores') || []}
               onStoresChange={handleStoreFilterChange}
             />
-          </Stack>
-        </Grid>
-      )}
+          )}
+        </Stack>
+      </Box>
 
       {/* Main Content */}
-      <Grid item xs={12} md={data && data.stores.length > 0 ? 9 : 12} lg={data && data.stores.length > 0 ? 10 : 12}>
-        <Box sx={{ width: '100%' }}>
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={{ xs: 2, md: 3 }}
-            alignItems={{ xs: 'stretch', md: 'center' }}
-            justifyContent="space-between"
-            sx={{
-              mb: { xs: 3, md: 4 },
-              p: { xs: 2, md: 3 },
-              bgcolor: 'background.paper',
-              borderRadius: 2,
-              boxShadow: 1
-            }}
-          >
-            <Box>
-              <Typography
-                variant="h4"
-                sx={{
-                  fontSize: { xs: '1.5rem', md: '2rem' },
-                  fontWeight: 600,
-                  mb: 1
-                }}
-              >
-                {cardName}
-              </Typography>
-              {loading ? (
-                <Typography variant="body2" color="text.secondary">
-                  Loading price data...
-                </Typography>
-              ) : data ? (
-                <Typography variant="body2" color="text.secondary">
-                  {filteredCards?.length || 0} / {data.priceStats.count} results • ${data.priceStats.min.toFixed(2)} - ${data.priceStats.max.toFixed(2)}
-                </Typography>
-              ) : null}
-            </Box>
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
-              alignItems="center"
-              sx={{ width: { xs: '100%', md: 'auto' } }}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          spacing={{ xs: 2, md: 3 }}
+          alignItems={{ xs: 'stretch', lg: 'center' }}
+          justifyContent="space-between"
+          sx={{
+            mb: { xs: 3, md: 4 },
+            p: { xs: 2, md: 3 },
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 1
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              variant="h4"
+              sx={{
+                fontSize: cardName.length > 40
+                  ? { xs: '1.1rem', md: '1.4rem' }
+                  : cardName.length > 25
+                    ? { xs: '1.3rem', md: '1.7rem' }
+                    : { xs: '1.5rem', md: '2rem' },
+                fontWeight: 600,
+                mb: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical',
+                lineHeight: 1.2,
+                minHeight: { xs: '1.8rem', md: '2.4rem' }
+              }}
+              title={cardName}
             >
-              <Box sx={{ flex: { xs: 1, sm: 0 }, minWidth: { sm: 300 } }}>
-                <SkryfallAutocomplete
-                  initialValue={cardName}
-                  placeholder="Search another card"
-                  onSelect={onSubmitCardName}
-                />
-              </Box>
-              <PreviewLibrary name={cardName} />
-            </Stack>
+              {cardName}
+            </Typography>
+            {loading ? (
+              <Typography variant="body2" color="text.secondary">
+                Loading price data...
+              </Typography>
+            ) : data ? (
+              <Typography variant="body2" color="text.secondary">
+                {filteredCards?.length || 0} / {data.priceStats.count} results • ${data.priceStats.min.toFixed(2)} - ${data.priceStats.max.toFixed(2)}
+              </Typography>
+            ) : null}
+          </Box>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            justifyContent="flex-end"
+            sx={{ flexWrap: 'wrap' }}
+          >
+            <Box sx={{ flex: { xs: 1, sm: 0 }, minWidth: { sm: 300 } }}>
+              <SkryfallAutocomplete
+                initialValue={cardName}
+                placeholder="Search another card"
+                onSelect={onSubmitCardName}
+              />
+            </Box>
+            <PreviewLibrary name={cardName} />
           </Stack>
-          <CardList cards={filteredCards} loading={loading} />
-        </Box>
-      </Grid>
-    </Grid>
+        </Stack>
+        <CardList cards={filteredCards} loading={loading} />
+      </Box>
+    </Box>
   )
 }

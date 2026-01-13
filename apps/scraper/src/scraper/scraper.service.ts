@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { CardWithStore } from '@scoutlgs/shared';
+import { CardWithStore, StoreError } from '@scoutlgs/shared';
 import { StoreService, Store as StoreEntity } from '@scoutlgs/core';
 import {
   _401Loader,
@@ -23,17 +23,10 @@ interface Store {
   parser: Parser;
 }
 
-interface CacheValue {
-  timestamp: number;
-  value: CardWithStore[];
-}
-
 @Injectable()
 export class ScraperService implements OnModuleInit {
   private readonly logger = new Logger(ScraperService.name);
   private stores: Store[] = [];
-  private readonly cache = new Map<string, CacheValue>();
-  private readonly cacheTTL = 86400000; // 1 day
 
   constructor(private readonly storeService: StoreService, private readonly proxyService: ProxyService) {}
 
@@ -99,20 +92,18 @@ export class ScraperService implements OnModuleInit {
   private async fetchCardFromStore(
     cardName: string,
     store: Store
-  ): Promise<CardWithStore[]> {
-    const cacheKey = `${store.name}-${cardName}`;
-
-    // Check cache
-    const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
-      this.logger.debug(`Cache hit for ${cacheKey}`);
-      return cached.value;
-    }
-
-    // Fetch from store
+  ): Promise<{ results: CardWithStore[]; error?: string }> {
     try {
       const data = await store.loader.search(cardName);
       const response = await store.parser.extractItems(data.result);
+
+      // If parser returned an error, this is an API/parsing issue, not "card not found"
+      if (response.error) {
+        this.logger.error(
+          `Store API error from ${store.name} for "${cardName}": ${response.error}`
+        );
+        return { results: [], error: response.error };
+      }
 
       const results = response.result
         .map((card) => ({ ...card, store: store.name }))
@@ -123,46 +114,63 @@ export class ScraperService implements OnModuleInit {
             .startsWith(cardName.toLocaleLowerCase().replaceAll(/[,\\\/]/g, ''))
         );
 
-      // Cache successful results
-      if (!response.error) {
-        this.cache.set(cacheKey, {
-          timestamp: Date.now(),
-          value: results,
-        });
+      if (results.length === 0) {
+        this.logger.debug(`Card not found in ${store.name}: ${cardName}`);
       }
 
-      return results;
+      return { results };
     } catch (error) {
+      // Network errors, timeout, etc - log as error
+      const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Failed to fetch from ${store.name} for ${cardName}:`,
+        `Failed to fetch from ${store.name} for "${cardName}":`,
         error
       );
-      throw error;
+      return { results: [], error: `Network error: ${errorMessage}` };
     }
   }
 
-  async searchCard(cardName: string): Promise<CardWithStore[]> {
-    this.logger.log(`Searching for card: ${cardName}`);
+  async searchCard(cardName: string, storeNames?: string[]): Promise<{ results: CardWithStore[]; storeErrors: StoreError[] }> {
+    // Filter stores if specific store names are provided
+    const storesToSearch = storeNames?.length
+      ? this.stores.filter((store) => storeNames.includes(store.name))
+      : this.stores;
 
-    const cards: CardWithStore[] = [];
-    const cardPromises = this.stores.map((store) =>
-      this.fetchCardFromStore(cardName, store)
-    );
-
-    // Use Promise.allSettled to handle individual store failures gracefully
-    const results = await Promise.allSettled(cardPromises);
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        cards.push(...result.value);
-      } else {
-        this.logger.warn('Store fetch failed:', result.reason);
-      }
+    if (storeNames?.length) {
+      this.logger.log(`Searching for card: ${cardName} in specific stores: ${storeNames.join(', ')}`);
+    } else {
+      this.logger.log(`Searching for card: ${cardName}`);
     }
 
-    const sortedCards = cards.sort((a, b) => a.price - b.price);
-    this.logger.log(`Found ${sortedCards.length} results for: ${cardName}`);
+    const cards: CardWithStore[] = [];
+    const storeErrors: StoreError[] = [];
 
-    return sortedCards;
+    // Fetch from stores and track errors
+    const fetchResults = await Promise.all(
+      storesToSearch.map(async (store) => {
+        const result = await this.fetchCardFromStore(cardName, store);
+
+        if (result.error) {
+          storeErrors.push({ storeName: store.name, error: result.error });
+        }
+
+        return result.results;
+      })
+    );
+
+    // Flatten all results
+    cards.push(...fetchResults.flat());
+
+    const sortedCards = cards.sort((a, b) => a.price - b.price);
+
+    if (storeErrors.length > 0) {
+      this.logger.warn(
+        `Found ${sortedCards.length} results for: ${cardName} (${storeErrors.length} store(s) had errors)`
+      );
+    } else {
+      this.logger.log(`Found ${sortedCards.length} results for: ${cardName}`);
+    }
+
+    return { results: sortedCards, storeErrors };
   }
 }

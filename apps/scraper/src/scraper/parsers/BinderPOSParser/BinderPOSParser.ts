@@ -5,7 +5,7 @@ import { BinderPOSSearch } from "./search.types";
 export class BinderPOSParser implements Parser {
   constructor(protected storeHost: string) { }
 
-  async extractItems(data: string): Promise<{ result: Card[]; error?: boolean | string; }> {
+  async extractItems(data: string): Promise<{ result: Card[]; error?: string; }> {
     const cards: Card[] = []
     let parsedData: BinderPOSSearch
     try {

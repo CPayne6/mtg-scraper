@@ -16,6 +16,7 @@ export class QueueService {
     cardName: string,
     priority: number = 5,
     requestId?: string,
+    stores?: string[],
   ): Promise<void> {
     try {
       await this.scrapeQueue.add(
@@ -24,6 +25,7 @@ export class QueueService {
           cardName,
           priority,
           requestId,
+          stores,
         },
         {
           priority,
@@ -37,8 +39,9 @@ export class QueueService {
         },
       );
 
+      const storesInfo = stores?.length ? `, Stores: ${stores.join(', ')}` : '';
       this.logger.log(
-        `Enqueued scrape job for: ${cardName} (Priority: ${priority}, Request ID: ${requestId || 'N/A'})`,
+        `Enqueued scrape job for: ${cardName} (Priority: ${priority}, Request ID: ${requestId || 'N/A'}${storesInfo})`,
       );
     } catch (error) {
       this.logger.error(`Failed to enqueue scrape job for ${cardName}:`, error);

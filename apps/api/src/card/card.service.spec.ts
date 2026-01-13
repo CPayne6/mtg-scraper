@@ -2,8 +2,20 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CardService } from './card.service';
 import { CacheService, QueueService, StoreService } from '@scoutlgs/core';
 import { mockCardWithStore, mockStores } from '@scoutlgs/core/test';
-import { CardWithStore } from '@scoutlgs/shared';
+import { CardWithStore, ScrapeCardJobResult } from '@scoutlgs/shared';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Helper to create a mock cached result
+const createCachedResult = (
+  cards: CardWithStore[],
+  storeErrors?: { storeName: string; error: string }[],
+): ScrapeCardJobResult => ({
+  cardName: 'Black Lotus',
+  results: cards,
+  timestamp: Date.now(),
+  success: true,
+  storeErrors,
+});
 
 describe('CardService', () => {
   let service: CardService;
@@ -13,7 +25,7 @@ describe('CardService', () => {
 
   beforeEach(async () => {
     const mockCacheService = {
-      getCard: vi.fn(),
+      getCachedResult: vi.fn(),
       isBeingScraped: vi.fn(),
       waitForScrapeCompletion: vi.fn(),
       markAsBeingScraped: vi.fn(),
@@ -53,28 +65,62 @@ describe('CardService', () => {
       storeService.findAllActive.mockResolvedValue(mockStores);
     });
 
-    it('should return cached data when available', async () => {
+    it('should return cached data when available with no store errors', async () => {
       const cachedCards: CardWithStore[] = [
         { ...mockCardWithStore, store: 'Face to Face Games' },
       ];
-      cacheService.getCard.mockResolvedValue(cachedCards);
+      cacheService.getCachedResult.mockResolvedValue(createCachedResult(cachedCards));
 
       const result = await service.getCardByName(cardName);
 
-      expect(cacheService.getCard).toHaveBeenCalledWith(cardName);
+      expect(cacheService.getCachedResult).toHaveBeenCalledWith(cardName);
       expect(result.cardName).toBe(cardName);
       expect(result.results).toEqual(cachedCards);
       expect(result.priceStats.count).toBe(1);
       expect(queueService.enqueueScrapeJob).not.toHaveBeenCalled();
     });
 
+    it('should retry failed stores when cached data has store errors', async () => {
+      const cachedCards: CardWithStore[] = [
+        { ...mockCardWithStore, store: 'Face to Face Games' },
+      ];
+      const storeErrors = [{ storeName: '401 Games', error: 'Network error' }];
+      const updatedCards: CardWithStore[] = [
+        { ...mockCardWithStore, store: 'Face to Face Games' },
+        { ...mockCardWithStore, store: '401 Games' },
+      ];
+
+      // First call returns cached result with errors
+      cacheService.getCachedResult.mockResolvedValueOnce(
+        createCachedResult(cachedCards, storeErrors),
+      );
+      cacheService.isBeingScraped.mockResolvedValue(false);
+      cacheService.markAsBeingScraped.mockResolvedValue(true);
+      cacheService.waitForScrapeCompletion.mockResolvedValue(updatedCards);
+      // After scrape, return updated result
+      cacheService.getCachedResult.mockResolvedValueOnce(
+        createCachedResult(updatedCards),
+      );
+
+      const result = await service.getCardByName(cardName);
+
+      expect(queueService.enqueueScrapeJob).toHaveBeenCalledWith(
+        cardName,
+        10,
+        expect.any(String),
+        ['401 Games'],
+      );
+      expect(result.results).toEqual(updatedCards);
+    });
+
     it('should wait for scrape completion if card is already being scraped', async () => {
       const cards: CardWithStore[] = [
         { ...mockCardWithStore, store: 'Face to Face Games' },
       ];
-      cacheService.getCard.mockResolvedValue(null);
+      cacheService.getCachedResult.mockResolvedValueOnce(null);
       cacheService.isBeingScraped.mockResolvedValue(true);
       cacheService.waitForScrapeCompletion.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValueOnce(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -88,10 +134,11 @@ describe('CardService', () => {
       const cards: CardWithStore[] = [
         { ...mockCardWithStore, store: 'Face to Face Games' },
       ];
-      cacheService.getCard.mockResolvedValue(null);
+      cacheService.getCachedResult.mockResolvedValueOnce(null);
       cacheService.isBeingScraped.mockResolvedValue(false);
       cacheService.markAsBeingScraped.mockResolvedValue(true);
       cacheService.waitForScrapeCompletion.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValueOnce(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -103,6 +150,7 @@ describe('CardService', () => {
         cardName,
         10,
         expect.any(String),
+        undefined,
       );
       expect(cacheService.waitForScrapeCompletion).toHaveBeenCalledWith(cardName);
       expect(result.results).toEqual(cards);
@@ -112,10 +160,11 @@ describe('CardService', () => {
       const cards: CardWithStore[] = [
         { ...mockCardWithStore, store: 'Face to Face Games' },
       ];
-      cacheService.getCard.mockResolvedValue(null);
+      cacheService.getCachedResult.mockResolvedValueOnce(null);
       cacheService.isBeingScraped.mockResolvedValue(false);
       cacheService.markAsBeingScraped.mockResolvedValue(false); // Race condition
       cacheService.waitForScrapeCompletion.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValueOnce(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -126,9 +175,10 @@ describe('CardService', () => {
     });
 
     it('should handle empty results', async () => {
-      cacheService.getCard.mockResolvedValue(null);
+      cacheService.getCachedResult.mockResolvedValueOnce(null);
       cacheService.isBeingScraped.mockResolvedValue(true);
       cacheService.waitForScrapeCompletion.mockResolvedValue([]);
+      cacheService.getCachedResult.mockResolvedValueOnce(createCachedResult([]));
 
       const result = await service.getCardByName(cardName);
 
@@ -145,7 +195,7 @@ describe('CardService', () => {
         { ...mockCardWithStore, price: 200, store: '401 Games' },
         { ...mockCardWithStore, price: 150, store: 'Hobbiesville' },
       ];
-      cacheService.getCard.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValue(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -161,7 +211,7 @@ describe('CardService', () => {
         { ...mockCardWithStore, price: 110, store: 'Face to Face Games' },
         { ...mockCardWithStore, price: 200, store: '401 Games' },
       ];
-      cacheService.getCard.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValue(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -179,7 +229,7 @@ describe('CardService', () => {
         { ...mockCardWithStore, store: 'Face to Face Games' },
         { ...mockCardWithStore, store: '401 Games' },
       ];
-      cacheService.getCard.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValue(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -192,7 +242,7 @@ describe('CardService', () => {
       const cards: CardWithStore[] = [
         { ...mockCardWithStore, store: 'Face to Face Games' },
       ];
-      cacheService.getCard.mockResolvedValue(cards);
+      cacheService.getCachedResult.mockResolvedValue(createCachedResult(cards));
 
       const result = await service.getCardByName(cardName);
 
@@ -201,9 +251,10 @@ describe('CardService', () => {
     });
 
     it('should return timestamp in the response', async () => {
-      cacheService.getCard.mockResolvedValue([]);
+      cacheService.getCachedResult.mockResolvedValueOnce(null);
       cacheService.isBeingScraped.mockResolvedValue(true);
       cacheService.waitForScrapeCompletion.mockResolvedValue([]);
+      cacheService.getCachedResult.mockResolvedValueOnce(createCachedResult([]));
 
       const before = Date.now();
       const result = await service.getCardByName(cardName);
@@ -211,6 +262,29 @@ describe('CardService', () => {
 
       expect(result.timestamp).toBeGreaterThanOrEqual(before);
       expect(result.timestamp).toBeLessThanOrEqual(after);
+    });
+
+    it('should include store errors in response when present', async () => {
+      const cards: CardWithStore[] = [
+        { ...mockCardWithStore, store: 'Face to Face Games' },
+      ];
+      const storeErrors = [{ storeName: '401 Games', error: 'Network error' }];
+
+      // First call has errors, triggers retry
+      cacheService.getCachedResult.mockResolvedValueOnce(
+        createCachedResult(cards, storeErrors),
+      );
+      cacheService.isBeingScraped.mockResolvedValue(false);
+      cacheService.markAsBeingScraped.mockResolvedValue(true);
+      cacheService.waitForScrapeCompletion.mockResolvedValue(cards);
+      // After retry, still has errors
+      cacheService.getCachedResult.mockResolvedValueOnce(
+        createCachedResult(cards, storeErrors),
+      );
+
+      const result = await service.getCardByName(cardName);
+
+      expect(result.storeErrors).toEqual(storeErrors);
     });
   });
 });

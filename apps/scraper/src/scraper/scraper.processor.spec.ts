@@ -3,8 +3,9 @@ import { ScrapeCardProcessor } from './scraper.processor';
 import { ScraperService } from './scraper.service';
 import { CacheService } from '@scoutlgs/core';
 import { Job } from 'bullmq';
-import { ScrapeCardJobData, ScrapeCardJobResult } from '@scoutlgs/shared';
-import { mockCardWithStore, mockMultipleCards } from '@scoutlgs/core/src/test';
+import { ScrapeCardJobData } from '@scoutlgs/shared';
+import { mockCardWithStore, mockMultipleCards } from '@scoutlgs/core/test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('ScrapeCardProcessor', () => {
   let processor: ScrapeCardProcessor;
@@ -14,11 +15,13 @@ describe('ScrapeCardProcessor', () => {
   beforeEach(async () => {
     const mockScraperService = {
       searchCard: vi.fn(),
+      waitUntilReady: vi.fn().mockResolvedValue(undefined),
     };
 
     const mockCacheService = {
       setCard: vi.fn(),
       markScrapeComplete: vi.fn(),
+      getCachedResult: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,14 +57,14 @@ describe('ScrapeCardProcessor', () => {
       const job = createMockJob(jobData);
       const mockResults = [mockCardWithStore];
 
-      scraperService.searchCard.mockResolvedValue(mockResults);
+      scraperService.searchCard.mockResolvedValue({ results: mockResults, storeErrors: [] });
       cacheService.setCard.mockResolvedValue(undefined);
       cacheService.markScrapeComplete.mockResolvedValue(undefined);
 
       const result = await processor.process(job);
 
-      expect(scraperService.searchCard).toHaveBeenCalledWith('Black Lotus');
-      expect(cacheService.setCard).toHaveBeenCalledWith('Black Lotus', mockResults);
+      expect(scraperService.searchCard).toHaveBeenCalledWith('Black Lotus', undefined);
+      expect(cacheService.setCard).toHaveBeenCalledWith('Black Lotus', mockResults, []);
       expect(cacheService.markScrapeComplete).toHaveBeenCalledWith('Black Lotus');
       expect(result.success).toBe(true);
       expect(result.cardName).toBe('Black Lotus');
@@ -76,13 +79,13 @@ describe('ScrapeCardProcessor', () => {
       const job = createMockJob(jobData);
       const mockResults = mockMultipleCards;
 
-      scraperService.searchCard.mockResolvedValue(mockResults);
+      scraperService.searchCard.mockResolvedValue({ results: mockResults, storeErrors: [] });
       cacheService.setCard.mockResolvedValue(undefined);
       cacheService.markScrapeComplete.mockResolvedValue(undefined);
 
       await processor.process(job);
 
-      expect(cacheService.setCard).toHaveBeenCalledWith('Lightning Bolt', mockResults);
+      expect(cacheService.setCard).toHaveBeenCalledWith('Lightning Bolt', mockResults, []);
     });
 
     it('should mark scrape as complete after processing', async () => {
@@ -92,7 +95,7 @@ describe('ScrapeCardProcessor', () => {
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockResolvedValue([]);
+      scraperService.searchCard.mockResolvedValue({ results: [], storeErrors: [] });
       cacheService.setCard.mockResolvedValue(undefined);
       cacheService.markScrapeComplete.mockResolvedValue(undefined);
 
@@ -143,7 +146,7 @@ describe('ScrapeCardProcessor', () => {
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockResolvedValue([]);
+      scraperService.searchCard.mockResolvedValue({ results: [], storeErrors: [] });
       cacheService.setCard.mockResolvedValue(undefined);
       cacheService.markScrapeComplete.mockResolvedValue(undefined);
 
@@ -162,7 +165,7 @@ describe('ScrapeCardProcessor', () => {
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockResolvedValue([]);
+      scraperService.searchCard.mockResolvedValue({ results: [], storeErrors: [] });
       cacheService.setCard.mockResolvedValue(undefined);
       cacheService.markScrapeComplete.mockResolvedValue(undefined);
 
@@ -202,6 +205,30 @@ describe('ScrapeCardProcessor', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('String error');
+    });
+
+    it('should handle targeted scrapes with specific stores', async () => {
+      const jobData: ScrapeCardJobData = {
+        cardName: 'Black Lotus',
+        priority: 10,
+        stores: ['Face to Face Games'],
+      };
+      const job = createMockJob(jobData);
+      const mockResults = [mockCardWithStore];
+
+      // Mock existing cached data
+      cacheService.getCachedResult.mockResolvedValue({
+        results: [],
+        timestamp: Date.now() - 1000,
+        storeErrors: [],
+      });
+      scraperService.searchCard.mockResolvedValue({ results: mockResults, storeErrors: [] });
+      cacheService.setCard.mockResolvedValue(undefined);
+
+      const result = await processor.process(job);
+
+      expect(scraperService.searchCard).toHaveBeenCalledWith('Black Lotus', ['Face to Face Games']);
+      expect(result.success).toBe(true);
     });
   });
 });

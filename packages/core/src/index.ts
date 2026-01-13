@@ -10,3 +10,7 @@ export { StoreModule, StoreService } from './store/index';
 // Cache
 export { CacheModule, CacheService } from './cache/index';
 export type { CardWithStore } from './cache/index';
+
+// Logger
+export type { NestLogLevel } from './logger/index';
+export { parseLogLevel } from './logger/index';
