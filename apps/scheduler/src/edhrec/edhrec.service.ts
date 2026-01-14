@@ -42,10 +42,12 @@ export class EdhrecService {
   private readonly logger = new Logger(EdhrecService.name);
   private readonly baseUrl: string;
   private readonly maxPages: number;
+  private readonly startPage: number;
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl = this.configService.getOrThrow<string>('popularCards.edhrecBaseUrl');
     this.maxPages = this.configService.getOrThrow<number>('popularCards.edhrecPages');
+    this.startPage = this.configService.get<number>('popularCards.edhrecStartPage') ?? 1;
   }
 
   /**
@@ -56,12 +58,13 @@ export class EdhrecService {
     const allCards: string[] = [];
     const seenCards = new Set<string>();
     const batchSize = 2;
-    const delayBetweenBatches = 1000; // 1 second delay between batches
+    const delayBetweenBatches = 1000;
+    const endPage = this.startPage + this.maxPages - 1;
 
-    this.logger.log(`Fetching popular cards from EDHREC (${this.maxPages} pages in batches of ${batchSize})...`);
+    this.logger.log(`Fetching popular cards from EDHREC (pages ${this.startPage}-${endPage}, ${this.maxPages} total in batches of ${batchSize})...`);
 
-    for (let batchStart = 1; batchStart <= this.maxPages; batchStart += batchSize) {
-      const batchEnd = Math.min(batchStart + batchSize - 1, this.maxPages);
+    for (let batchStart = this.startPage; batchStart <= endPage; batchStart += batchSize) {
+      const batchEnd = Math.min(batchStart + batchSize - 1, endPage);
       const batchPages: number[] = [];
 
       // Create array of page numbers for this batch
@@ -107,8 +110,7 @@ export class EdhrecService {
         `Batch ${batchStart}-${batchEnd} complete: ${batchSuccessCount} succeeded, ${batchFailCount} failed (total unique: ${allCards.length})`
       );
 
-      // Add delay between batches (except for the last batch)
-      if (batchEnd < this.maxPages) {
+      if (batchEnd < endPage) {
         this.logger.debug(`Waiting ${delayBetweenBatches}ms before next batch...`);
         await this.delay(delayBetweenBatches);
       }
