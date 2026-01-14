@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "scrape-test": "npx ts-node src/scripts/test-scrape.ts"
   },
   "dependencies": {
     "@scoutlgs/core": "workspace:*",
