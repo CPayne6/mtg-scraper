@@ -3,9 +3,9 @@ import { Module, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PopularCardsModule } from '../popular-cards/popular-cards.module';
-import { PopularCardsService } from '../popular-cards/popular-cards.service';
 import { validationSchema } from '../config/validation';
-import { CacheModule, CacheService, QueueService } from '@scoutlgs/core';
+import { CacheModule, CacheService } from '@scoutlgs/core';
+import { PopularCardsScheduler } from '@/popular-cards/popular-cards.scheduler';
 
 const DEFAULT_START_PAGE = 110;
 const DEFAULT_PAGE_COUNT = 1;
@@ -48,7 +48,7 @@ function createTestConfig(startPage: number, pageCount: number) {
       isGlobal: true,
       load: [createTestConfig(
         parseInt(process.env.TEST_START_PAGE ?? String(DEFAULT_START_PAGE), 10),
-        parseInt(process.env.TEST_PAGE_COUNT ?? String(DEFAULT_PAGE_COUNT), 10)
+        parseInt(process.env.TEST_PAGE_COUNT ?? String(DEFAULT_PAGE_COUNT), 10),
       )],
       validationSchema,
     }),
@@ -77,13 +77,18 @@ async function main() {
   logger.log(`End Page: ${startPage + pageCount - 1}`);
   logger.log('═══════════════════════════════════════════════════════');
 
-  const popularCardsService = app.get(PopularCardsService);
-  const queueService = app.get(QueueService);
+  const popularCardsScheduler = app.get(PopularCardsScheduler);
   const cacheService = app.get(CacheService);
 
-  logger.log('Fetching cards from EDHREC...');
-  const cards = await popularCardsService.getPopularCards();
-  logger.log(`Fetched ${cards.length} cards`);
+  logger.log('Fetching and scraping cards from EDHREC...');
+  const cards = await popularCardsScheduler.scrapePopularCards({
+    enabled: true,
+    limit: 1000,
+    batchSize: 50,
+    batchDelayMs: 1000,
+    waitForCompletion: true,
+  });
+  logger.log(`Scraped ${cards.length} cards`);
 
   const errors: CardError[] = [];
   let successCount = 0;
@@ -92,11 +97,6 @@ async function main() {
   for (let i = 0; i < cards.length; i++) {
     const cardName = cards[i];
     const position = i + 1;
-
-    logger.log(`[${position}/${cards.length}] Processing: ${cardName}`);
-
-    await queueService.enqueueScrapeJob(cardName, 1);
-    await cacheService.waitForScrapeCompletion(cardName, 120000);
 
     const result = await cacheService.getCachedResult(cardName);
 

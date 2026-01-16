@@ -118,6 +118,8 @@ services:
       - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
       - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/scheduler/tsconfig.json:/app/apps/scheduler/tsconfig.json:ro
       - ./apps/scheduler/nest-cli.json:/app/apps/scheduler/nest-cli.json:ro
