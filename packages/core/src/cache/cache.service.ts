@@ -13,11 +13,22 @@ interface PendingSubscription {
   cardName: string;
 }
 
+export interface SchedulerJobStatus {
+  initiatedAt: number;
+  finishedAt?: number;
+  status: 'running' | 'completed' | 'failed';
+  details: {
+    currentScrapeCount: number;
+    totalScrapeCount: number;
+  }
+}
+
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
   private readonly CACHE_KEY_PREFIX = 'card:';
   private readonly SCRAPING_KEY_PREFIX = 'scraping:';
+  private readonly SCHEDULER_KEY = 'scheduler:job-status';
   private readonly SCRAPING_TTL = 300; // 5 minutes in seconds
   private cardSubscriber: Redis;
 
@@ -307,6 +318,37 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(`Marked scrape complete for: ${cardName}`);
     } catch (error) {
       this.logger.error(`Error marking scrape complete for ${cardName}:`, error);
+      throw error;
+    }
+  }
+
+  async schedulerJobStatus(): Promise<SchedulerJobStatus | null> {
+    try {
+      const redis = await this.queue.client;
+      const status = await redis.get(this.SCHEDULER_KEY);
+
+      if (!status) {
+        this.logger.debug('No scheduler job status found in cache');
+        return null;
+      }
+
+      const result: SchedulerJobStatus = JSON.parse(status);
+      this.logger.debug('Fetched scheduler job status from cache');
+      return result;
+    } catch (error) {
+      this.logger.error('Error reading scheduler job status from cache:', error);
+      return null;
+    }
+  }
+
+  async setSchedulerJobStatus(status: SchedulerJobStatus): Promise<void> {
+    try {
+      const redis = await this.queue.client;
+      await redis.set(this.SCHEDULER_KEY, JSON.stringify(status));
+      this.logger.debug('Updated scheduler job status in cache');
+    }
+    catch (error) {
+      this.logger.error('Error setting scheduler job status in cache:', error);
       throw error;
     }
   }
