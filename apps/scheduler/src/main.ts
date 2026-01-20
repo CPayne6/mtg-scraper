@@ -23,9 +23,10 @@ async function bootstrap() {
   logger.log(`Popular Cards Limit: ${popularCardsLimit}`);
   logger.log('═══════════════════════════════════════════════════════');
 
-  await app.init();
+  const port = configService.get<number>('port') ?? 3002;
+  await app.listen(port);
 
-  logger.log('Scheduler service initialized and ready');
+  logger.log(`Scheduler service listening on port ${port}`);
   logger.log('Press Ctrl+C to stop');
 }
 

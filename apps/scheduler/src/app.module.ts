@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 import { PopularCardsModule } from './popular-cards/popular-cards.module';
+import { ManualModule } from './manual/manual.module';
 
 @Module({
   imports: [
@@ -19,6 +20,9 @@ import { PopularCardsModule } from './popular-cards/popular-cards.module';
 
     // Feature modules
     PopularCardsModule,
+
+    // API to access scheduler status
+    ManualModule
   ],
 })
 export class AppModule {}

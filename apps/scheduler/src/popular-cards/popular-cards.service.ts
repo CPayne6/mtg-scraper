@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { EdhrecService } from '../edhrec/edhrec.service';
 import { getPopularCardsList } from './popular-cards.data';
 
@@ -8,7 +7,6 @@ export class PopularCardsService {
   private readonly logger = new Logger(PopularCardsService.name);
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly edhrecService: EdhrecService,
   ) {}
 
@@ -18,8 +16,7 @@ export class PopularCardsService {
    * Primary source: EDHREC API
    * Fallback: Hardcoded list
    */
-  async getPopularCards(): Promise<string[]> {
-    const limit = this.configService.get<number>('popularCards.limit') ?? 1000;
+  async getPopularCards(limit: number): Promise<string[]> {
 
     // Try fetching from EDHREC API
     try {

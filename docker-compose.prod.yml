@@ -138,7 +138,7 @@ services:
       - REDIS_PORT=6379
       - USE_DOCKER_SECRETS=true
       - EDHREC_PAGES=100
-      - LOG_LEVEL=error,fatal
+      - LOG_LEVEL=log,warn,error,fatal
     networks:
       - redis-network
     healthcheck:
