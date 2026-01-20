@@ -17,7 +17,15 @@ interface JobSummary {
   failedScrapes: number;
   totalResults: number;
   storeErrorCounts: Record<string, number>;
+  storeSuccessCounts: Record<string, number>;
+  failedCardNames: string[];
+  cardsWithStoreErrors: number;
+  totalStoreErrors: number;
   duration: number;
+  startTime: Date;
+  endTime: Date | null;
+  averageResultsPerCard: number;
+  successRate: number;
 }
 
 @Injectable()
@@ -81,7 +89,15 @@ export class PopularCardsScheduler implements OnModuleInit {
       failedScrapes: 0,
       totalResults: 0,
       storeErrorCounts: {},
+      storeSuccessCounts: {},
+      failedCardNames: [],
+      cardsWithStoreErrors: 0,
+      totalStoreErrors: 0,
       duration: 0,
+      startTime: new Date(initiatedAt),
+      endTime: null,
+      averageResultsPerCard: 0,
+      successRate: 0,
     };
 
     try {
@@ -154,6 +170,13 @@ export class PopularCardsScheduler implements OnModuleInit {
       }
 
       summary.duration = Date.now() - initiatedAt;
+      summary.endTime = new Date();
+      summary.averageResultsPerCard = summary.successfulScrapes > 0
+        ? summary.totalResults / summary.successfulScrapes
+        : 0;
+      summary.successRate = summary.totalCards > 0
+        ? (summary.successfulScrapes / summary.totalCards) * 100
+        : 0;
 
       // Update job status to completed
       await this.cacheService.setSchedulerJobStatus({
@@ -176,6 +199,13 @@ export class PopularCardsScheduler implements OnModuleInit {
       return popularCards;
     } catch (error) {
       summary.duration = Date.now() - initiatedAt;
+      summary.endTime = new Date();
+      summary.averageResultsPerCard = summary.successfulScrapes > 0
+        ? summary.totalResults / summary.successfulScrapes
+        : 0;
+      summary.successRate = summary.totalCards > 0
+        ? (summary.successfulScrapes / summary.totalCards) * 100
+        : 0;
 
       // Update job status to failed
       await this.cacheService.setSchedulerJobStatus({
@@ -252,8 +282,18 @@ export class PopularCardsScheduler implements OnModuleInit {
         summary.successfulScrapes++;
         summary.totalResults += result.results.length;
 
+        // Count successful results by store name
+        for (const cardResult of result.results) {
+          const storeName = cardResult.store;
+          summary.storeSuccessCounts[storeName] =
+            (summary.storeSuccessCounts[storeName] || 0) + 1;
+        }
+
         // Count store errors by store name
-        if (result.storeErrors) {
+        if (result.storeErrors && result.storeErrors.length > 0) {
+          summary.cardsWithStoreErrors++;
+          summary.totalStoreErrors += result.storeErrors.length;
+
           for (const storeError of result.storeErrors) {
             summary.storeErrorCounts[storeError.storeName] =
               (summary.storeErrorCounts[storeError.storeName] || 0) + 1;
@@ -261,34 +301,80 @@ export class PopularCardsScheduler implements OnModuleInit {
         }
       } else {
         summary.failedScrapes++;
+        summary.failedCardNames.push(cardName);
       }
     }
   }
 
   private printJobSummary(summary: JobSummary): void {
     const durationMinutes = (summary.duration / 1000 / 60).toFixed(2);
+    const durationSeconds = (summary.duration / 1000).toFixed(1);
+    const avgTimePerCard = summary.successfulScrapes > 0
+      ? (summary.duration / summary.successfulScrapes / 1000).toFixed(2)
+      : '0';
 
-    this.logger.log('========================================');
-    this.logger.log('           JOB SUMMARY');
-    this.logger.log('========================================');
-    this.logger.log(`Total cards processed: ${summary.totalCards}`);
-    this.logger.log(`Successful scrapes: ${summary.successfulScrapes}`);
-    this.logger.log(`Failed scrapes: ${summary.failedScrapes}`);
-    this.logger.log(`Total results fetched: ${summary.totalResults}`);
-    this.logger.log(`Duration: ${durationMinutes} minutes`);
+    this.logger.log('');
+    this.logger.log('╔══════════════════════════════════════════════════════════════╗');
+    this.logger.log('║                    SCHEDULER JOB SUMMARY                     ║');
+    this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+    this.logger.log('║  TIMING                                                      ║');
+    this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+    this.logger.log(`║  Start Time:        ${summary.startTime.toISOString().padEnd(41)}║`);
+    this.logger.log(`║  End Time:          ${(summary.endTime?.toISOString() || 'N/A').padEnd(41)}║`);
+    this.logger.log(`║  Duration:          ${durationMinutes} minutes (${durationSeconds}s)`.padEnd(65) + '║');
+    this.logger.log(`║  Avg Time/Card:     ${avgTimePerCard}s`.padEnd(65) + '║');
+    this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+    this.logger.log('║  SCRAPE RESULTS                                              ║');
+    this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+    this.logger.log(`║  Total Cards:       ${summary.totalCards}`.padEnd(65) + '║');
+    this.logger.log(`║  Successful:        ${summary.successfulScrapes} (${summary.successRate.toFixed(1)}%)`.padEnd(65) + '║');
+    this.logger.log(`║  Failed:            ${summary.failedScrapes}`.padEnd(65) + '║');
+    this.logger.log(`║  Total Results:     ${summary.totalResults}`.padEnd(65) + '║');
+    this.logger.log(`║  Avg Results/Card:  ${summary.averageResultsPerCard.toFixed(1)}`.padEnd(65) + '║');
+    this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+    this.logger.log('║  STORE ERRORS                                                ║');
+    this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+    this.logger.log(`║  Cards w/ Errors:   ${summary.cardsWithStoreErrors}`.padEnd(65) + '║');
+    this.logger.log(`║  Total Store Errors:${summary.totalStoreErrors}`.padEnd(65) + '║');
 
     const storeErrorEntries = Object.entries(summary.storeErrorCounts);
     if (storeErrorEntries.length > 0) {
-      this.logger.log('----------------------------------------');
-      this.logger.log('Store errors by store:');
-      // Sort by error count descending
+      this.logger.log('║  ──────────────────────────────────────────────────────────  ║');
+      this.logger.log('║  Errors by Store:                                            ║');
       storeErrorEntries
         .sort((a, b) => b[1] - a[1])
         .forEach(([storeName, count]) => {
-          this.logger.log(`  ${storeName}: ${count} errors`);
+          this.logger.log(`║    ${storeName}: ${count}`.padEnd(65) + '║');
         });
     }
 
-    this.logger.log('========================================');
+    const storeSuccessEntries = Object.entries(summary.storeSuccessCounts);
+    if (storeSuccessEntries.length > 0) {
+      this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+      this.logger.log('║  RESULTS BY STORE                                            ║');
+      this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+      storeSuccessEntries
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([storeName, count]) => {
+          this.logger.log(`║    ${storeName}: ${count} results`.padEnd(65) + '║');
+        });
+    }
+
+    if (summary.failedCardNames.length > 0) {
+      this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+      this.logger.log('║  FAILED CARDS                                                ║');
+      this.logger.log('╠══════════════════════════════════════════════════════════════╣');
+      const maxToShow = 10;
+      const cardsToShow = summary.failedCardNames.slice(0, maxToShow);
+      cardsToShow.forEach(cardName => {
+        this.logger.log(`║    - ${cardName}`.padEnd(65) + '║');
+      });
+      if (summary.failedCardNames.length > maxToShow) {
+        this.logger.log(`║    ... and ${summary.failedCardNames.length - maxToShow} more`.padEnd(65) + '║');
+      }
+    }
+
+    this.logger.log('╚══════════════════════════════════════════════════════════════╝');
+    this.logger.log('');
   }
 }
