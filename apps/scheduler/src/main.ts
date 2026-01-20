@@ -13,13 +13,14 @@ async function bootstrap() {
 
   const scheduleEnabled = configService.get<boolean>('schedule.enabled');
   const dailyScrapeTime = configService.get<string>('schedule.dailyScrapeTime');
+  const timezone = configService.get<string>('schedule.timezone');
   const popularCardsLimit = configService.get<number>('popularCards.limit');
 
   logger.log('═══════════════════════════════════════════════════════');
   logger.log('ScoutLGS - Scheduler Service');
   logger.log('═══════════════════════════════════════════════════════');
   logger.log(`Schedule Enabled: ${scheduleEnabled}`);
-  logger.log(`Daily Scrape Time: ${dailyScrapeTime}`);
+  logger.log(`Daily Scrape Time: ${dailyScrapeTime} (${timezone})`);
   logger.log(`Popular Cards Limit: ${popularCardsLimit}`);
   logger.log('═══════════════════════════════════════════════════════');
 
