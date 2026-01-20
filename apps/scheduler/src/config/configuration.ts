@@ -1,4 +1,5 @@
 export default () => ({
+  port: parseInt(process.env.PORT ?? '5001', 10),
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
@@ -22,6 +23,8 @@ export default () => ({
     enabled: process.env.SCHEDULE_ENABLED !== 'false',
     // Cron expression for daily scrape (default: 2 AM daily)
     dailyScrapeTime: process.env.DAILY_SCRAPE_TIME ?? '0 2 * * *',
+    // Timezone for cron schedule (default: America/Toronto)
+    timezone: process.env.SCHEDULE_TIMEZONE ?? 'America/Toronto',
     // Run the job when the application starts
     runOnInit: process.env.RUN_ON_INIT === 'false',
   },

@@ -136,9 +136,13 @@ services:
       - SERVICE_NAME=scheduler
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - PORT=5001
       - USE_DOCKER_SECRETS=true
       - EDHREC_PAGES=100
       - LOG_LEVEL=log,warn,error,fatal
+      - RUN_ON_INIT=true
+    ports:
+      - "5001:5001"
     networks:
       - redis-network
     healthcheck:
