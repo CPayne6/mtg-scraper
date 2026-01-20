@@ -26,6 +26,6 @@ export default () => ({
     // Timezone for cron schedule (default: America/Toronto)
     timezone: process.env.SCHEDULE_TIMEZONE ?? 'America/Toronto',
     // Run the job when the application starts
-    runOnInit: process.env.RUN_ON_INIT === 'false',
+    runOnInit: process.env.RUN_ON_INIT === 'true',
   },
 });
