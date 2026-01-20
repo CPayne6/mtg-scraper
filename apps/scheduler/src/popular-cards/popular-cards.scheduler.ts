@@ -42,12 +42,14 @@ export class PopularCardsScheduler implements OnModuleInit {
 
   onModuleInit() {
     const cronTime = this.configService.getOrThrow<string>('schedule.dailyScrapeTime');
+    const timezone = this.configService.get<string>('schedule.timezone') ?? 'America/Toronto';
     const runOnInit = this.configService.get<boolean>('schedule.runOnInit') ?? false;
 
-    this.logger.log(`Daily popular cards scrape scheduled at cron time: ${cronTime}`);
+    this.logger.log(`Daily popular cards scrape scheduled at cron time: ${cronTime} (${timezone})`);
 
     const job = CronJob.from({
       cronTime: cronTime,
+      timeZone: timezone,
       onTick: () => {
         const enabled = this.configService.get<boolean>('schedule.enabled') ?? true;
         const limit = this.configService.get<number>('popularCards.limit') ?? 1000;
