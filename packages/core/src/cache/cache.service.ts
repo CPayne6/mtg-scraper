@@ -1,16 +1,22 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES, ScrapeCardJobResult, StoreError } from '@scoutlgs/shared';
+import { QUEUE_NAMES, StoreCardCacheEntry, CardWithStore } from '@scoutlgs/shared';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 
-export type CardWithStore = ScrapeCardJobResult['results'][0];
+export type { CardWithStore };
 
-interface PendingSubscription {
-  callbacks: Set<(data: CardWithStore[] | null) => void>;
-  keyspaceChannel: string;
+/**
+ * Pending pattern subscription for waiting on multiple store-card combinations.
+ * Uses PSUBSCRIBE for pattern matching.
+ */
+interface PendingPatternSubscription {
+  pattern: string;
   cardName: string;
+  pendingStores: Set<string>;
+  results: Map<string, StoreCardCacheEntry | null>;
+  callbacks: Set<(results: Map<string, StoreCardCacheEntry | null>) => void>;
 }
 
 export interface SchedulerJobStatus {
@@ -26,14 +32,16 @@ export interface SchedulerJobStatus {
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
-  private readonly CACHE_KEY_PREFIX = 'card:';
+  private readonly STORE_CACHE_KEY_PREFIX = 'card:';
+  private readonly STORE_KEY_SEPARATOR = ':store:';
   private readonly SCRAPING_KEY_PREFIX = 'scraping:';
   private readonly SCHEDULER_KEY = 'scheduler:job-status';
   private readonly SCRAPING_TTL = 300; // 5 minutes in seconds
+  private readonly CACHE_TTL = 86400; // 24 hours in seconds
   private cardSubscriber: Redis;
 
-  // Map of keyspaceChannel -> pending subscription info
-  private pendingSubscriptions = new Map<string, PendingSubscription>();
+  // Map of pattern -> pending pattern subscription info (for PSUBSCRIBE)
+  private pendingPatternSubscriptions = new Map<string, PendingPatternSubscription>();
 
   constructor(
     @InjectQueue(QUEUE_NAMES.CARD_SCRAPE) private readonly queue: Queue,
@@ -78,34 +86,48 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     this.cardSubscriber.on('ready', async () => {
       this.logger.log('Card subscriber ready');
 
-      // Resubscribe to all active channels after reconnection
-      const channels = Array.from(this.pendingSubscriptions.keys());
-      if (channels.length > 0) {
+      // Resubscribe to all active patterns after reconnection
+      const patterns = Array.from(this.pendingPatternSubscriptions.keys());
+      if (patterns.length > 0) {
         try {
-          await this.cardSubscriber.subscribe(...channels);
-          this.logger.log(`Resubscribed to ${channels.length} active channel(s) after reconnection`);
+          await this.cardSubscriber.psubscribe(...patterns);
+          this.logger.log(`Resubscribed to ${patterns.length} active pattern(s) after reconnection`);
         } catch (err) {
-          this.logger.error('Failed to resubscribe to channels:', err);
+          this.logger.error('Failed to resubscribe to patterns:', err);
           this.failAllPendingRequests('Failed to resubscribe after reconnection');
         }
       }
     });
 
-    // Handle notification for all subscriptions
-    this.cardSubscriber.on('message', async (channel: string, operation: string) => {
-      // print debug message
-      this.logger.debug(`Received keyspace notification on pattern ${channel}: ${operation}`);
-      const pending = this.pendingSubscriptions.get(channel);
-      this.logger.debug(`Pending suscription: ${!!pending}`)
-      if (pending && (operation === 'set' || operation === 'setex')) {
-        // Fetch the data once
-        const result = await this.getCachedResult(pending.cardName);
+    // Handle pattern notification for store-card subscriptions (PSUBSCRIBE)
+    this.cardSubscriber.on('pmessage', async (pattern: string, channel: string, operation: string) => {
+      this.logger.debug(`Received keyspace notification on pattern ${pattern}, channel ${channel}: ${operation}`);
 
-        this.logger.debug(`Notifying ${pending.callbacks.size} waiting requests for: ${pending.cardName}`);
-        pending.callbacks.forEach(cb => cb(result?.results ?? null));
+      const pending = this.pendingPatternSubscriptions.get(pattern);
+      if (!pending) return;
 
-        // Clean up the subscription
-        await this.cleanupSubscription(pending.keyspaceChannel);
+      if (operation === 'set' || operation === 'setex') {
+        // Extract store name from channel: __keyspace@0__:card:{cardname}:store:{storename}
+        const storeMatch = channel.match(/:store:([^:]+)$/);
+        if (!storeMatch) return;
+
+        const storeName = storeMatch[1];
+
+        if (pending.pendingStores.has(storeName)) {
+          // Fetch the result for this store
+          const result = await this.getStoreCard(pending.cardName, storeName);
+          pending.results.set(storeName, result);
+          pending.pendingStores.delete(storeName);
+
+          this.logger.debug(`Store ${storeName} completed for ${pending.cardName}. ${pending.pendingStores.size} stores remaining.`);
+
+          // Check if all stores have completed
+          if (pending.pendingStores.size === 0) {
+            this.logger.debug(`All stores completed for ${pending.cardName}. Notifying ${pending.callbacks.size} callback(s).`);
+            pending.callbacks.forEach(cb => cb(pending.results));
+            await this.cleanupPatternSubscription(pattern);
+          }
+        }
       }
     });
 
@@ -133,76 +155,255 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Cache service shutdown complete');
   }
 
-  async isBeingScraped(cardName: string): Promise<boolean> {
+  // =====================================
+  // Per-Store-Card Cache Methods
+  // =====================================
+
+  /**
+   * Build the cache key for a store-card combination.
+   * Format: card:{cardname}:store:{storename}
+   */
+  private buildStoreCardKey(cardName: string, storeName: string): string {
+    return `${this.STORE_CACHE_KEY_PREFIX}${cardName.toLowerCase()}${this.STORE_KEY_SEPARATOR}${storeName.toLowerCase()}`;
+  }
+
+  /**
+   * Build the scraping lock key for a store-card combination.
+   * Format: scraping:{cardname}:store:{storename}
+   */
+  private buildScrapingKey(cardName: string, storeName: string): string {
+    return `${this.SCRAPING_KEY_PREFIX}${cardName.toLowerCase()}${this.STORE_KEY_SEPARATOR}${storeName.toLowerCase()}`;
+  }
+
+  /**
+   * Set cached results for a single store-card combination.
+   * @param cardName The card name
+   * @param storeName The store name slug (e.g., 'f2f', '401')
+   * @param results The card results from this store
+   * @param error Optional error message if scraping failed
+   * @param retryCount Optional retry count
+   * @param timestamp Optional timestamp (defaults to now)
+   */
+  async setStoreCard(
+    cardName: string,
+    storeName: string,
+    results: CardWithStore[],
+    error?: string,
+    retryCount?: number,
+    timestamp?: number,
+  ): Promise<void> {
     try {
-      const scrapingKey = `${this.SCRAPING_KEY_PREFIX}${cardName.toLowerCase()}`;
+      const cacheKey = this.buildStoreCardKey(cardName, storeName);
+      const redis = await this.queue.client;
+
+      const entry: StoreCardCacheEntry = {
+        storeName,
+        results,
+        timestamp: timestamp ?? Date.now(),
+        error,
+        retryCount,
+      };
+
+      // Cache for 24 hours
+      await redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(entry));
+      this.logger.debug(`Cached ${results.length} results for ${cardName} at store ${storeName}${error ? ` (error: ${error})` : ''}`);
+    } catch (error) {
+      this.logger.error(`Error caching results for ${cardName} at store ${storeName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get cached results for a single store-card combination.
+   * @param cardName The card name
+   * @param storeName The store name slug (e.g., 'f2f', '401')
+   * @returns The cached entry or null if not found
+   */
+  async getStoreCard(cardName: string, storeName: string): Promise<StoreCardCacheEntry | null> {
+    try {
+      const cacheKey = this.buildStoreCardKey(cardName, storeName);
+      const redis = await this.queue.client;
+      const cached = await redis.get(cacheKey);
+
+      if (!cached) {
+        this.logger.debug(`Cache miss for ${cardName} at store ${storeName}`);
+        return null;
+      }
+
+      const entry: StoreCardCacheEntry = JSON.parse(cached);
+      this.logger.debug(`Cache hit for ${cardName} at store ${storeName}`);
+      return entry;
+    } catch (error) {
+      this.logger.error(`Error reading from cache for ${cardName} at store ${storeName}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get cached results for multiple stores in a single batch operation.
+   * Uses Redis MGET for efficiency.
+   * @param cardName The card name
+   * @param storeNames Array of store name slugs
+   * @returns Map of storeName -> cached entry (or null if not cached)
+   */
+  async getMultipleStoreCards(
+    cardName: string,
+    storeNames: string[],
+  ): Promise<Map<string, StoreCardCacheEntry | null>> {
+    const results = new Map<string, StoreCardCacheEntry | null>();
+
+    if (storeNames.length === 0) {
+      return results;
+    }
+
+    try {
+      const redis = await this.queue.client;
+      const keys = storeNames.map(storeName => this.buildStoreCardKey(cardName, storeName));
+
+      const cached = await redis.mget(...keys);
+
+      for (let i = 0; i < storeNames.length; i++) {
+        const storeName = storeNames[i];
+        const value = cached[i];
+
+        if (value) {
+          try {
+            results.set(storeName, JSON.parse(value));
+          } catch {
+            results.set(storeName, null);
+          }
+        } else {
+          results.set(storeName, null);
+        }
+      }
+
+      const hits = Array.from(results.values()).filter(v => v !== null).length;
+      this.logger.debug(`Batch cache check for ${cardName}: ${hits}/${storeNames.length} hits`);
+
+      return results;
+    } catch (error) {
+      this.logger.error(`Error batch reading from cache for ${cardName}:`, error);
+      // Return empty map on error
+      for (const storeName of storeNames) {
+        results.set(storeName, null);
+      }
+      return results;
+    }
+  }
+
+  /**
+   * Check if a specific store-card combination is currently being scraped.
+   */
+  async isStoreBeingScraped(cardName: string, storeName: string): Promise<boolean> {
+    try {
+      const scrapingKey = this.buildScrapingKey(cardName, storeName);
       const redis = await this.queue.client;
       const exists = await redis.exists(scrapingKey);
       return exists === 1;
     } catch (error) {
-      this.logger.error(`Error checking scraping status for ${cardName}:`, error);
+      this.logger.error(`Error checking scraping status for ${cardName} at ${storeName}:`, error);
       return false;
     }
   }
 
-  async markAsBeingScraped(cardName: string, requestId: string): Promise<boolean> {
+  /**
+   * Mark a specific store-card combination as being scraped.
+   * Uses SET NX to prevent race conditions.
+   * @returns true if successfully marked, false if already being scraped
+   */
+  async markStoreAsBeingScraped(cardName: string, storeName: string, requestId: string): Promise<boolean> {
     try {
-      const scrapingKey = `${this.SCRAPING_KEY_PREFIX}${cardName.toLowerCase()}`;
+      const scrapingKey = this.buildScrapingKey(cardName, storeName);
       const redis = await this.queue.client;
 
       // Use SET NX (set if not exists) to prevent race conditions
       const result = await redis.set(scrapingKey, requestId, 'EX', this.SCRAPING_TTL, 'NX');
 
-      // result will be 'OK' if set successfully, null if key already exists
       return result === 'OK';
     } catch (error) {
-      this.logger.error(`Error marking ${cardName} as being scraped:`, error);
+      this.logger.error(`Error marking ${cardName} at ${storeName} as being scraped:`, error);
       return false;
     }
   }
 
-  async waitForScrapeCompletion(cardName: string, timeoutMs: number = 60000): Promise<CardWithStore[] | null> {
+  /**
+   * Mark a specific store-card scrape as complete by removing the lock.
+   */
+  async markStoreScrapeComplete(cardName: string, storeName: string): Promise<void> {
+    try {
+      const scrapingKey = this.buildScrapingKey(cardName, storeName);
+      const redis = await this.queue.client;
+
+      await redis.del(scrapingKey);
+      this.logger.debug(`Marked scrape complete for ${cardName} at store ${storeName}`);
+    } catch (error) {
+      this.logger.error(`Error marking scrape complete for ${cardName} at ${storeName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Wait for multiple store-card combinations to complete scraping.
+   * Uses PSUBSCRIBE for pattern matching on Redis keyspace notifications.
+   * @param cardName The card name
+   * @param storeNames Array of store names to wait for
+   * @param timeoutMs Timeout in milliseconds (default 60 seconds)
+   * @returns Map of storeName -> cached entry when all complete
+   */
+  async waitForStoresScrapeCompletion(
+    cardName: string,
+    storeNames: string[],
+    timeoutMs: number = 60000,
+  ): Promise<Map<string, StoreCardCacheEntry | null>> {
+    if (storeNames.length === 0) {
+      return new Map();
+    }
+
     const normalizedName = cardName.toLowerCase();
-    const cacheKey = `${this.CACHE_KEY_PREFIX}${normalizedName}`;
-    const keyspaceChannel = `__keyspace@0__:${cacheKey}`;
+    const pattern = `__keyspace@0__:${this.STORE_CACHE_KEY_PREFIX}${normalizedName}${this.STORE_KEY_SEPARATOR}*`;
 
     return new Promise((resolve) => {
       let timeoutHandle: NodeJS.Timeout;
       let resolved = false;
 
-      // Callback for when notification arrives
-      const callback = (cards: CardWithStore[] | null) => {
+      const callback = (results: Map<string, StoreCardCacheEntry | null>) => {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeoutHandle);
-          resolve(cards);
+          resolve(results);
         }
       };
 
-      // Check if there's already a pending subscription for this card
-      let pending = this.pendingSubscriptions.get(keyspaceChannel);
+      // Check if there's already a pending subscription for this pattern
+      let pending = this.pendingPatternSubscriptions.get(pattern);
 
       if (!pending) {
         pending = {
+          pattern,
+          cardName,
+          pendingStores: new Set(storeNames.map(s => s.toLowerCase())),
+          results: new Map(),
           callbacks: new Set(),
-          keyspaceChannel,
-          cardName
         };
 
-        this.pendingSubscriptions.set(keyspaceChannel, pending);
+        this.pendingPatternSubscriptions.set(pattern, pending);
 
-        // Subscribe to this specific card's keyspace notification
-        this.cardSubscriber.subscribe(keyspaceChannel, (err) => {
+        // Subscribe using pattern matching
+        this.cardSubscriber.psubscribe(pattern, (err) => {
           if (err) {
-            this.logger.error(`Failed to subscribe to ${keyspaceChannel}:`, err);
-            this.cleanupSubscription(keyspaceChannel);
+            this.logger.error(`Failed to psubscribe to ${pattern}:`, err);
+            this.cleanupPatternSubscription(pattern);
           } else {
-            this.logger.debug(`Subscribed to keyspace notifications for: ${cardName} on channel: ${keyspaceChannel}`);
+            this.logger.debug(`Subscribed to pattern notifications for: ${cardName} on pattern: ${pattern}`);
           }
         });
+      } else {
+        // Add new stores to pending set
+        for (const storeName of storeNames) {
+          pending.pendingStores.add(storeName.toLowerCase());
+        }
       }
 
-      // Add this request's callback to the pending subscription
       pending.callbacks.add(callback);
 
       // Set up timeout
@@ -210,117 +411,55 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         if (!resolved) {
           resolved = true;
 
-          // Remove this callback
-          const currentPending = this.pendingSubscriptions.get(keyspaceChannel);
+          const currentPending = this.pendingPatternSubscriptions.get(pattern);
           if (currentPending) {
             currentPending.callbacks.delete(callback);
 
-            // If no more callbacks waiting, clean up the subscription
+            // If no more callbacks waiting, clean up
             if (currentPending.callbacks.size === 0) {
-              await this.cleanupSubscription(keyspaceChannel);
+              await this.cleanupPatternSubscription(pattern);
             }
           }
 
-          this.logger.error(`Timeout waiting for scrape completion: ${cardName}`);
-          resolve(null);
+          this.logger.warn(`Timeout waiting for stores scrape completion: ${cardName}, pending stores: ${Array.from(pending?.pendingStores ?? []).join(', ')}`);
+
+          // Return whatever results we have
+          resolve(pending?.results ?? new Map());
         }
       }, timeoutMs);
 
-      this.logger.debug(`Waiting for scrape completion: ${cardName} (${pending.callbacks.size} total waiting)`);
+      this.logger.debug(`Waiting for ${storeNames.length} store(s) to complete for: ${cardName}`);
     });
   }
 
-  private async cleanupSubscription(keyspaceChannel: string) {
-    const pending = this.pendingSubscriptions.get(keyspaceChannel);
+  private async cleanupPatternSubscription(pattern: string) {
+    const pending = this.pendingPatternSubscriptions.get(pattern);
     if (pending) {
-      await this.cardSubscriber.unsubscribe(pending.keyspaceChannel);
-      this.pendingSubscriptions.delete(keyspaceChannel);
-      this.logger.debug(`Cleaned up subscription for: ${keyspaceChannel}`);
+      await this.cardSubscriber.punsubscribe(pattern);
+      this.pendingPatternSubscriptions.delete(pattern);
+      this.logger.debug(`Cleaned up pattern subscription for: ${pattern}`);
     }
   }
 
   private failAllPendingRequests(reason: string) {
-    if (this.pendingSubscriptions.size === 0) {
+    if (this.pendingPatternSubscriptions.size === 0) {
       return;
     }
 
-    this.logger.error(`Failing ${this.pendingSubscriptions.size} pending request(s): ${reason}`);
+    this.logger.error(`Failing ${this.pendingPatternSubscriptions.size} pending request(s): ${reason}`);
 
-    // Notify all callbacks with null (failure)
-    for (const pending of this.pendingSubscriptions.values()) {
+    // Notify all callbacks with empty results
+    for (const pending of this.pendingPatternSubscriptions.values()) {
       this.logger.debug(`Failing ${pending.callbacks.size} callback(s) for: ${pending.cardName}`);
-      pending.callbacks.forEach(cb => cb(null));
+      pending.callbacks.forEach(cb => cb(new Map()));
     }
 
-    // Clear all pending subscriptions
-    this.pendingSubscriptions.clear();
+    this.pendingPatternSubscriptions.clear();
   }
 
-  async setCard(cardName: string, cards: CardWithStore[], storeErrors?: StoreError[], timestamp?: number): Promise<void> {
-    try {
-      const cacheKey = `${this.CACHE_KEY_PREFIX}${cardName.toLowerCase()}`;
-      const redis = await this.queue.client;
-
-      const result: ScrapeCardJobResult = {
-        cardName,
-        results: cards,
-        timestamp: timestamp ?? Date.now(),
-        success: true,
-        storeErrors,
-      };
-
-      // Cache for 24 hours
-      await redis.setex(cacheKey, 86400, JSON.stringify(result));
-      this.logger.debug(`Cached ${cards.length} results for: ${cardName}${storeErrors?.length ? ` (${storeErrors.length} store errors)` : ''}`);
-    } catch (error) {
-      this.logger.error(`Error caching results for ${cardName}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get the full cached result including store errors.
-   * Use this when you need access to storeErrors for retry logic.
-   */
-  async getCachedResult(cardName: string): Promise<ScrapeCardJobResult | null> {
-    try {
-      const cacheKey = `${this.CACHE_KEY_PREFIX}${cardName.toLowerCase()}`;
-      const redis = await this.queue.client;
-      const cached = await redis.get(cacheKey);
-
-      if (!cached) {
-        this.logger.debug(`Cache miss for: ${cardName}`);
-        return null;
-      }
-
-      const result: ScrapeCardJobResult = JSON.parse(cached);
-
-      if (!result.success) {
-        this.logger.debug(`Cached failed result for: ${cardName}`);
-        return null;
-      }
-
-      this.logger.debug(`Cache hit for: ${cardName}`);
-      return result;
-    } catch (error) {
-      this.logger.error(`Error reading from cache for ${cardName}:`, error);
-      return null;
-    }
-  }
-
-  async markScrapeComplete(cardName: string): Promise<void> {
-    try {
-      const scrapingKey = `${this.SCRAPING_KEY_PREFIX}${cardName.toLowerCase()}`;
-      const redis = await this.queue.client;
-
-      // Remove the scraping marker
-      await redis.del(scrapingKey);
-      this.logger.debug(`Marked scrape complete for: ${cardName}`);
-    } catch (error) {
-      this.logger.error(`Error marking scrape complete for ${cardName}:`, error);
-      throw error;
-    }
-  }
+  // =====================================
+  // Scheduler Status Methods
+  // =====================================
 
   async schedulerJobStatus(): Promise<SchedulerJobStatus | null> {
     try {
@@ -352,6 +491,10 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
   }
+
+  // =====================================
+  // Health Check
+  // =====================================
 
   /**
    * Check Redis health by pinging the connection

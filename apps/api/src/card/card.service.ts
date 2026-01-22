@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CacheService, CardWithStore, QueueService, StoreService } from '@scoutlgs/core';
-import { CardSearchResponse, StoreInfo, PriceStats, StoreError } from '@scoutlgs/shared';
+import { CardSearchResponse, StoreInfo, PriceStats } from '@scoutlgs/shared';
 import { randomUUID } from 'crypto';
 
 const MAX_STORE_RETRIES = 2;
@@ -16,85 +16,123 @@ export class CardService {
   ) {}
 
   async getCardByName(cardName: string): Promise<CardSearchResponse> {
-    // Try to get cached data (including store errors)
-    const cachedResult = await this.cacheService.getCachedResult(cardName);
+    const requestId = randomUUID();
 
-    // Determine if we need to scrape and which stores
-    let storesToScrape: string[] | undefined;
+    // 1. Get all active stores
+    const allStores = await this.storeService.findAllActive();
+    const storeNames = allStores.map(s => s.name); // Use slug for cache keys
 
-    if (cachedResult) {
-      // Check if there are store errors that need retrying (max 2 retries per store)
-      const retryableErrors = cachedResult.storeErrors?.filter(
-        (e) => (e.retryCount ?? 0) < MAX_STORE_RETRIES,
-      );
+    // 2. Batch check cache for all stores
+    const cachedResults = await this.cacheService.getMultipleStoreCards(cardName, storeNames);
 
-      if (retryableErrors && retryableErrors.length > 0) {
-        storesToScrape = retryableErrors.map((e) => e.storeName);
-        this.logger.log(
-          `Cached data for ${cardName} has ${retryableErrors.length} retryable store error(s), retrying: ${storesToScrape.join(', ')}`,
-        );
-      } else {
-        // No retryable store errors - serve from cache
-        if (cachedResult.storeErrors?.length) {
-          this.logger.debug(
-            `Serving ${cardName} from cache (${cachedResult.storeErrors.length} store(s) exceeded max retries)`,
-          );
-        } else {
-          this.logger.debug(`Serving ${cardName} from cache`);
+    // 3. Determine which stores need scraping and collect existing results
+    const storesToScrape: string[] = [];
+    const existingResults: CardWithStore[] = [];
+    const storeErrors: Array<{ storeName: string; error: string }> = [];
+
+    for (const store of allStores) {
+      const cached = cachedResults.get(store.name);
+
+      if (cached) {
+        // Add results from this store
+        existingResults.push(...cached.results);
+
+        // Check if there's an error that needs retrying
+        if (cached.error && (cached.retryCount ?? 0) < MAX_STORE_RETRIES) {
+          storesToScrape.push(store.name);
+          this.logger.debug(`Store ${store.name} has retryable error (retry ${cached.retryCount ?? 0}/${MAX_STORE_RETRIES})`);
+        } else if (cached.error) {
+          // Max retries exceeded - include in storeErrors response
+          storeErrors.push({ storeName: store.displayName, error: cached.error });
         }
-        return this.buildResponse(cardName, cachedResult.results, cachedResult.storeErrors);
+      } else {
+        // Cache miss - needs scraping
+        storesToScrape.push(store.name);
       }
     }
 
-    // Check if already being scraped by another request
-    const isBeingScraped = await this.cacheService.isBeingScraped(cardName);
-
-    if (isBeingScraped) {
-      // Another request is already scraping this card - wait for it
-      this.logger.log(`${cardName} is already being scraped, waiting for completion`);
-      await this.cacheService.waitForScrapeCompletion(cardName);
-      const result = await this.cacheService.getCachedResult(cardName);
-      return this.buildResponse(cardName, result?.results || [], result?.storeErrors);
+    // 4. If nothing to scrape, return cached results
+    if (storesToScrape.length === 0) {
+      this.logger.debug(`Serving ${cardName} from cache (all ${storeNames.length} stores cached)`);
+      return this.buildResponse(cardName, existingResults, storeErrors, allStores);
     }
 
-    // Mark as being scraped and enqueue job
-    const requestId = randomUUID();
-    const marked = await this.cacheService.markAsBeingScraped(cardName, requestId);
+    this.logger.log(`${cardName}: ${storeNames.length - storesToScrape.length}/${storeNames.length} stores cached, scraping ${storesToScrape.length} store(s)`);
 
-    if (!marked) {
-      // Race condition: another request just marked it - wait for that request
-      this.logger.log(`${cardName} was just marked by another request, waiting for completion`);
-      await this.cacheService.waitForScrapeCompletion(cardName);
-      const result = await this.cacheService.getCachedResult(cardName);
-      return this.buildResponse(cardName, result?.results || [], result?.storeErrors);
+    // 5. Check which stores are already being scraped and mark the rest
+    const storesToEnqueue: string[] = [];
+    const storesToWait: string[] = [];
+
+    for (const storeName of storesToScrape) {
+      // Try to mark this store as being scraped
+      const marked = await this.cacheService.markStoreAsBeingScraped(cardName, storeName, requestId);
+
+      if (marked) {
+        storesToEnqueue.push(storeName);
+      } else {
+        // Already being scraped by another request
+        storesToWait.push(storeName);
+      }
     }
 
-    // We successfully marked it - enqueue the scrape job (with specific stores if retrying)
-    // Get the retryable errors to pass along for retry count tracking
-    const retryableErrors = cachedResult?.storeErrors?.filter(
-      (e) => (e.retryCount ?? 0) < MAX_STORE_RETRIES,
-    );
+    // 6. Enqueue jobs for stores we successfully marked
+    if (storesToEnqueue.length > 0) {
+      // Get retry counts from cached results for retrying stores
+      const jobs = storesToEnqueue.map(storeName => {
+        const cached = cachedResults.get(storeName);
+        return {
+          cardName,
+          storeName,
+          priority: 10, // High priority for user requests
+          requestId,
+          retryCount: cached?.retryCount,
+        };
+      });
 
-    if (storesToScrape) {
-      this.logger.log(`Enqueueing retry scrape for ${cardName}, stores: ${storesToScrape.join(', ')} (Request ID: ${requestId})`);
-    } else {
-      this.logger.log(`Cache miss for ${cardName}, enqueueing scrape job (Request ID: ${requestId})`);
+      await this.queueService.enqueueScrapeJobsBulk(jobs);
+      this.logger.log(`Enqueued ${storesToEnqueue.length} scrape job(s) for ${cardName} (Request ID: ${requestId})`);
     }
-    await this.queueService.enqueueScrapeJob(cardName, 10, requestId, storesToScrape, retryableErrors);
 
-    // Wait for the scrape to complete
-    await this.cacheService.waitForScrapeCompletion(cardName);
-    const result = await this.cacheService.getCachedResult(cardName);
-    return this.buildResponse(cardName, result?.results || [], result?.storeErrors);
+    // 7. Wait for all stores that need scraping (both enqueued and already-in-progress)
+    const allStoresToWait = [...storesToEnqueue, ...storesToWait];
+
+    if (allStoresToWait.length > 0) {
+      this.logger.debug(`Waiting for ${allStoresToWait.length} store(s) to complete for ${cardName}`);
+
+      const newResults = await this.cacheService.waitForStoresScrapeCompletion(
+        cardName,
+        allStoresToWait,
+        60000, // 60 second timeout
+      );
+
+      // 8. Merge new results with existing cached results
+      for (const [storeName, entry] of newResults) {
+        if (entry) {
+          existingResults.push(...entry.results);
+
+          // Track store errors for response
+          if (entry.error) {
+            const store = allStores.find(s => s.name === storeName);
+            storeErrors.push({
+              storeName: store?.displayName ?? storeName,
+              error: entry.error,
+            });
+          }
+        }
+      }
+    }
+
+    return this.buildResponse(cardName, existingResults, storeErrors, allStores);
   }
 
-  private async buildResponse(
+  private buildResponse(
     cardName: string,
     cards: CardWithStore[],
-    storeErrors?: StoreError[],
-  ): Promise<CardSearchResponse> {
-    // Get all active stores from database (uses server-side cache)
-    const allStores = await this.storeService.findAllActive();
+    storeErrors: Array<{ storeName: string; error: string }>,
+    allStores: Awaited<ReturnType<StoreService['findAllActive']>>,
+  ): CardSearchResponse {
+    // Sort results by price (lowest first)
+    cards.sort((a, b) => a.price - b.price);
 
     // Group cards by store and count
     const storeCardCounts = new Map<string, number>();
@@ -141,7 +179,7 @@ export class CardService {
       priceStats,
       results: cards,
       timestamp: Date.now(),
-      storeErrors: storeErrors?.length ? storeErrors : undefined,
+      storeErrors: storeErrors.length > 0 ? storeErrors : undefined,
     };
   }
 }
