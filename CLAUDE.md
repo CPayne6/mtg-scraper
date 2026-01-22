@@ -49,23 +49,26 @@ mtg-scraper/
 ### API (`apps/api`)
 - **Port**: 5000
 - REST API handling card search requests
-- Checks Redis cache, enqueues scraping jobs, returns aggregated results
+- Batch checks Redis cache, enqueues scraping jobs for missing stores, returns aggregated results
+- **Results sorted by price** (lowest first) in `CardSearchResponse.results`
 - **Key Endpoints**:
-  - `GET /card/:cardName` - Search for MTG card
-  - `GET /health` - Health check
+  - `GET /api/card/:cardName` - Search for MTG card (returns `CardSearchResponse`)
+  - `GET /api/health` - Health check
 
 ### Scheduler (`apps/scheduler`)
 - Background service (no HTTP port)
 - Runs daily cron job at 2 AM EST
-- Fetches popular EDH cards from EDHREC API and queues them for scraping
+- Fetches popular EDH cards from EDHREC API and queues jobs per card-store combination
+- Uses cached store list from StoreService
 - Configurable via `DAILY_SCRAPE_TIME` and `SCHEDULE_ENABLED` env vars
 
 ### Scraper (`apps/scraper`)
 - Background worker service (no HTTP port)
-- Processes BullMQ `card-scrape` queue jobs
-- Scrapes 7+ stores in parallel
+- Processes BullMQ `card-scrape` queue jobs (one store-card combo per job)
+- **Concurrency**: 10 jobs per worker
 - Horizontally scalable (3-10 workers recommended)
 - **Supported scrapers**: f2f, 401, hobbies, binderpos (generic for multiple stores)
+- **Key method**: `scraperService.searchCardAtStore(cardName, storeName)` - scrapes a single store
 
 ### UI (`apps/ui`)
 - **Port**: 3000
@@ -79,14 +82,15 @@ mtg-scraper/
 
 ### @mtg-scraper/core (`packages/core`)
 Shared infrastructure for backend services:
-- Database Module (TypeORM config)
-- Store Module (store CRUD with caching)
-- Queue Module (BullMQ client)
-- Cache Module (Redis with pub/sub)
+- **Database Module**: TypeORM config and connection
+- **Store Module**: Store CRUD with in-memory caching (`findAllActive()`)
+- **Queue Module**: BullMQ client with `enqueueScrapeJob()` and `enqueueScrapeJobsBulk()`
+- **Cache Module**: Redis with pub/sub, per-store-card caching, MGET batch operations
 
 ### @mtg-scraper/shared (`packages/shared`)
 Shared types and constants:
 - `Card`, `CardWithStore`, `CardSearchResponse`, `PriceStats`
+- `ScrapeCardJobData`, `ScrapeCardJobResult`, `StoreCardCacheEntry`
 - `Condition` enum
 - `QUEUE_NAMES`, `JOB_NAMES` constants
 
@@ -166,15 +170,22 @@ nx run scheduler:scrape-test    # Test scrape manually
 ## Data Flow
 
 1. User searches for card in UI
-2. API checks Redis cache (`card:{cardname}`)
-3. If cache miss: enqueues job with priority 10 (high)
-4. Scraper worker picks up job, scrapes all stores in parallel
-5. Results cached in Redis (24-hour TTL)
-6. API notified via Redis pub/sub, returns results to UI
+2. API gets all active stores from StoreService (cached)
+3. API batch checks Redis cache for each store using `MGET` (`card:{cardname}:store:{storename}`)
+4. For cache misses: marks stores as "being scraped" (lock key) and enqueues individual jobs
+5. Scraper workers (concurrency 10) process one store-card combo per job
+6. Results cached per store in Redis (24-hour TTL), lock removed
+7. API waits via Redis `PSUBSCRIBE` pattern (`__keyspace@0__:card:{cardname}:store:*`)
+8. API aggregates results from all stores, sorts by price (lowest first), returns to UI
 
 ### Priority System
 - User requests: Priority 10 (immediate)
 - Scheduled tasks: Priority 1 (background)
+
+### Retry Logic
+- Failed store scrapes are cached with `error` and `retryCount` fields
+- API retries stores with errors up to `MAX_STORE_RETRIES` (2) times
+- After max retries, store error is included in response but no more retries attempted
 
 ## Environment Variables
 
@@ -301,7 +312,94 @@ Primary database entity storing retailer information:
 
 ## Caching Strategy
 
-- **Cache Key**: `card:{normalized_cardname}`
+- **Cache Key**: `card:{normalized_cardname}:store:{store_slug}` (e.g., `card:lightning bolt:store:f2f`)
 - **TTL**: 24 hours
-- **Lock Key**: `scraping:{cardname}` (prevents duplicate scrapes)
-- **Pub/Sub**: Redis keyspace notifications for real-time updates
+- **Lock Key**: `scraping:{cardname}:store:{storename}` (prevents duplicate scrapes per store-card)
+- **Pub/Sub**: Redis PSUBSCRIBE with pattern matching for real-time updates
+- **Batch Operations**: Uses Redis MGET for efficient multi-store cache checks
+
+### Store Identifiers
+- **Store `name`** (slug): Used in cache keys, job data, database lookups (e.g., `f2f`, `401`, `hobbies`)
+- **Store `displayName`**: Used in `card.store` field for UI display (e.g., "Face to Face Games")
+
+### Key Cache Service Methods
+| Method | Description |
+|--------|-------------|
+| `setStoreCard(cardName, storeName, results, error?, retryCount?)` | Cache results for a single store-card |
+| `getStoreCard(cardName, storeName)` | Get cached results for a single store-card |
+| `getMultipleStoreCards(cardName, storeNames[])` | Batch MGET for multiple stores |
+| `markStoreAsBeingScraped(cardName, storeName, requestId)` | Set lock (returns false if already locked) |
+| `markStoreScrapeComplete(cardName, storeName)` | Remove lock after scrape completes |
+| `waitForStoresScrapeCompletion(cardName, storeNames[], timeoutMs)` | Wait for stores via PSUBSCRIBE |
+
+---
+
+## Manual Scheduler Trigger
+
+The scheduler service exposes HTTP endpoints on port 5001 for manually triggering scrapes and checking status.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `PUT` | `/manual/trigger?limit=N` | Trigger a manual scrape of popular cards (default: 1000 cards) |
+| `GET` | `/manual/status` | Check current scrape job status |
+
+### Triggering a Manual Scrape in Production
+
+The scheduler container uses Alpine Linux and doesn't have curl, so use Node.js fetch from inside the container.
+
+```bash
+# SSH into production server
+ssh scoutlgs_lan
+
+# Find the scheduler container name
+SCHEDULER=$(docker ps -f name=scheduler --format '{{.Names}}')
+
+# Trigger a manual scrape (default 1000 cards)
+docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/trigger', {method: 'PUT'}).then(r => r.json()).then(console.log)"
+
+# Trigger with custom limit (e.g., 500 cards)
+docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/trigger?limit=500', {method: 'PUT'}).then(r => r.json()).then(console.log)"
+
+# Check scrape status
+docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/status').then(r => r.json()).then(console.log)"
+```
+
+### One-liner from local machine
+
+```bash
+# Trigger scrape via SSH (gets container name and triggers in one command)
+ssh scoutlgs_lan "docker exec \$(docker ps -f name=scheduler --format '{{.Names}}') node -e \"fetch('http://localhost:5001/manual/trigger', {method: 'PUT'}).then(r => r.json()).then(console.log)\""
+
+# Check status
+ssh scoutlgs_lan "docker exec \$(docker ps -f name=scheduler --format '{{.Names}}') node -e \"fetch('http://localhost:5001/manual/status').then(r => r.json()).then(console.log)\""
+```
+
+### Response Examples
+
+**Trigger Response:**
+```json
+{ "message": "Scrape triggered successfully" }
+```
+
+**Status Response (running):**
+```json
+{
+  "status": "running",
+  "initiatedAt": 1705881234567,
+  "details": {
+    "currentScrapeCount": 150,
+    "totalScrapeCount": 1000
+  }
+}
+```
+
+**Status Response (completed):**
+```json
+{
+  "status": "completed",
+  "initiatedAt": 1705881234567,
+  "finishedAt": 1705884567890
+}
+```

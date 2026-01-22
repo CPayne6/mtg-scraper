@@ -6,7 +6,6 @@ import {
   JOB_NAMES,
   ScrapeCardJobData,
   ScrapeCardJobResult,
-  StoreError,
 } from '@scoutlgs/shared';
 import { CacheService } from '@scoutlgs/core';
 import { ScraperService } from './scraper.service';
@@ -22,108 +21,83 @@ export class ScrapeCardProcessor {
 
   @Process({
     name: JOB_NAMES.SCRAPE_CARD,
-    concurrency: 3
+    concurrency: 10, // Increased from 3 - each job now handles only one store
   })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
-    const { cardName, requestId, stores, previousErrors } = job.data;
-    const isTargetedScrape = stores && stores.length > 0;
-
-    // Build a map of previous retry counts for quick lookup
-    const previousRetryCounts = new Map<string, number>();
-    if (previousErrors) {
-      for (const err of previousErrors) {
-        previousRetryCounts.set(err.storeName, err.retryCount ?? 0);
-      }
-    }
+    const { cardName, storeName, requestId, retryCount } = job.data;
 
     // Ensure stores are loaded before processing
     await this.scraperService.waitUntilReady();
 
     this.logger.log(
-      `Processing scrape job for: ${cardName} (Job ID: ${job.id}, Request ID: ${requestId || 'N/A'}${isTargetedScrape ? `, Stores: ${stores.join(', ')}` : ''})`,
+      `Processing scrape job for: ${cardName} at ${storeName} (Job ID: ${job.id}, Request ID: ${requestId || 'N/A'})`,
     );
 
     try {
-      // Perform the scraping (for specific stores or all stores)
-      const { results, storeErrors: rawStoreErrors } = await this.scraperService.searchCard(cardName, stores);
+      // Scrape single store
+      const { results, error } = await this.scraperService.searchCardAtStore(cardName, storeName);
 
-      // Increment retry counts for stores that failed again
-      const storeErrors: StoreError[] = rawStoreErrors.map((err) => ({
-        ...err,
-        retryCount: (previousRetryCounts.get(err.storeName) ?? 0) + 1,
-      }));
+      // Increment retry count if there was an error
+      const newRetryCount = error ? (retryCount ?? 0) + 1 : retryCount;
 
-      if (isTargetedScrape) {
-        // For targeted scrapes, merge with existing cached data
-        const cached = await this.cacheService.getCachedResult(cardName);
-
-        // Preserve the original timestamp from the initial scrape
-        const originalTimestamp = cached?.timestamp ?? Date.now();
-
-        // Remove old results from the stores we just scraped
-        const existingResults = cached?.results.filter(
-          (card) => !stores.includes(card.store)
-        ) ?? [];
-
-        // Remove old errors from the stores we just scraped
-        const existingErrors = cached?.storeErrors?.filter(
-          (err) => !stores.includes(err.storeName)
-        ) ?? [];
-
-        // Merge results and sort by price
-        const mergedResults = [...existingResults, ...results].sort((a, b) => a.price - b.price);
-        const mergedErrors = [...existingErrors, ...storeErrors];
-
-        // Cache the merged results with the original timestamp
-        await this.cacheService.setCard(cardName, mergedResults, mergedErrors, originalTimestamp);
-
-        this.logger.log(
-          `Successfully scraped ${results.length} results from ${stores.length} store(s) for: ${cardName} (merged total: ${mergedResults.length})`,
-        );
-
-        return {
-          cardName,
-          results: mergedResults,
-          storeErrors: mergedErrors,
-          timestamp: originalTimestamp,
-          success: true,
-        };
-      } else {
-        // Full scrape - cache all results
-        await this.cacheService.setCard(cardName, results, storeErrors);
-
-        // Mark scraping as complete
-        await this.cacheService.markScrapeComplete(cardName);
-
-        this.logger.log(
-          `Successfully scraped ${results.length} results for: ${cardName}`,
-        );
-
-        return {
-          cardName,
-          results,
-          storeErrors,
-          timestamp: Date.now(),
-          success: true,
-        };
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to scrape ${cardName}:`,
-        error instanceof Error ? error.stack : error,
+      // Cache the result for this store-card combination
+      await this.cacheService.setStoreCard(
+        cardName,
+        storeName,
+        results,
+        error,
+        newRetryCount,
       );
 
-      // Mark scraping as complete even on failure so waiting requests don't hang
-      if (!isTargetedScrape) {
-        await this.cacheService.markScrapeComplete(cardName);
+      // Mark this store-card scrape as complete (removes lock)
+      await this.cacheService.markStoreScrapeComplete(cardName, storeName);
+
+      if (error) {
+        this.logger.warn(
+          `Scraped ${cardName} at ${storeName} with error: ${error} (retry ${newRetryCount})`,
+        );
+      } else {
+        this.logger.log(
+          `Successfully scraped ${results.length} results for: ${cardName} at ${storeName}`,
+        );
       }
 
       return {
         cardName,
+        storeName,
+        results,
+        timestamp: Date.now(),
+        success: !error,
+        error,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `Failed to scrape ${cardName} at ${storeName}:`,
+        error instanceof Error ? error.stack : error,
+      );
+
+      // Cache the error state
+      const newRetryCount = (retryCount ?? 0) + 1;
+      await this.cacheService.setStoreCard(
+        cardName,
+        storeName,
+        [],
+        errorMessage,
+        newRetryCount,
+      );
+
+      // Mark scrape complete even on failure so waiting requests don't hang
+      await this.cacheService.markStoreScrapeComplete(cardName, storeName);
+
+      return {
+        cardName,
+        storeName,
         results: [],
         timestamp: Date.now(),
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
       };
     }
   }

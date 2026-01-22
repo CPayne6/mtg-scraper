@@ -107,12 +107,15 @@ services:
       context: .
       dockerfile: apps/scheduler/Dockerfile.dev
     container_name: scoutlgs-scheduler-dev
+    ports:
+      - "5001:5001"
     env_file:
       - apps/scheduler/.env
     environment:
       - NODE_ENV=development
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
     volumes:
       # Mount source code for hot reload
       - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
