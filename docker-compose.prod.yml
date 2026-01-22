@@ -140,7 +140,6 @@ services:
       - USE_DOCKER_SECRETS=true
       - EDHREC_PAGES=100
       - LOG_LEVEL=log,warn,error,fatal
-      - RUN_ON_INIT=true
     ports:
       - "5001:5001"
     networks:
