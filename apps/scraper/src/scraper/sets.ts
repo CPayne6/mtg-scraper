@@ -39,10 +39,17 @@ export const isValidSetCode = (code: string) => {
 }
 
 export const loadSets = async () => {
-  const response = await fetch('https://api.scryfall.com/sets')
-  const data: unknown = await response.json()
-  sets = (data as { data: Set[] }).data
-  return sets
+  try {
+    const response = await fetch('https://api.scryfall.com/sets')
+    const data: unknown = await response.json()
+    sets = (data as { data: Set[] }).data
+    console.log(`Loaded ${sets.length} sets from Scryfall`)
+    return sets
+  } catch (err) {
+    console.error('Failed to load sets from Scryfall:', err)
+    // Don't crash - keep existing sets (or empty array on first load)
+    return sets
+  }
 }
 
 const job = new cron.CronJob('0 0 * * *', () => { loadSets() }, null, true, 'America/New_York', null, true)
