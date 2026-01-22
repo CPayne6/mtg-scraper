@@ -4,7 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PopularCardsModule } from '../popular-cards/popular-cards.module';
 import { validationSchema } from '../config/validation';
-import { CacheModule, CacheService } from '@scoutlgs/core';
+import { CacheModule, CacheService, StoreModule, StoreService } from '@scoutlgs/core';
 import { PopularCardsScheduler } from '@/popular-cards/popular-cards.scheduler';
 
 const DEFAULT_START_PAGE = 110;
@@ -55,6 +55,7 @@ function createTestConfig(startPage: number, pageCount: number) {
     ScheduleModule.forRoot(),
     PopularCardsModule,
     CacheModule,
+    StoreModule,
   ],
 })
 class TestModule {}
@@ -79,6 +80,11 @@ async function main() {
 
   const popularCardsScheduler = app.get(PopularCardsScheduler);
   const cacheService = app.get(CacheService);
+  const storeService = app.get(StoreService);
+
+  // Get all active stores to check results
+  const stores = await storeService.findAllActive();
+  const storeNames = stores.map(s => s.name);
 
   logger.log('Fetching and scraping cards from EDHREC...');
   const cards = await popularCardsScheduler.scrapePopularCards({
@@ -98,29 +104,42 @@ async function main() {
     const cardName = cards[i];
     const position = i + 1;
 
-    const result = await cacheService.getCachedResult(cardName);
+    // Get cached results for all stores
+    const storeResults = await cacheService.getMultipleStoreCards(cardName, storeNames);
 
-    if (!result) {
-      logger.error(`[${position}/${cards.length}] FAILED: ${cardName} - No result returned`);
+    let totalResults = 0;
+    const cardStoreErrors: StoreError[] = [];
+
+    for (const [storeName, entry] of storeResults) {
+      if (entry) {
+        totalResults += entry.results.length;
+        if (entry.error) {
+          cardStoreErrors.push({ storeName, error: entry.error });
+        }
+      }
+    }
+
+    if (totalResults === 0 && cardStoreErrors.length === 0) {
+      logger.error(`[${position}/${cards.length}] FAILED: ${cardName} - No results from any store`);
       errorCount++;
       continue;
     }
 
-    if (result.storeErrors && result.storeErrors.length > 0) {
+    if (cardStoreErrors.length > 0) {
       errorCount++;
       errors.push({
         cardName,
         position,
-        storeErrors: result.storeErrors,
+        storeErrors: cardStoreErrors,
       });
 
       logger.error(`[${position}/${cards.length}] STORE ERRORS for ${cardName}:`);
-      for (const storeError of result.storeErrors) {
+      for (const storeError of cardStoreErrors) {
         logger.error(`  - ${storeError.storeName}: ${storeError.error}`);
       }
     } else {
       successCount++;
-      logger.log(`[${position}/${cards.length}] SUCCESS: ${cardName} (${result.results.length} results)`);
+      logger.log(`[${position}/${cards.length}] SUCCESS: ${cardName} (${totalResults} results)`);
     }
   }
 

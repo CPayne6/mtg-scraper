@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { CardWithStore, StoreError } from '@scoutlgs/shared';
+import { CardWithStore } from '@scoutlgs/shared';
 import { StoreService, Store as StoreEntity } from '@scoutlgs/core';
 import {
   _401Loader,
@@ -17,8 +17,14 @@ import {
 } from './parsers';
 import { ProxyService } from './proxy/proxy.service';
 
+/**
+ * Internal store configuration with both name (slug) and displayName.
+ */
 interface Store {
+  /** Store name slug used for cache keys and job data (e.g., 'f2f', '401') */
   name: string;
+  /** Human-readable display name used in card.store field (e.g., 'Face to Face Games') */
+  displayName: string;
   loader: HTTPLoader;
   parser: Parser;
 }
@@ -27,6 +33,7 @@ interface Store {
 export class ScraperService implements OnModuleInit {
   private readonly logger = new Logger(ScraperService.name);
   private stores: Store[] = [];
+  private storesByName = new Map<string, Store>();
 
   constructor(private readonly storeService: StoreService, private readonly proxyService: ProxyService) {}
 
@@ -53,6 +60,13 @@ export class ScraperService implements OnModuleInit {
     await this.storeService.waitUntilReady();
     const dbStores = await this.storeService.findAllActive();
     this.stores = dbStores.map((store) => this.buildStoreConfig(store));
+
+    // Build lookup map by store name (slug)
+    this.storesByName.clear();
+    for (const store of this.stores) {
+      this.storesByName.set(store.name, store);
+    }
+
     this.logger.log(`Loaded ${this.stores.length} stores from database`);
   }
 
@@ -83,7 +97,8 @@ export class ScraperService implements OnModuleInit {
     }
 
     return {
-      name: dbStore.displayName,
+      name: dbStore.name, // Slug for cache keys (e.g., 'f2f')
+      displayName: dbStore.displayName, // Human-readable name (e.g., 'Face to Face Games')
       loader,
       parser,
     };
@@ -100,13 +115,13 @@ export class ScraperService implements OnModuleInit {
       // If parser returned an error, this is an API/parsing issue, not "card not found"
       if (response.error) {
         this.logger.error(
-          `Store API error from ${store.name} for "${cardName}": ${response.error}`
+          `Store API error from ${store.displayName} for "${cardName}": ${response.error}`
         );
         return { results: [], error: response.error };
       }
 
       const results = response.result
-        .map((card) => ({ ...card, store: store.name }))
+        .map((card) => ({ ...card, store: store.displayName })) // Use displayName for card.store
         .filter((card) =>
           card.title
             .toLocaleLowerCase()
@@ -115,7 +130,7 @@ export class ScraperService implements OnModuleInit {
         );
 
       if (results.length === 0) {
-        this.logger.debug(`Card not found in ${store.name}: ${cardName}`);
+        this.logger.debug(`Card not found in ${store.displayName}: ${cardName}`);
       }
 
       return { results };
@@ -123,54 +138,38 @@ export class ScraperService implements OnModuleInit {
       // Network errors, timeout, etc - log as error
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Failed to fetch from ${store.name} for "${cardName}":`,
+        `Failed to fetch from ${store.displayName} for "${cardName}":`,
         error
       );
       return { results: [], error: `Network error: ${errorMessage}` };
     }
   }
 
-  async searchCard(cardName: string, storeNames?: string[]): Promise<{ results: CardWithStore[]; storeErrors: StoreError[] }> {
-    // Filter stores if specific store names are provided
-    const storesToSearch = storeNames?.length
-      ? this.stores.filter((store) => storeNames.includes(store.name))
-      : this.stores;
+  /**
+   * Search for a card at a specific store.
+   * This is the primary method used by the scraper processor.
+   * @param cardName The card name to search for
+   * @param storeName The store name slug (e.g., 'f2f', '401')
+   * @returns Results from this store and any error message
+   */
+  async searchCardAtStore(cardName: string, storeName: string): Promise<{ results: CardWithStore[]; error?: string }> {
+    const store = this.storesByName.get(storeName);
 
-    if (storeNames?.length) {
-      this.logger.log(`Searching for card: ${cardName} in specific stores: ${storeNames.join(', ')}`);
-    } else {
-      this.logger.log(`Searching for card: ${cardName}`);
+    if (!store) {
+      this.logger.error(`Store not found: ${storeName}`);
+      return { results: [], error: `Store not found: ${storeName}` };
     }
 
-    const cards: CardWithStore[] = [];
-    const storeErrors: StoreError[] = [];
+    this.logger.log(`Searching for card: ${cardName} at ${store.displayName}`);
 
-    // Fetch from stores and track errors
-    const fetchResults = await Promise.all(
-      storesToSearch.map(async (store) => {
-        const result = await this.fetchCardFromStore(cardName, store);
+    const result = await this.fetchCardFromStore(cardName, store);
 
-        if (result.error) {
-          storeErrors.push({ storeName: store.name, error: result.error });
-        }
-
-        return result.results;
-      })
-    );
-
-    // Flatten all results
-    cards.push(...fetchResults.flat());
-
-    const sortedCards = cards.sort((a, b) => a.price - b.price);
-
-    if (storeErrors.length > 0) {
-      this.logger.warn(
-        `Found ${sortedCards.length} results for: ${cardName} (${storeErrors.length} store(s) had errors)`
-      );
+    if (result.error) {
+      this.logger.warn(`Error searching ${cardName} at ${store.displayName}: ${result.error}`);
     } else {
-      this.logger.log(`Found ${sortedCards.length} results for: ${cardName}`);
+      this.logger.log(`Found ${result.results.length} results for: ${cardName} at ${store.displayName}`);
     }
 
-    return { results: sortedCards, storeErrors };
+    return result;
   }
 }
