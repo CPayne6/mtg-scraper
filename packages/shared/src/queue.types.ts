@@ -14,11 +14,14 @@ export interface ScrapeCardJobData {
   requestId?: string;
   /** Optional list of store names to scrape. If not provided, scrapes all stores. */
   stores?: string[];
+  /** Previous store errors for retry tracking. Used to increment retry counts. */
+  previousErrors?: StoreError[];
 }
 
 export interface StoreError {
   storeName: string;
   error: string;
+  retryCount?: number;
 }
 
 export interface ScrapeCardJobResult {

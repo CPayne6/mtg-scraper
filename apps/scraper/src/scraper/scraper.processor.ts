@@ -6,6 +6,7 @@ import {
   JOB_NAMES,
   ScrapeCardJobData,
   ScrapeCardJobResult,
+  StoreError,
 } from '@scoutlgs/shared';
 import { CacheService } from '@scoutlgs/core';
 import { ScraperService } from './scraper.service';
@@ -24,8 +25,16 @@ export class ScrapeCardProcessor {
     concurrency: 3
   })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
-    const { cardName, requestId, stores } = job.data;
+    const { cardName, requestId, stores, previousErrors } = job.data;
     const isTargetedScrape = stores && stores.length > 0;
+
+    // Build a map of previous retry counts for quick lookup
+    const previousRetryCounts = new Map<string, number>();
+    if (previousErrors) {
+      for (const err of previousErrors) {
+        previousRetryCounts.set(err.storeName, err.retryCount ?? 0);
+      }
+    }
 
     // Ensure stores are loaded before processing
     await this.scraperService.waitUntilReady();
@@ -36,7 +45,13 @@ export class ScrapeCardProcessor {
 
     try {
       // Perform the scraping (for specific stores or all stores)
-      const { results, storeErrors } = await this.scraperService.searchCard(cardName, stores);
+      const { results, storeErrors: rawStoreErrors } = await this.scraperService.searchCard(cardName, stores);
+
+      // Increment retry counts for stores that failed again
+      const storeErrors: StoreError[] = rawStoreErrors.map((err) => ({
+        ...err,
+        retryCount: (previousRetryCounts.get(err.storeName) ?? 0) + 1,
+      }));
 
       if (isTargetedScrape) {
         // For targeted scrapes, merge with existing cached data

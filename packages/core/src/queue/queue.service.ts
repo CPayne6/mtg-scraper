@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES, JOB_NAMES, ScrapeCardJobData } from '@scoutlgs/shared';
+import { QUEUE_NAMES, JOB_NAMES, ScrapeCardJobData, StoreError } from '@scoutlgs/shared';
 
 @Injectable()
 export class QueueService {
@@ -17,6 +17,7 @@ export class QueueService {
     priority: number = 5,
     requestId?: string,
     stores?: string[],
+    previousErrors?: StoreError[],
   ): Promise<void> {
     try {
       await this.scrapeQueue.add(
@@ -26,6 +27,7 @@ export class QueueService {
           priority,
           requestId,
           stores,
+          previousErrors,
         },
         {
           priority,

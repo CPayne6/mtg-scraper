@@ -3,6 +3,8 @@ import { CacheService, CardWithStore, QueueService, StoreService } from '@scoutl
 import { CardSearchResponse, StoreInfo, PriceStats, StoreError } from '@scoutlgs/shared';
 import { randomUUID } from 'crypto';
 
+const MAX_STORE_RETRIES = 2;
+
 @Injectable()
 export class CardService {
   private readonly logger = new Logger(CardService.name);
@@ -21,15 +23,25 @@ export class CardService {
     let storesToScrape: string[] | undefined;
 
     if (cachedResult) {
-      // Check if there are store errors that need retrying
-      if (cachedResult.storeErrors && cachedResult.storeErrors.length > 0) {
-        storesToScrape = cachedResult.storeErrors.map((e) => e.storeName);
+      // Check if there are store errors that need retrying (max 2 retries per store)
+      const retryableErrors = cachedResult.storeErrors?.filter(
+        (e) => (e.retryCount ?? 0) < MAX_STORE_RETRIES,
+      );
+
+      if (retryableErrors && retryableErrors.length > 0) {
+        storesToScrape = retryableErrors.map((e) => e.storeName);
         this.logger.log(
-          `Cached data for ${cardName} has ${storesToScrape.length} store error(s), retrying: ${storesToScrape.join(', ')}`,
+          `Cached data for ${cardName} has ${retryableErrors.length} retryable store error(s), retrying: ${storesToScrape.join(', ')}`,
         );
       } else {
-        // No store errors - serve from cache
-        this.logger.debug(`Serving ${cardName} from cache`);
+        // No retryable store errors - serve from cache
+        if (cachedResult.storeErrors?.length) {
+          this.logger.debug(
+            `Serving ${cardName} from cache (${cachedResult.storeErrors.length} store(s) exceeded max retries)`,
+          );
+        } else {
+          this.logger.debug(`Serving ${cardName} from cache`);
+        }
         return this.buildResponse(cardName, cachedResult.results, cachedResult.storeErrors);
       }
     }
@@ -58,12 +70,17 @@ export class CardService {
     }
 
     // We successfully marked it - enqueue the scrape job (with specific stores if retrying)
+    // Get the retryable errors to pass along for retry count tracking
+    const retryableErrors = cachedResult?.storeErrors?.filter(
+      (e) => (e.retryCount ?? 0) < MAX_STORE_RETRIES,
+    );
+
     if (storesToScrape) {
       this.logger.log(`Enqueueing retry scrape for ${cardName}, stores: ${storesToScrape.join(', ')} (Request ID: ${requestId})`);
     } else {
       this.logger.log(`Cache miss for ${cardName}, enqueueing scrape job (Request ID: ${requestId})`);
     }
-    await this.queueService.enqueueScrapeJob(cardName, 10, requestId, storesToScrape);
+    await this.queueService.enqueueScrapeJob(cardName, 10, requestId, storesToScrape, retryableErrors);
 
     // Wait for the scrape to complete
     await this.cacheService.waitForScrapeCompletion(cardName);
