@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Box, Stack, Typography, useTheme } from '@mui/material'
 import { SavedDecklistsMenu } from '../components/SavedDecklistsMenu'
+import { PageLayout } from '../components/PageLayout'
 
 const CardDisplay = lazy(() => import('../components/CardDisplay/CardDisplay').then(m => ({ default: m.CardDisplay })))
 
@@ -21,14 +22,13 @@ function CardPage() {
       minHeight: '100vh',
       width: '100%',
       bgcolor: 'background.default',
-      overflow: 'auto'
     }}>
       <Box sx={{
         width: '100%',
         bgcolor: 'background.paper',
         borderBottom: 1,
         borderColor: 'divider',
-        py: { xs: 2, md: 3 },
+        py: { xs: 1, md: 1.5 },
         position: 'sticky',
         top: 0,
         zIndex: 10,
@@ -46,23 +46,24 @@ function CardPage() {
           }}
         >
           <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ cursor: 'pointer', width: 'fit-content' }}>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ cursor: 'pointer', width: 'fit-content' }}>
               <Box
                 component="img"
                 src={theme.palette.mode === 'dark' ? '/Scout-logo-icon-light.png' : '/Scout-logo-icon.png'}
                 alt="ScoutLGS Logo"
                 sx={{
-                  height: { xs: 60, md: 80 },
+                  height: { xs: 40, md: 50 },
                   width: 'auto',
                   objectFit: 'contain'
                 }}
               />
-              <Stack>
+              <Stack spacing={0}>
                 <Typography
                   variant="h4"
                   sx={{
-                    fontSize: { xs: '1.5rem', md: '2rem' },
-                    fontWeight: 600
+                    fontSize: { xs: '1.25rem', md: '1.5rem' },
+                    fontWeight: 600,
+                    lineHeight: 1.2
                   }}
                 >
                   ScoutLGS
@@ -71,7 +72,9 @@ function CardPage() {
                   variant="body2"
                   sx={{
                     color: 'text.secondary',
-                    display: { xs: 'none', sm: 'block' }
+                    display: { xs: 'none', sm: 'block' },
+                    fontSize: '0.75rem',
+                    lineHeight: 1.2
                   }}
                 >
                   Find the cards you want at the best prices
@@ -85,19 +88,19 @@ function CardPage() {
 
       <Box sx={{
         width: '100%',
-        maxWidth: '1400px',
-        margin: '0 auto',
-        px: { xs: 2, sm: 3, md: 4 },
+        px: { xs: 2, sm: 3, md: 4, lg: 2 },
         py: { xs: 3, md: 4 },
         flex: 1
       }}>
-        <Suspense fallback={
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <Typography variant="h6" color="text.secondary">Loading...</Typography>
-          </Box>
-        }>
-          <CardDisplay cardName={decodedName} />
-        </Suspense>
+        <PageLayout showAds={true}>
+          <Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <Typography variant="h6" color="text.secondary">Loading...</Typography>
+            </Box>
+          }>
+            <CardDisplay cardName={decodedName} />
+          </Suspense>
+        </PageLayout>
       </Box>
     </Box>
   )

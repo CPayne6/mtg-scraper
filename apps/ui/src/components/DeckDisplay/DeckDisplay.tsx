@@ -222,7 +222,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, width: '100%' }}>
       {/* Left Sidebar - Filters */}
-      <Box sx={{ width: { xs: '100%', md: '200px' }, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', md: '200px' }, flexShrink: 0, position: { md: 'sticky' }, top: { md: 120 }, alignSelf: 'flex-start' }}>
         <Stack spacing={2}>
           {currentCardData.loading || !currentCardData.data ? (
             <StoreFilterSkeleton />
@@ -239,19 +239,21 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
       {/* Main Content */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack
-            direction={{ xs: 'column', lg: 'row' }}
+            direction={{ xs: 'column', md: 'row' }}
             spacing={{ xs: 2, md: 3 }}
-            alignItems={{ xs: 'stretch', lg: 'center' }}
+            alignItems={{ xs: 'stretch', md: 'center' }}
             justifyContent="space-between"
             sx={{
               mb: { xs: 3, md: 4 },
               p: { xs: 2, md: 3 },
               bgcolor: 'background.paper',
               borderRadius: 2,
-              boxShadow: 1
+              boxShadow: 1,
+              flexWrap: 'wrap',
+              rowGap: 2
             }}
           >
-            <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ flex: 1, minWidth: { xs: '100%', md: 280 } }}>
               <Typography
                 variant="h4"
                 sx={{
