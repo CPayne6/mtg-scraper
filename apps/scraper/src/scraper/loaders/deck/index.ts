@@ -1,2 +1,2 @@
-export * from './MoxfieldLoader'
-export * from './DeckLoader'
+export * from './MoxfieldLoader';
+export * from './DeckLoader';

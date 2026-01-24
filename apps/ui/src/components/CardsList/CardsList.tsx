@@ -67,13 +67,7 @@ export function CardList({ cards, loading }: CardListProps) {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            sm: 'repeat(2, 1fr)',
-            md: 'repeat(3, 1fr)',
-            lg: 'repeat(4, 1fr)',
-            xl: 'repeat(5, 1fr)'
-          },
+          gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
           gap: { xs: 2, md: 3 },
           justifyItems: 'center',
           width: '100%'

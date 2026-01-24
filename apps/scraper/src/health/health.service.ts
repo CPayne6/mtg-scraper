@@ -3,9 +3,15 @@ import { StoreService, CacheService } from '@scoutlgs/core';
 
 export interface HealthStatus {
   status: 'ok' | 'error';
-  info: Record<string, { status: string; message?: string; [key: string]: unknown }>;
+  info: Record<
+    string,
+    { status: string; message?: string; [key: string]: unknown }
+  >;
   error: Record<string, { status: string; message?: string }>;
-  details: Record<string, { status: string; message?: string; [key: string]: unknown }>;
+  details: Record<
+    string,
+    { status: string; message?: string; [key: string]: unknown }
+  >;
 }
 
 interface CachedHealth {

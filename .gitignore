@@ -30,4 +30,7 @@ lerna-debug.log*
 .idea/
 *.swp
 *.swo
-*~ 
+*~
+
+# Playwright
+.playwright-mcp/

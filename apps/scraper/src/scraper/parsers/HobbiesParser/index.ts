@@ -1,1 +1,1 @@
-export * from './HobbiesParser'
+export * from './HobbiesParser';
