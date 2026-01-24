@@ -22,9 +22,9 @@ export class ProxyService {
           this.configService.get<string>('WEBSHARE_HOST', 'p.webshare.io'),
           this.configService.get<string>('WEBSHARE_PORT', '80'),
           this.configService.get<string>('WEBSHARE_USERNAME', ''),
-          this.configService.get<string>('WEBSHARE_PASSWORD', '')
-        )
-      }
+          this.configService.get<string>('WEBSHARE_PASSWORD', ''),
+        ),
+      },
     ];
 
     this.logger.log(`Initialized ${this.proxies.length} proxies`);

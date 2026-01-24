@@ -1,1 +1,1 @@
-export * from './F2FSearchParser'
+export * from './F2FSearchParser';

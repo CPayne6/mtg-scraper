@@ -1,1 +1,1 @@
-export * from './MoxfieldLoader'
+export * from './MoxfieldLoader';

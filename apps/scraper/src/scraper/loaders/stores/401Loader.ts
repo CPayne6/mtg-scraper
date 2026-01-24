@@ -1,5 +1,5 @@
-import { APILoader, searchReplace } from "../APILoader";
-import { Proxy } from "@/scraper/proxy";
+import { APILoader, searchReplace } from '../APILoader';
+import { Proxy } from '@/scraper/proxy';
 
 export class _401Loader extends APILoader {
   constructor(proxy?: Proxy) {
@@ -8,7 +8,7 @@ export class _401Loader extends APILoader {
         baseUrl: 'https://store.401games.ca',
         path: '/pages/search-results',
         params: 'filters=In+Stock,True',
-        searchKey: 'q'
+        searchKey: 'q',
       },
       api: {
         baseUrl: /FAST_ENDPOINT = "(https:\/\/.+)"/,
@@ -20,10 +20,10 @@ export class _401Loader extends APILoader {
           ['with_product_attributes', 'true'],
           ['narrow', '[["In Stock","True"]]'],
           ['products_per_page', '40'],
-          ['q', searchReplace]
-        ]
+          ['q', searchReplace],
+        ],
       },
-      proxy
-    })
+      proxy,
+    });
   }
 }

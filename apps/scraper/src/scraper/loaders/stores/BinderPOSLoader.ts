@@ -1,6 +1,5 @@
-import { Proxy } from "@/scraper/proxy";
-import { APILoader, searchReplace } from "../APILoader";
-
+import { Proxy } from '@/scraper/proxy';
+import { APILoader, searchReplace } from '../APILoader';
 
 export class BinderPOSLoader extends APILoader {
   constructor(storeURL: string, page: string, proxy: Proxy) {
@@ -9,10 +8,11 @@ export class BinderPOSLoader extends APILoader {
         baseUrl: storeURL,
         path: '/pages/' + page,
         params: 'availabilty=true',
-        searchKey: 'q'
+        searchKey: 'q',
       },
       api: {
-        baseUrl: 'https://portal.binderpos.com/external/shopify/products/forStore',
+        baseUrl:
+          'https://portal.binderpos.com/external/shopify/products/forStore',
         path: [],
         body: [
           ['game', 'mtg'],
@@ -21,18 +21,22 @@ export class BinderPOSLoader extends APILoader {
           ['offset', 0],
           ['priceGreaterThan', 0],
           ['priceLessThan', null],
-          ['sortTypes', [{
-            asc: true,
-            order: 1,
-            type: 'price'
-          }]],
+          [
+            'sortTypes',
+            [
+              {
+                asc: true,
+                order: 1,
+                type: 'price',
+              },
+            ],
+          ],
           ['storeUrl', /Shopify.shop = "(.+)";/],
-          ['title', searchReplace]
+          ['title', searchReplace],
         ],
-        method: 'POST'
+        method: 'POST',
       },
-      proxy
-    })
+      proxy,
+    });
   }
 }
-

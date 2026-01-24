@@ -1,2 +1,2 @@
-export * from './proxies/Proxy'
-export * from './proxies'
+export * from './proxies/Proxy';
+export * from './proxies';

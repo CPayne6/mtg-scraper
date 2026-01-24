@@ -1,8 +1,8 @@
-import { Card, Condition } from "@scoutlgs/shared";
-import { Parser } from "../Parser";
-import { HobbiesSearch } from "./search.types";
+import { Card, Condition } from '@scoutlgs/shared';
+import { Parser } from '../Parser';
+import { HobbiesSearch } from './search.types';
 
-const nameRegex = /^([^\(]+) \(/i
+const nameRegex = /^([^\(]+) \(/i;
 
 interface HobbiesParserConfig {
   store_id_regex: RegExp;
@@ -15,77 +15,88 @@ const defaultConfig: HobbiesParserConfig = {
   store_id_regex: /storePassId\(\) \{ return '(\w+)' \}/,
   host: 'https://stable.storepass.co',
   path: '/saas/search',
-  params: new URLSearchParams('mongo=true&override_buylist_gt_price=true&product_line=All&sort=Relevance&limit=30&fields=id%2CproductId%2Cavailability%2Cstock%2CselectedFinish%2Curl%2CimageUrl%2Cprice%2CsalePrice%2CregularPrice%2Cname%2CvariantInfo%2CbigCommerceImages%2Cmsrp%2Ctags%2Cpublisher%2CinventoryLevels%2CcustomCollectionImages&convert_to_currency=CAD&round_price=true&in_stock=true')
-}
+  params: new URLSearchParams(
+    'mongo=true&override_buylist_gt_price=true&product_line=All&sort=Relevance&limit=30&fields=id%2CproductId%2Cavailability%2Cstock%2CselectedFinish%2Curl%2CimageUrl%2Cprice%2CsalePrice%2CregularPrice%2Cname%2CvariantInfo%2CbigCommerceImages%2Cmsrp%2Ctags%2Cpublisher%2CinventoryLevels%2CcustomCollectionImages&convert_to_currency=CAD&round_price=true&in_stock=true',
+  ),
+};
 
 export class HobbiesParser implements Parser {
-  protected searchConfig: HobbiesParserConfig
+  protected searchConfig: HobbiesParserConfig;
   constructor(config?: Partial<HobbiesParserConfig>) {
     this.searchConfig = {
       ...defaultConfig,
-      ...config
-    }
+      ...config,
+    };
   }
   async extractItems(page: string) {
-    const cards: Card[] = []
+    const cards: Card[] = [];
     let parsedData: HobbiesSearch;
 
     try {
-      parsedData = JSON.parse(page)
-    }catch(err){
-      console.error('Hobbies Parser: JSON parse error', err)
+      parsedData = JSON.parse(page);
+    } catch (err) {
+      console.error('Hobbies Parser: JSON parse error', err);
       return {
         result: [],
-        error: `JSON parse error: ${err?.toString() as string}`
-      }
+        error: `JSON parse error: ${err?.toString() as string}`,
+      };
     }
 
-    // Check if response has expected structure
-    if (!parsedData?.products) {
-      console.error('Hobbies Parser: Unexpected response structure - missing products', { parsedData })
-      return {
-        result: [],
-        error: 'API returned unexpected response structure'
-      }
+    // If products is missing or empty, card not found (not an error)
+    if (
+      !Array.isArray(parsedData?.products) ||
+      parsedData.products.length === 0
+    ) {
+      return { result: [] };
     }
 
-    // Empty results is valid - card not found in store
-    if (parsedData.products.length === 0) {
-      return { result: [] }
-    }
-
-    for(const product of parsedData.products){
+    for (const product of parsedData.products) {
       try {
-        const variantInfo = product.variantInfo ?? product.variant_info
+        const variantInfo = product.variantInfo ?? product.variant_info;
 
-        if(!variantInfo){
+        if (!variantInfo) {
           continue;
         }
 
-        const innerCards: Card[] = []
-        for(const variant of variantInfo){
-          if(variant.inventory_quantity > 0){
-            const splitDisplayName = product.display_name.split('-')
+        const innerCards: Card[] = [];
+        for (const variant of variantInfo) {
+          if (variant.inventory_quantity > 0) {
+            const splitDisplayName = product.display_name.split('-');
             innerCards.push({
               price: variant.price,
               currency: 'CAD',
               image: product.imageUrl ?? product.image_url,
               condition: variant.title.toLocaleLowerCase() as Condition,
-              title: product.display_name.match(nameRegex)?.[1] ?? product.display_name,
+              title:
+                product.display_name.match(nameRegex)?.[1] ??
+                product.display_name,
               link: product.url,
-              set: splitDisplayName[0]?.substring(splitDisplayName[0].lastIndexOf('(') + 1, splitDisplayName[0].length) ?? 'Unknown',
-              card_number: String(Number(splitDisplayName[1]?.substring(0, splitDisplayName[1].indexOf(')'))))
-            })
+              set:
+                splitDisplayName[0]?.substring(
+                  splitDisplayName[0].lastIndexOf('(') + 1,
+                  splitDisplayName[0].length,
+                ) ?? 'Unknown',
+              card_number: String(
+                Number(
+                  splitDisplayName[1]?.substring(
+                    0,
+                    splitDisplayName[1].indexOf(')'),
+                  ),
+                ),
+              ),
+            });
           }
         }
 
-        cards.push(...innerCards)
+        cards.push(...innerCards);
       } catch (err) {
-        console.error('Hobbies Parser: Unexpected product structure', { product, error: err })
+        console.error('Hobbies Parser: Unexpected product structure', {
+          product,
+          error: err,
+        });
         continue;
       }
     }
-    return { result: cards }
+    return { result: cards };
   }
-
 }
