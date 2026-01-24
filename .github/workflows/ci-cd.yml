@@ -208,7 +208,11 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
           platforms: linux/amd64
           build-args: |
-            ${{ matrix.service.name == 'ui' && 'VITE_API_URL=https://scoutlgs.ca/api' || '' }}
+            VITE_API_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca/api' || '' }}
+            VITE_ADSENSE_CLIENT_ID=${{ matrix.service.name == 'ui' && vars.VITE_ADSENSE_CLIENT_ID || '' }}
+            VITE_AD_SLOT_BANNER=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_BANNER || '' }}
+            VITE_AD_SLOT_LEFT=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_LEFT || '' }}
+            VITE_AD_SLOT_RIGHT=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_RIGHT || '' }}
 
       - name: Generate image summary
         run: |

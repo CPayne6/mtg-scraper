@@ -37,10 +37,6 @@ function loadAdsenseScript(): Promise<boolean> {
   });
 }
 
-function isAdsBlocked(): boolean {
-  return adsenseBlocked;
-}
-
 export type AdFormat = 'banner' | 'skyscraper';
 
 interface AdUnitProps {
@@ -61,35 +57,49 @@ const AD_DIMENSIONS = {
 } as const;
 
 export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnitProps) {
-  // Debug log on every render
-  console.log('[AdUnit] testMode:', testMode, '| AD_CONFIG.testMode:', AD_CONFIG.testMode, '| DEV:', import.meta.env.DEV);
-
   const adRef = useRef<HTMLModElement>(null);
   const isLoaded = useRef(false);
 
   useEffect(() => {
-    console.log('[AdUnit useEffect] testMode:', testMode);
-    if (testMode) return;
+    if (testMode || !adSlot) return;
 
     let mounted = true;
+    let resizeObserver: ResizeObserver | null = null;
 
     async function initAd() {
-      console.log('[AdUnit] Loading AdSense script...');
       const loaded = await loadAdsenseScript();
 
       if (!mounted) return;
 
       if (!loaded) {
-        console.log('[AdUnit] AdSense blocked or failed, skipping ad initialization');
         return;
       }
 
       if (adRef.current && !isLoaded.current) {
-        try {
-          (window.adsbygoogle = window.adsbygoogle || []).push({});
-          isLoaded.current = true;
-        } catch (error) {
-          console.error('AdSense error:', error);
+        // Check if container has width before pushing ad
+        const containerWidth = adRef.current.offsetWidth;
+        if (containerWidth > 0) {
+          try {
+            (window.adsbygoogle = window.adsbygoogle || []).push({});
+            isLoaded.current = true;
+          } catch (error) {
+            console.error('AdSense error:', error);
+          }
+        } else {
+          // Wait for container to have width using ResizeObserver
+          resizeObserver = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (entry && entry.contentRect.width > 0 && !isLoaded.current && mounted) {
+              try {
+                (window.adsbygoogle = window.adsbygoogle || []).push({});
+                isLoaded.current = true;
+              } catch (error) {
+                console.error('AdSense error:', error);
+              }
+              resizeObserver?.disconnect();
+            }
+          });
+          resizeObserver.observe(adRef.current);
         }
       }
     }
@@ -98,8 +108,9 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
 
     return () => {
       mounted = false;
+      resizeObserver?.disconnect();
     };
-  }, [testMode]);
+  }, [testMode, adSlot]);
 
   const dimensions = AD_DIMENSIONS[format];
 
