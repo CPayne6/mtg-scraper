@@ -18,9 +18,18 @@ RUN pnpm install --frozen-lockfile
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Build argument for API URL (must be set at build time for Vite)
+# Build arguments (must be set at build time for Vite)
 ARG VITE_API_URL=http://localhost:5000
+ARG VITE_ADSENSE_CLIENT_ID=ca-pub-9620141774867481
+ARG VITE_AD_SLOT_BANNER
+ARG VITE_AD_SLOT_LEFT
+ARG VITE_AD_SLOT_RIGHT
+
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_ADSENSE_CLIENT_ID=$VITE_ADSENSE_CLIENT_ID
+ENV VITE_AD_SLOT_BANNER=$VITE_AD_SLOT_BANNER
+ENV VITE_AD_SLOT_LEFT=$VITE_AD_SLOT_LEFT
+ENV VITE_AD_SLOT_RIGHT=$VITE_AD_SLOT_RIGHT
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
