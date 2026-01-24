@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 import { AD_CONFIG } from '../../config/ads';
 
@@ -37,6 +37,8 @@ function loadAdsenseScript(): Promise<boolean> {
   });
 }
 
+type AdStatus = 'loading' | 'loaded' | 'failed';
+
 export type AdFormat = 'banner' | 'skyscraper';
 
 interface AdUnitProps {
@@ -59,12 +61,44 @@ const AD_DIMENSIONS = {
 export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnitProps) {
   const adRef = useRef<HTMLModElement>(null);
   const isLoaded = useRef(false);
+  const [status, setStatus] = useState<AdStatus>('loading');
 
   useEffect(() => {
     if (testMode || !adSlot) return;
 
+    // If AdSense is already known to be blocked, fail immediately
+    if (adsenseBlocked) {
+      setStatus('failed');
+      return;
+    }
+
     let mounted = true;
     let resizeObserver: ResizeObserver | null = null;
+    let checkTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    function checkAdLoaded() {
+      // Check if the ad actually rendered content after a delay
+      checkTimeout = setTimeout(() => {
+        if (!mounted) return;
+        if (adRef.current) {
+          // Check if the ins element has any rendered ad content (iframe or filled status)
+          const hasContent = adRef.current.querySelector('iframe') !== null;
+          const dataAdStatus = adRef.current.getAttribute('data-ad-status');
+          if (hasContent || dataAdStatus === 'filled') {
+            setStatus('loaded');
+          } else if (dataAdStatus === 'unfilled') {
+            setStatus('failed');
+          } else {
+            // Give it more time, then fail
+            setTimeout(() => {
+              if (!mounted) return;
+              const hasContentLater = adRef.current?.querySelector('iframe') !== null;
+              setStatus(hasContentLater ? 'loaded' : 'failed');
+            }, 3000);
+          }
+        }
+      }, 2000);
+    }
 
     async function initAd() {
       const loaded = await loadAdsenseScript();
@@ -72,6 +106,7 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
       if (!mounted) return;
 
       if (!loaded) {
+        setStatus('failed');
         return;
       }
 
@@ -82,8 +117,10 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
           try {
             (window.adsbygoogle = window.adsbygoogle || []).push({});
             isLoaded.current = true;
+            checkAdLoaded();
           } catch (error) {
             console.error('AdSense error:', error);
+            setStatus('failed');
           }
         } else {
           // Wait for container to have width using ResizeObserver
@@ -93,8 +130,10 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
               try {
                 (window.adsbygoogle = window.adsbygoogle || []).push({});
                 isLoaded.current = true;
+                checkAdLoaded();
               } catch (error) {
                 console.error('AdSense error:', error);
+                setStatus('failed');
               }
               resizeObserver?.disconnect();
             }
@@ -109,10 +148,16 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
     return () => {
       mounted = false;
       resizeObserver?.disconnect();
+      if (checkTimeout) clearTimeout(checkTimeout);
     };
   }, [testMode, adSlot]);
 
   const dimensions = AD_DIMENSIONS[format];
+
+  // Hide ad if it failed to load
+  if (status === 'failed') {
+    return null;
+  }
 
   if (testMode) {
     return (
