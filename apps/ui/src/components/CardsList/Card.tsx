@@ -31,6 +31,7 @@ export function Card(props: CardProps) {
     <MuiCard
       sx={{
         width: '100%',
+        minWidth: 180,
         maxWidth: 300,
         margin: '0 auto',
         display: 'flex',

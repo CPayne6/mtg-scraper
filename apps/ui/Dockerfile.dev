@@ -17,9 +17,9 @@ COPY packages/shared ./packages/shared
 COPY apps/ui ./apps/ui
 COPY tsconfig.json nx.json ./
 
-# Build using Nx (automatically builds dependencies)
+# Build only the shared package dependency (not the UI itself)
 WORKDIR /app
-RUN pnpm nx build ui
+RUN pnpm nx build shared
 
 # Set working directory to UI
 WORKDIR /app/apps/ui
