@@ -1,1 +1,1 @@
-export * from './BinderPOSParser'
+export * from './BinderPOSParser';

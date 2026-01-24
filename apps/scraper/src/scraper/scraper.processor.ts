@@ -21,7 +21,7 @@ export class ScrapeCardProcessor {
 
   @Process({
     name: JOB_NAMES.SCRAPE_CARD,
-    concurrency: 10, // Increased from 3 - each job now handles only one store
+    concurrency: 30, // Optimal - higher values cause resource contention
   })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
     const { cardName, storeName, requestId, retryCount } = job.data;
@@ -35,7 +35,10 @@ export class ScrapeCardProcessor {
 
     try {
       // Scrape single store
-      const { results, error } = await this.scraperService.searchCardAtStore(cardName, storeName);
+      const { results, error } = await this.scraperService.searchCardAtStore(
+        cardName,
+        storeName,
+      );
 
       // Increment retry count if there was an error
       const newRetryCount = error ? (retryCount ?? 0) + 1 : retryCount;
@@ -71,7 +74,8 @@ export class ScrapeCardProcessor {
         error,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
       this.logger.error(
         `Failed to scrape ${cardName} at ${storeName}:`,

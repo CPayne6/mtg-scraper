@@ -1,1 +1,1 @@
-export * from './APILoader'
+export * from './APILoader';

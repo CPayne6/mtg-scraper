@@ -35,7 +35,10 @@ export class ScraperService implements OnModuleInit {
   private stores: Store[] = [];
   private storesByName = new Map<string, Store>();
 
-  constructor(private readonly storeService: StoreService, private readonly proxyService: ProxyService) {}
+  constructor(
+    private readonly storeService: StoreService,
+    private readonly proxyService: ProxyService,
+  ) {}
 
   async onModuleInit() {
     await this.loadStoresFromDatabase();
@@ -89,7 +92,11 @@ export class ScraperService implements OnModuleInit {
         break;
       case 'binderpos':
         const searchPath = dbStore.scraperConfig?.searchPath || 'search';
-        loader = new BinderPOSLoader(dbStore.baseUrl, searchPath, this.proxyService.getProxy());
+        loader = new BinderPOSLoader(
+          dbStore.baseUrl,
+          searchPath,
+          this.proxyService.getProxy(),
+        );
         parser = new BinderPOSParser(dbStore.baseUrl);
         break;
       default:
@@ -106,7 +113,7 @@ export class ScraperService implements OnModuleInit {
 
   private async fetchCardFromStore(
     cardName: string,
-    store: Store
+    store: Store,
   ): Promise<{ results: CardWithStore[]; error?: string }> {
     try {
       const data = await store.loader.search(cardName);
@@ -115,7 +122,7 @@ export class ScraperService implements OnModuleInit {
       // If parser returned an error, this is an API/parsing issue, not "card not found"
       if (response.error) {
         this.logger.error(
-          `Store API error from ${store.displayName} for "${cardName}": ${response.error}`
+          `Store API error from ${store.displayName} for "${cardName}": ${response.error}`,
         );
         return { results: [], error: response.error };
       }
@@ -126,20 +133,25 @@ export class ScraperService implements OnModuleInit {
           card.title
             .toLocaleLowerCase()
             .replaceAll(/[,\\\/]/g, '')
-            .startsWith(cardName.toLocaleLowerCase().replaceAll(/[,\\\/]/g, ''))
+            .startsWith(
+              cardName.toLocaleLowerCase().replaceAll(/[,\\\/]/g, ''),
+            ),
         );
 
       if (results.length === 0) {
-        this.logger.debug(`Card not found in ${store.displayName}: ${cardName}`);
+        this.logger.debug(
+          `Card not found in ${store.displayName}: ${cardName}`,
+        );
       }
 
       return { results };
     } catch (error) {
       // Network errors, timeout, etc - log as error
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Failed to fetch from ${store.displayName} for "${cardName}":`,
-        error
+        error,
       );
       return { results: [], error: `Network error: ${errorMessage}` };
     }
@@ -152,7 +164,10 @@ export class ScraperService implements OnModuleInit {
    * @param storeName The store name slug (e.g., 'f2f', '401')
    * @returns Results from this store and any error message
    */
-  async searchCardAtStore(cardName: string, storeName: string): Promise<{ results: CardWithStore[]; error?: string }> {
+  async searchCardAtStore(
+    cardName: string,
+    storeName: string,
+  ): Promise<{ results: CardWithStore[]; error?: string }> {
     const store = this.storesByName.get(storeName);
 
     if (!store) {
@@ -165,9 +180,13 @@ export class ScraperService implements OnModuleInit {
     const result = await this.fetchCardFromStore(cardName, store);
 
     if (result.error) {
-      this.logger.warn(`Error searching ${cardName} at ${store.displayName}: ${result.error}`);
+      this.logger.warn(
+        `Error searching ${cardName} at ${store.displayName}: ${result.error}`,
+      );
     } else {
-      this.logger.log(`Found ${result.results.length} results for: ${cardName} at ${store.displayName}`);
+      this.logger.log(
+        `Found ${result.results.length} results for: ${cardName} at ${store.displayName}`,
+      );
     }
 
     return result;
