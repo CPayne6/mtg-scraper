@@ -1,8 +1,13 @@
+import * as undici from 'undici';
+import { ProxyService } from '@/scraper/proxy/proxy.service';
 import { APILoader, searchReplace } from '../APILoader';
-import { Proxy } from '@/scraper/proxy';
 
 export class _401Loader extends APILoader {
-  constructor(proxy?: Proxy) {
+  static create(proxyService: ProxyService): _401Loader {
+    return new _401Loader(proxyService.getProxyAgent());
+  }
+
+  constructor(proxyAgent?: undici.ProxyAgent) {
     super({
       initial: {
         baseUrl: 'https://store.401games.ca',
@@ -23,7 +28,7 @@ export class _401Loader extends APILoader {
           ['q', searchReplace],
         ],
       },
-      proxy,
+      proxyAgent,
     });
   }
 }

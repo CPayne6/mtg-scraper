@@ -1,8 +1,13 @@
-import { Proxy } from '@/scraper/proxy';
+import * as undici from 'undici';
+import { ProxyService } from '@/scraper/proxy/proxy.service';
 import { APILoader, searchReplace } from '../APILoader';
 
 export class HobbiesLoader extends APILoader {
-  constructor(proxy: Proxy) {
+  static create(proxyService: ProxyService): HobbiesLoader {
+    return new HobbiesLoader(proxyService.getProxyAgent());
+  }
+
+  constructor(proxyAgent?: undici.ProxyAgent) {
     super({
       initial: {
         baseUrl: 'https://hobbiesville.com',
@@ -30,7 +35,7 @@ export class HobbiesLoader extends APILoader {
           ['q', searchReplace],
         ],
       },
-      proxy,
+      proxyAgent,
     });
   }
 }

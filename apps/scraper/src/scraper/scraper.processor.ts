@@ -21,7 +21,7 @@ export class ScrapeCardProcessor {
 
   @Process({
     name: JOB_NAMES.SCRAPE_CARD,
-    concurrency: 30, // Optimal - higher values cause resource contention
+    concurrency: 40, // Increased for better throughput
   })
   async process(job: Job<ScrapeCardJobData>): Promise<ScrapeCardJobResult> {
     const { cardName, storeName, requestId, retryCount } = job.data;

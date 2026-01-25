@@ -20,7 +20,9 @@
       "mcp__plugin_playwright_playwright__browser_resize",
       "Bash(docker-compose:*)",
       "Bash(docker logs:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(npx nx run:*)"
     ]
   }
 }
