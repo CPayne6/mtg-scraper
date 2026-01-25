@@ -2,13 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ScraperService } from './scraper.service';
 import { StoreService } from '@scoutlgs/core';
 import { mockStores } from '@scoutlgs/core/test';
-import { ProxyService } from './proxy/proxy.service';
+import { LoaderService } from './loader.service';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('ScraperService', () => {
   let service: ScraperService;
   let storeService: ReturnType<typeof vi.fn>;
-  let proxyService: ReturnType<typeof vi.fn>;
+  let loaderService: ReturnType<typeof vi.fn>;
+
+  const mockLoader = {
+    search: vi.fn().mockResolvedValue({ result: '[]', api: 'test' }),
+  };
+
+  const mockParser = {
+    extractItems: vi.fn().mockResolvedValue({ result: [], error: undefined }),
+  };
 
   beforeEach(async () => {
     const mockStoreService = {
@@ -17,25 +25,26 @@ describe('ScraperService', () => {
       ready: vi.fn().mockReturnValue(true),
     };
 
-    const mockProxyService = {
-      getProxy: vi.fn().mockReturnValue({
-        name: 'test-proxy',
-        host: 'localhost',
-        port: 8080,
-      }),
+    const mockLoaderService = {
+      buildStoreConfig: vi.fn().mockImplementation((store) => ({
+        name: store.name,
+        displayName: store.displayName,
+        loader: mockLoader,
+        parser: mockParser,
+      })),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ScraperService,
         { provide: StoreService, useValue: mockStoreService },
-        { provide: ProxyService, useValue: mockProxyService },
+        { provide: LoaderService, useValue: mockLoaderService },
       ],
     }).compile();
 
     service = module.get<ScraperService>(ScraperService);
     storeService = module.get(StoreService);
-    proxyService = module.get(ProxyService);
+    loaderService = module.get(LoaderService);
   });
 
   it('should be defined', () => {
@@ -70,49 +79,73 @@ describe('ScraperService', () => {
       await service.onModuleInit();
 
       expect(storeService.findAllActive).toHaveBeenCalled();
+      expect(loaderService.buildStoreConfig).toHaveBeenCalledTimes(stores.length);
+    });
+
+    it('should filter out null configs (unknown scraper types)', async () => {
+      const stores = [mockStores[0], mockStores[1]];
+      storeService.findAllActive.mockResolvedValue(stores);
+      loaderService.buildStoreConfig
+        .mockReturnValueOnce({
+          name: stores[0].name,
+          displayName: stores[0].displayName,
+          loader: mockLoader,
+          parser: mockParser,
+        })
+        .mockReturnValueOnce(null); // Unknown scraper type returns null
+
+      await service.onModuleInit();
+
+      // Only one store config should be kept (the non-null one)
+      expect(loaderService.buildStoreConfig).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('searchCard', () => {
+  describe('searchCardAtStore', () => {
+    const storeName = 'facetofacegames'; // First store name from mockStores
+
     beforeEach(async () => {
-      storeService.findAllActive.mockResolvedValue([]);
+      storeService.findAllActive.mockResolvedValue(mockStores.slice(0, 1));
       await service.onModuleInit();
     });
 
-    it('should return empty results when no stores are configured', async () => {
-      const { results } = await service.searchCard('Lightning Bolt');
+    it('should return results for a valid store', async () => {
+      mockLoader.search.mockResolvedValue({ result: '[]', api: 'test' });
+      mockParser.extractItems.mockResolvedValue({ result: [], error: undefined });
 
-      expect(results).toEqual([]);
-    });
-
-    it('should return results object with storeErrors', async () => {
-      const result = await service.searchCard('Lightning Bolt');
+      const result = await service.searchCardAtStore('Lightning Bolt', storeName);
 
       expect(result).toHaveProperty('results');
-      expect(result).toHaveProperty('storeErrors');
       expect(Array.isArray(result.results)).toBe(true);
-      expect(Array.isArray(result.storeErrors)).toBe(true);
+    });
+
+    it('should return error for unknown store', async () => {
+      const result = await service.searchCardAtStore('Lightning Bolt', 'unknown-store');
+
+      expect(result.results).toEqual([]);
+      expect(result.error).toContain('Store not found');
     });
 
     it('should handle store fetch failures gracefully', async () => {
-      // Even if stores fail, searchCard should not throw
-      const { results } = await service.searchCard('Black Lotus');
+      mockLoader.search.mockRejectedValue(new Error('Network error'));
 
-      expect(Array.isArray(results)).toBe(true);
+      const result = await service.searchCardAtStore('Black Lotus', storeName);
+
+      expect(result.results).toEqual([]);
+      expect(result.error).toContain('Network error');
     });
 
-    it('should combine results from multiple stores', async () => {
-      // This would require more complex mocking of the loader/parser chain
-      const { results } = await service.searchCard('Sol Ring');
+    it('should handle parser errors gracefully', async () => {
+      mockLoader.search.mockResolvedValue({ result: 'invalid', api: 'test' });
+      mockParser.extractItems.mockResolvedValue({
+        result: [],
+        error: 'Failed to parse response',
+      });
 
-      expect(Array.isArray(results)).toBe(true);
-    });
+      const result = await service.searchCardAtStore('Sol Ring', storeName);
 
-    it('should filter results by card name', async () => {
-      // The service filters cards by name in fetchCardFromStore
-      const { results } = await service.searchCard('Counterspell');
-
-      expect(Array.isArray(results)).toBe(true);
+      expect(result.results).toEqual([]);
+      expect(result.error).toBe('Failed to parse response');
     });
   });
 

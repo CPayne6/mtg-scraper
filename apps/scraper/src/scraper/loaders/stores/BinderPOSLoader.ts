@@ -1,8 +1,17 @@
-import { Proxy } from '@/scraper/proxy';
+import * as undici from 'undici';
+import { ProxyService } from '@/scraper/proxy/proxy.service';
 import { APILoader, searchReplace } from '../APILoader';
 
 export class BinderPOSLoader extends APILoader {
-  constructor(storeURL: string, page: string, proxy: Proxy) {
+  static create(
+    storeURL: string,
+    page: string,
+    proxyService: ProxyService,
+  ): BinderPOSLoader {
+    return new BinderPOSLoader(storeURL, page, proxyService.getProxyAgent());
+  }
+
+  constructor(storeURL: string, page: string, proxyAgent?: undici.ProxyAgent) {
     super({
       initial: {
         baseUrl: storeURL,
@@ -36,7 +45,7 @@ export class BinderPOSLoader extends APILoader {
         ],
         method: 'POST',
       },
-      proxy,
+      proxyAgent,
     });
   }
 }

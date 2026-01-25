@@ -132,8 +132,8 @@ jobs:
             packages/shared/dist
           key: ${{ runner.os }}-build-${{ github.sha }}
 
-      - name: Upload build artifacts (only on push)
-        if: github.event_name == 'push'
+      - name: Upload build artifacts (only on push or manual dispatch)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
@@ -146,12 +146,12 @@ jobs:
             packages/shared/dist
           retention-days: 7
 
-  # Job 3: Build and push Docker images (only on push, skip PRs entirely)
+  # Job 3: Build and push Docker images (on push or manual dispatch, skip PRs)
   docker:
     name: Docker (${{ matrix.service.name }})
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write

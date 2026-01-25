@@ -1,4 +1,4 @@
-import { Proxy } from '@/scraper/proxy';
+import * as undici from 'undici';
 import { HTTPLoader } from '../HTTPLoader';
 
 // 1 day cache timeout
@@ -18,7 +18,7 @@ export interface APILoaderConfig {
     body?: RegExp | [string, any | RegExp][];
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   };
-  proxy?: Proxy;
+  proxyAgent?: undici.ProxyAgent;
   cacheTimeout?: number;
 }
 
@@ -29,7 +29,7 @@ export class APILoader extends HTTPLoader {
   cacheTimestamp: number;
 
   constructor(protected apiConfig: APILoaderConfig) {
-    super(!!apiConfig.proxy, apiConfig.proxy);
+    super(apiConfig.proxyAgent);
     this.cacheTimestamp = 0;
     this.cachedPage = '';
   }
