@@ -1,43 +1,17 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { CardWithStore } from '@scoutlgs/shared';
-import { StoreService, Store as StoreEntity } from '@scoutlgs/core';
-import {
-  _401Loader,
-  BinderPOSLoader,
-  F2FLoader,
-  HobbiesLoader,
-  HTTPLoader,
-} from './loaders';
-import {
-  _401Parser,
-  BinderPOSParser,
-  F2FSearchParser,
-  HobbiesParser,
-  Parser,
-} from './parsers';
-import { ProxyService } from './proxy/proxy.service';
-
-/**
- * Internal store configuration with both name (slug) and displayName.
- */
-interface Store {
-  /** Store name slug used for cache keys and job data (e.g., 'f2f', '401') */
-  name: string;
-  /** Human-readable display name used in card.store field (e.g., 'Face to Face Games') */
-  displayName: string;
-  loader: HTTPLoader;
-  parser: Parser;
-}
+import { StoreService } from '@scoutlgs/core';
+import { LoaderService, StoreConfig } from './loader.service';
 
 @Injectable()
 export class ScraperService implements OnModuleInit {
   private readonly logger = new Logger(ScraperService.name);
-  private stores: Store[] = [];
-  private storesByName = new Map<string, Store>();
+  private stores: StoreConfig[] = [];
+  private storesByName = new Map<string, StoreConfig>();
 
   constructor(
     private readonly storeService: StoreService,
-    private readonly proxyService: ProxyService,
+    private readonly loaderService: LoaderService,
   ) {}
 
   async onModuleInit() {
@@ -62,7 +36,11 @@ export class ScraperService implements OnModuleInit {
   private async loadStoresFromDatabase() {
     await this.storeService.waitUntilReady();
     const dbStores = await this.storeService.findAllActive();
-    this.stores = dbStores.map((store) => this.buildStoreConfig(store));
+
+    // Filter out null configs (unknown scraper types)
+    this.stores = dbStores
+      .map((store) => this.loaderService.buildStoreConfig(store))
+      .filter((config): config is StoreConfig => config !== null);
 
     // Build lookup map by store name (slug)
     this.storesByName.clear();
@@ -73,47 +51,9 @@ export class ScraperService implements OnModuleInit {
     this.logger.log(`Loaded ${this.stores.length} stores from database`);
   }
 
-  private buildStoreConfig(dbStore: StoreEntity): Store {
-    let loader: HTTPLoader;
-    let parser: Parser;
-
-    switch (dbStore.scraperType) {
-      case 'f2f':
-        loader = new F2FLoader(this.proxyService.getProxy());
-        parser = new F2FSearchParser();
-        break;
-      case '401':
-        loader = new _401Loader(this.proxyService.getProxy());
-        parser = new _401Parser();
-        break;
-      case 'hobbies':
-        loader = new HobbiesLoader(this.proxyService.getProxy());
-        parser = new HobbiesParser();
-        break;
-      case 'binderpos':
-        const searchPath = dbStore.scraperConfig?.searchPath || 'search';
-        loader = new BinderPOSLoader(
-          dbStore.baseUrl,
-          searchPath,
-          this.proxyService.getProxy(),
-        );
-        parser = new BinderPOSParser(dbStore.baseUrl);
-        break;
-      default:
-        throw new Error(`Unknown scraper type: ${dbStore.scraperType}`);
-    }
-
-    return {
-      name: dbStore.name, // Slug for cache keys (e.g., 'f2f')
-      displayName: dbStore.displayName, // Human-readable name (e.g., 'Face to Face Games')
-      loader,
-      parser,
-    };
-  }
-
   private async fetchCardFromStore(
     cardName: string,
-    store: Store,
+    store: StoreConfig,
   ): Promise<{ results: CardWithStore[]; error?: string }> {
     try {
       const data = await store.loader.search(cardName);

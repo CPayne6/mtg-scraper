@@ -1,27 +1,12 @@
 import * as undici from 'undici';
-import { Proxy } from '../proxy';
 
 export abstract class HTTPLoader {
-  protected proxy: Proxy | undefined;
+  private static readonly REQUEST_TIMEOUT_MS = 10000;
 
-  constructor(
-    protected readonly useProxy: boolean = true,
-    proxy?: Proxy,
-  ) {
-    this.proxy = proxy;
-  }
-
-  private createAgent(): undici.ProxyAgent | undefined {
-    if (this.useProxy && this.proxy) {
-      return new undici.ProxyAgent('http://' + this.proxy.toString());
-    }
-    return undefined;
-  }
+  constructor(protected readonly proxyAgent?: undici.ProxyAgent) {}
 
   /**
    * Attempt to fetch with retries
-   *
-   * Changes proxy on each retry if useProxy is enabled
    *
    * @param input
    * @param options
@@ -36,7 +21,8 @@ export abstract class HTTPLoader {
     try {
       const res = await undici.fetch(input, {
         ...options,
-        dispatcher: this.createAgent(),
+        dispatcher: this.proxyAgent,
+        signal: AbortSignal.timeout(HTTPLoader.REQUEST_TIMEOUT_MS),
       });
       return res;
     } catch (error) {

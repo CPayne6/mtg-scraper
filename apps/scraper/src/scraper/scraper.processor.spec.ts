@@ -14,14 +14,13 @@ describe('ScrapeCardProcessor', () => {
 
   beforeEach(async () => {
     const mockScraperService = {
-      searchCard: vi.fn(),
+      searchCardAtStore: vi.fn(),
       waitUntilReady: vi.fn().mockResolvedValue(undefined),
     };
 
     const mockCacheService = {
-      setCard: vi.fn(),
-      markScrapeComplete: vi.fn(),
-      getCachedResult: vi.fn(),
+      setStoreCard: vi.fn(),
+      markStoreScrapeComplete: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -46,80 +45,117 @@ describe('ScrapeCardProcessor', () => {
       ({
         id: '123',
         data,
-      } as Job<ScrapeCardJobData>);
+      }) as Job<ScrapeCardJobData>;
 
     it('should successfully process a scrape job', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Black Lotus',
+        storeName: 'f2f',
         priority: 10,
         requestId: 'req-123',
       };
       const job = createMockJob(jobData);
       const mockResults = [mockCardWithStore];
 
-      scraperService.searchCard.mockResolvedValue({ results: mockResults, storeErrors: [] });
-      cacheService.setCard.mockResolvedValue(undefined);
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockResolvedValue({
+        results: mockResults,
+        error: undefined,
+      });
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       const result = await processor.process(job);
 
-      expect(scraperService.searchCard).toHaveBeenCalledWith('Black Lotus', undefined);
-      expect(cacheService.setCard).toHaveBeenCalledWith('Black Lotus', mockResults, []);
-      expect(cacheService.markScrapeComplete).toHaveBeenCalledWith('Black Lotus');
+      expect(scraperService.searchCardAtStore).toHaveBeenCalledWith(
+        'Black Lotus',
+        'f2f',
+      );
+      expect(cacheService.setStoreCard).toHaveBeenCalledWith(
+        'Black Lotus',
+        'f2f',
+        mockResults,
+        undefined,
+        undefined,
+      );
+      expect(cacheService.markStoreScrapeComplete).toHaveBeenCalledWith(
+        'Black Lotus',
+        'f2f',
+      );
       expect(result.success).toBe(true);
       expect(result.cardName).toBe('Black Lotus');
+      expect(result.storeName).toBe('f2f');
       expect(result.results).toEqual(mockResults);
     });
 
     it('should cache results after successful scrape', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Lightning Bolt',
+        storeName: '401',
         priority: 10,
       };
       const job = createMockJob(jobData);
       const mockResults = mockMultipleCards;
 
-      scraperService.searchCard.mockResolvedValue({ results: mockResults, storeErrors: [] });
-      cacheService.setCard.mockResolvedValue(undefined);
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockResolvedValue({
+        results: mockResults,
+        error: undefined,
+      });
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       await processor.process(job);
 
-      expect(cacheService.setCard).toHaveBeenCalledWith('Lightning Bolt', mockResults, []);
+      expect(cacheService.setStoreCard).toHaveBeenCalledWith(
+        'Lightning Bolt',
+        '401',
+        mockResults,
+        undefined,
+        undefined,
+      );
     });
 
     it('should mark scrape as complete after processing', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Sol Ring',
+        storeName: 'hobbies',
         priority: 1,
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockResolvedValue({ results: [], storeErrors: [] });
-      cacheService.setCard.mockResolvedValue(undefined);
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockResolvedValue({
+        results: [],
+        error: undefined,
+      });
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       await processor.process(job);
 
-      expect(cacheService.markScrapeComplete).toHaveBeenCalledWith('Sol Ring');
+      expect(cacheService.markStoreScrapeComplete).toHaveBeenCalledWith(
+        'Sol Ring',
+        'hobbies',
+      );
     });
 
     it('should handle scraper service errors gracefully', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Counterspell',
+        storeName: 'f2f',
         priority: 10,
         requestId: 'req-456',
       };
       const job = createMockJob(jobData);
       const error = new Error('Scraper failed');
 
-      scraperService.searchCard.mockRejectedValue(error);
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockRejectedValue(error);
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       const result = await processor.process(job);
 
       expect(result.success).toBe(false);
       expect(result.cardName).toBe('Counterspell');
+      expect(result.storeName).toBe('f2f');
       expect(result.results).toEqual([]);
       expect(result.error).toBe('Scraper failed');
     });
@@ -127,28 +163,39 @@ describe('ScrapeCardProcessor', () => {
     it('should mark scrape as complete even on failure', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Mox Ruby',
+        storeName: '401',
         priority: 10,
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockRejectedValue(new Error('Network error'));
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockRejectedValue(
+        new Error('Network error'),
+      );
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       await processor.process(job);
 
-      expect(cacheService.markScrapeComplete).toHaveBeenCalledWith('Mox Ruby');
+      expect(cacheService.markStoreScrapeComplete).toHaveBeenCalledWith(
+        'Mox Ruby',
+        '401',
+      );
     });
 
     it('should include timestamp in result', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Time Walk',
+        storeName: 'f2f',
         priority: 10,
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockResolvedValue({ results: [], storeErrors: [] });
-      cacheService.setCard.mockResolvedValue(undefined);
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockResolvedValue({
+        results: [],
+        error: undefined,
+      });
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       const before = Date.now();
       const result = await processor.process(job);
@@ -161,13 +208,17 @@ describe('ScrapeCardProcessor', () => {
     it('should handle job without requestId', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Ancestral Recall',
+        storeName: 'hobbies',
         priority: 1,
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockResolvedValue({ results: [], storeErrors: [] });
-      cacheService.setCard.mockResolvedValue(undefined);
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockResolvedValue({
+        results: [],
+        error: undefined,
+      });
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       const result = await processor.process(job);
 
@@ -178,12 +229,14 @@ describe('ScrapeCardProcessor', () => {
     it('should return empty results array on error', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Timetwister',
+        storeName: 'f2f',
         priority: 10,
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockRejectedValue(new Error('Test error'));
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockRejectedValue(new Error('Test error'));
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       const result = await processor.process(job);
 
@@ -194,12 +247,14 @@ describe('ScrapeCardProcessor', () => {
     it('should handle non-Error exceptions', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Mox Pearl',
+        storeName: '401',
         priority: 10,
       };
       const job = createMockJob(jobData);
 
-      scraperService.searchCard.mockRejectedValue('String error');
-      cacheService.markScrapeComplete.mockResolvedValue(undefined);
+      scraperService.searchCardAtStore.mockRejectedValue('String error');
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
       const result = await processor.process(job);
 
@@ -207,28 +262,32 @@ describe('ScrapeCardProcessor', () => {
       expect(result.error).toBe('String error');
     });
 
-    it('should handle targeted scrapes with specific stores', async () => {
+    it('should increment retry count on error', async () => {
       const jobData: ScrapeCardJobData = {
         cardName: 'Black Lotus',
+        storeName: 'f2f',
         priority: 10,
-        stores: ['Face to Face Games'],
+        retryCount: 1,
       };
       const job = createMockJob(jobData);
-      const mockResults = [mockCardWithStore];
 
-      // Mock existing cached data
-      cacheService.getCachedResult.mockResolvedValue({
+      scraperService.searchCardAtStore.mockResolvedValue({
         results: [],
-        timestamp: Date.now() - 1000,
-        storeErrors: [],
+        error: 'Store API error',
       });
-      scraperService.searchCard.mockResolvedValue({ results: mockResults, storeErrors: [] });
-      cacheService.setCard.mockResolvedValue(undefined);
+      cacheService.setStoreCard.mockResolvedValue(undefined);
+      cacheService.markStoreScrapeComplete.mockResolvedValue(undefined);
 
-      const result = await processor.process(job);
+      await processor.process(job);
 
-      expect(scraperService.searchCard).toHaveBeenCalledWith('Black Lotus', ['Face to Face Games']);
-      expect(result.success).toBe(true);
+      // Should increment retry count from 1 to 2
+      expect(cacheService.setStoreCard).toHaveBeenCalledWith(
+        'Black Lotus',
+        'f2f',
+        [],
+        'Store API error',
+        2,
+      );
     });
   });
 });
