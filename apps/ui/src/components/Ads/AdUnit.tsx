@@ -74,30 +74,96 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
 
     let mounted = true;
     let resizeObserver: ResizeObserver | null = null;
-    let checkTimeout: ReturnType<typeof setTimeout> | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    function checkAdLoaded() {
-      // Check if the ad actually rendered content after a delay
-      checkTimeout = setTimeout(() => {
+    function checkAdStatus() {
+      if (!mounted || !adRef.current) return;
+
+      const dataAdStatus = adRef.current.getAttribute('data-ad-status');
+      if (dataAdStatus === 'filled') {
+        setStatus('loaded');
+        return true;
+      } else if (dataAdStatus === 'unfilled') {
+        setStatus('failed');
+        return true;
+      }
+      return false;
+    }
+
+    function watchForAdLoad() {
+      if (!adRef.current) return;
+
+      // Check immediately in case ad already loaded/failed
+      if (checkAdStatus()) return;
+
+      // Watch for iframe insertion and data-ad-status attribute changes
+      mutationObserver = new MutationObserver((mutations) => {
         if (!mounted) return;
-        if (adRef.current) {
-          // Check if the ins element has any rendered ad content (iframe or filled status)
-          const hasContent = adRef.current.querySelector('iframe') !== null;
-          const dataAdStatus = adRef.current.getAttribute('data-ad-status');
-          if (hasContent || dataAdStatus === 'filled') {
-            setStatus('loaded');
-          } else if (dataAdStatus === 'unfilled') {
-            setStatus('failed');
-          } else {
-            // Give it more time, then fail
-            setTimeout(() => {
-              if (!mounted) return;
-              const hasContentLater = adRef.current?.querySelector('iframe') !== null;
-              setStatus(hasContentLater ? 'loaded' : 'failed');
-            }, 3000);
+
+        for (const mutation of mutations) {
+          // Check for attribute changes on the ins element
+          if (mutation.type === 'attributes' && mutation.attributeName === 'data-ad-status') {
+            if (checkAdStatus()) {
+              mutationObserver?.disconnect();
+              return;
+            }
+          }
+
+          // Check for added iframes
+          if (mutation.type === 'childList') {
+            for (const node of mutation.addedNodes) {
+              if (node instanceof HTMLIFrameElement) {
+                // Listen for load/error on the iframe
+                node.addEventListener('load', () => {
+                  if (!mounted) return;
+                  // After iframe loads, check if it has content or shows an error
+                  // Give it a moment to render, then check data-ad-status
+                  setTimeout(() => {
+                    if (!mounted) return;
+                    if (!checkAdStatus()) {
+                      // If no status set, check iframe dimensions as fallback
+                      const iframeHeight = node.offsetHeight;
+                      if (iframeHeight > 0) {
+                        setStatus('loaded');
+                      } else {
+                        setStatus('failed');
+                      }
+                    }
+                  }, 500);
+                });
+
+                node.addEventListener('error', () => {
+                  if (!mounted) return;
+                  setStatus('failed');
+                  mutationObserver?.disconnect();
+                });
+              }
+            }
           }
         }
-      }, 2000);
+      });
+
+      mutationObserver.observe(adRef.current, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-ad-status'],
+      });
+
+      // Fallback: if nothing happens after 5 seconds, assume failure
+      fallbackTimeout = setTimeout(() => {
+        if (!mounted) return;
+        if (!checkAdStatus()) {
+          const iframe = adRef.current?.querySelector('iframe');
+          if (iframe && iframe.offsetHeight > 0) {
+            setStatus('loaded');
+          } else {
+            setStatus('failed');
+          }
+        }
+        mutationObserver?.disconnect();
+      }, 5000);
     }
 
     async function initAd() {
@@ -117,7 +183,7 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
           try {
             (window.adsbygoogle = window.adsbygoogle || []).push({});
             isLoaded.current = true;
-            checkAdLoaded();
+            watchForAdLoad();
           } catch (error) {
             console.error('AdSense error:', error);
             setStatus('failed');
@@ -130,7 +196,7 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
               try {
                 (window.adsbygoogle = window.adsbygoogle || []).push({});
                 isLoaded.current = true;
-                checkAdLoaded();
+                watchForAdLoad();
               } catch (error) {
                 console.error('AdSense error:', error);
                 setStatus('failed');
@@ -148,7 +214,8 @@ export function AdUnit({ format, adSlot, testMode = AD_CONFIG.testMode }: AdUnit
     return () => {
       mounted = false;
       resizeObserver?.disconnect();
-      if (checkTimeout) clearTimeout(checkTimeout);
+      mutationObserver?.disconnect();
+      if (fallbackTimeout) clearTimeout(fallbackTimeout);
     };
   }, [testMode, adSlot]);
 
