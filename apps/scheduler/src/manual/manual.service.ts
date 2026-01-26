@@ -13,7 +13,9 @@ export class ManualService {
     private readonly configService: ConfigService
   ) { }
 
-  async triggerScrape(limit: number = this.configService.get<number>('popularCards.limit') ?? 1000) {
+  async triggerScrape(
+    limit: number = this.configService.get<number>('popularCards.limit') ?? 1000,
+  ) {
     this.logger.log('Manual trigger initiated for popular cards scrape');
 
     const jobStatus = await this.cacheService.schedulerJobStatus();
@@ -25,13 +27,17 @@ export class ManualService {
     }
 
     const enabled = this.configService.get<boolean>('schedule.enabled') ?? true;
-    const batchSize = this.configService.get<number>('popularCards.batchSize') ?? 50;
-    const batchDelayMs = this.configService.get<number>('popularCards.batchDelayMs') ?? 1000;
+    const maxQueueDepth = this.configService.get<number>('popularCards.maxQueueDepth') ?? 1000;
+    const refillBatchSize = this.configService.get<number>('popularCards.refillBatchSize') ?? 100;
 
     // Fire and forget - don't await so the HTTP request returns immediately
-    // Use .catch to prevent unhandled promise rejection
     this.popularCardsScheduler
-      .scrapePopularCards({ enabled, limit, batchSize, batchDelayMs, waitForCompletion: true })
+      .scrapePopularCards({
+        enabled,
+        limit,
+        maxQueueDepth,
+        refillBatchSize,
+      })
       .catch(error => this.logger.error('Scrape failed', error));
 
     return { message: 'Scrape triggered successfully' };
