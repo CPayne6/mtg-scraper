@@ -18,35 +18,66 @@ export class ProxyService implements OnModuleDestroy {
   private readonly proxies: ProxyItem[];
   private proxyIndex = 0;
   private proxyAgent: undici.ProxyAgent | undefined;
+  private readonly proxyEnabled: boolean;
 
   constructor(private configService: ConfigService) {
-    // Only initialize with Webshare proxy service because we pay for it
+    // Credentials should be set via env vars (docker-entrypoint.sh loads secrets into env vars)
+    const host = this.configService.get<string>(
+      'WEBSHARE_HOST',
+      'p.webshare.io',
+    );
+    const port = this.configService.get<string>('WEBSHARE_PORT', '80');
+    const username = this.configService.get<string>('WEBSHARE_USERNAME', '');
+    const password = this.configService.get<string>('WEBSHARE_PASSWORD', '');
+
+    // Only enable proxy if credentials are provided
+    this.proxyEnabled = !!(username && password);
+
+    if (!this.proxyEnabled) {
+      this.logger.warn(
+        'Proxy credentials not configured (WEBSHARE_USERNAME/WEBSHARE_PASSWORD) - requests will use direct connection',
+      );
+      this.proxies = [];
+      return;
+    }
+
     this.proxies = [
       {
-        proxy: new WebshareProxy(
-          this.configService.get<string>('WEBSHARE_HOST', 'p.webshare.io'),
-          this.configService.get<string>('WEBSHARE_PORT', '80'),
-          this.configService.get<string>('WEBSHARE_USERNAME', ''),
-          this.configService.get<string>('WEBSHARE_PASSWORD', ''),
-        ),
+        proxy: new WebshareProxy(host, port, username, password),
       },
     ];
 
-    this.logger.log(`Initialized ${this.proxies.length} proxies`);
+    this.logger.log(`Initialized proxy: ${host}:${port} (user: ${username})`);
   }
 
   /**
-   * Get the next proxy in a round-robin fashion
+   * Check if proxy is enabled and configured.
    */
-  getProxy(): Proxy {
+  isEnabled(): boolean {
+    return this.proxyEnabled;
+  }
+
+  /**
+   * Get the next proxy in a round-robin fashion.
+   * Returns undefined if proxy is not enabled.
+   */
+  getProxy(): Proxy | undefined {
+    if (!this.proxyEnabled || this.proxies.length === 0) {
+      return undefined;
+    }
     return this.proxies[this.proxyIndex].proxy;
   }
 
   /**
    * Get a shared ProxyAgent with connection pooling.
    * The agent is lazily created on first call and reused for all subsequent requests.
+   * Returns undefined if proxy is not enabled.
    */
   getProxyAgent(): undici.ProxyAgent | undefined {
+    if (!this.proxyEnabled) {
+      return undefined;
+    }
+
     const proxy = this.getProxy();
     if (!proxy) return undefined;
 
