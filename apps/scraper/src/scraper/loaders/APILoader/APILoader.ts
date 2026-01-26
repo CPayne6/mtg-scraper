@@ -1,5 +1,7 @@
+import { Logger } from '@nestjs/common';
 import * as undici from 'undici';
 import { HTTPLoader } from '../HTTPLoader';
+import { ScrapeError, ScrapeErrorType } from '../../errors';
 
 // 1 day cache timeout
 const defaultCacheTimeout = 86400000;
@@ -20,6 +22,21 @@ export interface APILoaderConfig {
   };
   proxyAgent?: undici.ProxyAgent;
   cacheTimeout?: number;
+}
+
+export interface SearchResult {
+  /** The response body (JSON string or raw text) */
+  result: string;
+  /** The full API URL that was called */
+  api: string;
+  /** HTTP status code of the response */
+  status?: number;
+  /** Error message if the request failed */
+  error?: string;
+  /** Classified error type for retry/reporting logic */
+  errorType?: ScrapeErrorType;
+  /** Whether this error is potentially recoverable with retries */
+  retryable?: boolean;
 }
 
 export const searchReplace = '{{search_term}}';
@@ -122,11 +139,12 @@ export class APILoader extends HTTPLoader {
     return finalBody;
   }
 
-  async search(name: string, params?: URLSearchParams) {
+  async search(name: string, params?: URLSearchParams): Promise<SearchResult> {
     if (!params) {
       params = new URLSearchParams(this.apiConfig.initial.params);
     }
     params.set(this.apiConfig.initial.searchKey, name);
+
     // Handle fetch if cache is out of date
     if (
       Date.now() - this.cacheTimestamp >
@@ -135,10 +153,26 @@ export class APILoader extends HTTPLoader {
       const path =
         (this.apiConfig.initial.path.at(0) === '/' ? '' : '/') +
         this.apiConfig.initial.path;
-      const page = await super.loadPage(
-        this.apiConfig.initial.baseUrl + path + '?' + params.toString(),
-      );
-      this.cacheApiPage(page);
+      const initialUrl =
+        this.apiConfig.initial.baseUrl + path + '?' + params.toString();
+
+      const initialResult = await super.loadPageWithStatus(initialUrl);
+
+      if (initialResult.error) {
+        this.logger.warn(
+          `Initial page load failed for ${initialUrl}: ${initialResult.error.message}`,
+        );
+        return {
+          result: '{}',
+          api: initialUrl,
+          status: initialResult.status,
+          error: initialResult.error.message,
+          errorType: initialResult.error.type,
+          retryable: initialResult.error.isRetryable(),
+        };
+      }
+
+      this.cacheApiPage(initialResult.body);
     }
 
     const apiParams = this.formatParams(
@@ -168,27 +202,38 @@ export class APILoader extends HTTPLoader {
         result: '{}',
         api,
         error: `Unable to parse base url from ${this.apiConfig.api.baseUrl}`,
+        errorType: ScrapeErrorType.PARSE_ERROR,
+        retryable: false,
       };
     }
 
-    console.log('fetching', api);
+    this.logger.debug(`Fetching ${api}`);
 
-    try {
+    const result = await super.loadPageWithStatus(
+      api,
+      ...(this.apiConfig.api.method
+        ? [JSON.stringify(body), this.apiConfig.api.method]
+        : [undefined, undefined]),
+    );
+
+    if (result.error) {
+      this.logger.warn(
+        `API request failed [${result.error.getShortCode()}] ${api}: ${result.error.message}`,
+      );
       return {
-        result: await super.loadPage(
-          api,
-          ...(this.apiConfig.api.method
-            ? [JSON.stringify(body), this.apiConfig.api.method]
-            : []),
-        ),
+        result: result.body || '{}',
         api,
-      };
-    } catch (err) {
-      return {
-        result: '{}',
-        api,
-        error: `Error while fetching data`,
+        status: result.status,
+        error: result.error.message,
+        errorType: result.error.type,
+        retryable: result.error.isRetryable(),
       };
     }
+
+    return {
+      result: result.body,
+      api,
+      status: result.status,
+    };
   }
 }
