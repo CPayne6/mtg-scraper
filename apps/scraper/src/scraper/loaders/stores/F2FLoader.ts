@@ -1,13 +1,12 @@
-import * as undici from 'undici';
-import { ProxyService } from '@/scraper/proxy/proxy.service';
 import { APILoader, searchReplace } from '../APILoader';
+import { GetProxyAgentFn } from '../HTTPLoader';
 
 export class F2FLoader extends APILoader {
-  static create(proxyService: ProxyService): F2FLoader {
-    return new F2FLoader(proxyService.getProxyAgent());
+  static create(getProxyAgent?: GetProxyAgentFn): F2FLoader {
+    return new F2FLoader(getProxyAgent);
   }
 
-  constructor(proxyAgent?: undici.ProxyAgent) {
+  constructor(getProxyAgent?: GetProxyAgentFn) {
     super({
       initial: {
         baseUrl: 'https://facetofacegames.com',
@@ -33,7 +32,7 @@ export class F2FLoader extends APILoader {
           'In%2520Stock',
         ],
       },
-      proxyAgent,
+      getProxyAgent,
     });
   }
 }
