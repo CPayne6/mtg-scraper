@@ -20,8 +20,8 @@ export class PopularCardsService {
 
     // Try fetching from EDHREC API
     try {
-      this.logger.log('Fetching popular cards from EDHREC API...');
-      const cards = await this.edhrecService.fetchPopularCards();
+      this.logger.log(`Fetching popular cards from EDHREC API (limit: ${limit})...`);
+      const cards = await this.edhrecService.fetchPopularCards(limit);
 
       if (cards.length > 0) {
         this.logger.log(`Successfully fetched ${cards.length} cards from EDHREC`);

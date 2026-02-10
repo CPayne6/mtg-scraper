@@ -204,5 +204,45 @@ describe('EdhrecService', () => {
       expect(result).toContain('Success Card');
       expect(Array.isArray(result)).toBe(true);
     });
+
+    it('should respect limit parameter and fetch enough pages', async () => {
+      const mockResponse = {
+        cardviews: Array.from({ length: 100 }, (_, i) => ({
+          id: String(i),
+          name: `Card ${i}`,
+        })),
+      };
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      const result = await service.fetchPopularCards(50);
+
+      // Should return exactly 50 cards
+      expect(result.length).toBe(50);
+    });
+
+    it('should stop fetching pages early when limit is reached', async () => {
+      const mockResponse = {
+        cardviews: Array.from({ length: 100 }, (_, i) => ({
+          id: String(i),
+          name: `Card ${i}`,
+        })),
+      };
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      await service.fetchPopularCards(50);
+
+      // With 100 cards per page and limit of 50, should stop after first batch
+      // (cardsPerPage=100 means limit 50 needs only 1 page + 5 buffer = 6 pages max,
+      // but it should stop early once it has 100 cards >= 50 limit)
+      expect(global.fetch).toHaveBeenCalledTimes(2); // First batch of 2 pages
+    });
   });
 });
