@@ -4,12 +4,14 @@ export enum Condition {
   LP = 'lp',
   MP = 'mp',
   HP = 'hp',
+  DMG = 'dmg',
   UNKNOWN = 'unknown',
 }
 
 export interface Card {
   price: number;
   condition: Condition;
+  foil?: boolean;
   image: string;
   title: string;
   currency: string;
