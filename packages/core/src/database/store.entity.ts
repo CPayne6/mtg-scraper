@@ -35,7 +35,7 @@ export class Store {
   scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos';
 
   @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
-  scraperConfig?: { searchPath?: string };
+  scraperConfig?: { searchPath?: string; shopifyUrl?: string };
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
