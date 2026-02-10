@@ -26,5 +26,8 @@ RUN pnpm nx build scraper
 # Set working directory to Scraper
 WORKDIR /app/apps/scraper
 
+# Set log level to only show errors and warnings
+ENV LOG_LEVEL=error,warn
+
 # Start NestJS in watch mode with hot reload
 CMD ["pnpm", "dev"]
