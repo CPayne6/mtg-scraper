@@ -1,5 +1,5 @@
 import { Card } from '@scoutlgs/shared';
-import { BaseParser, parseCondition } from '../Parser';
+import { BaseParser, parseConditionWithFoil } from '../Parser';
 import { HobbiesSearch } from './search.types';
 
 const nameRegex = /^([^\(]+) \(/i;
@@ -59,15 +59,31 @@ export class HobbiesParser extends BaseParser {
           continue;
         }
 
+        // Check for foil from product-level fields (tags array, selectedFinish)
+        const tags: string[] = Array.isArray(product.tags) ? product.tags : [];
+        const productFoil =
+          tags.some(
+            (tag) =>
+              (/Finish[:\s]*foil/i.test(tag) || /Foil or Non-Foil[:\s]*Foil/i.test(tag)) &&
+              !/non-?foil/i.test(tag),
+          ) ||
+          (typeof product.selectedFinish === 'string' &&
+            /\bfoil\b/i.test(product.selectedFinish) &&
+            !/non-?foil/i.test(product.selectedFinish));
+
         const innerCards: Card[] = [];
         for (const variant of variantInfo) {
           if (variant.inventory_quantity > 0) {
             const splitDisplayName = product.display_name.split('-');
+            const { condition, foil: conditionFoil } = parseConditionWithFoil(variant.title);
+            // Use foil from condition string if present, otherwise from product-level fields
+            const foil = conditionFoil || productFoil;
             innerCards.push({
               price: variant.price,
               currency: 'CAD',
               image: product.imageUrl ?? product.image_url,
-              condition: parseCondition(variant.title),
+              condition,
+              foil,
               title:
                 product.display_name.match(nameRegex)?.[1] ??
                 product.display_name,

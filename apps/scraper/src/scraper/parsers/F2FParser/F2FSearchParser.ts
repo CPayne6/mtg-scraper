@@ -1,4 +1,4 @@
-import { BaseParser, parseCondition } from '../Parser';
+import { BaseParser, parseConditionWithFoil } from '../Parser';
 import { F2FSearch } from './search.types';
 import { Card } from '@scoutlgs/shared';
 import { isValidSetCode } from '@/scraper/sets';
@@ -50,18 +50,27 @@ export class F2FSearchParser extends BaseParser {
           continue;
         }
 
+        // Check for foil from Finish field (e.g., "Foil", "Non-Foil")
+        const finishField = cardInfo['Finish'];
+        const productFoil = Array.isArray(finishField)
+          ? finishField.some((f: string) => /\bfoil\b/i.test(f) && !/non-?foil/i.test(f))
+          : typeof finishField === 'string' && /\bfoil\b/i.test(finishField) && !/non-?foil/i.test(finishField);
+
         for (const variant of cardInfo?.variants) {
           if (variant.inventoryQuantity > 0) {
             const setSplit = variant.sku.split('-');
+            const conditionValue = variant.selectedOptions.find(
+              (item) => item['name'] === 'Condition',
+            )?.value;
+            const { condition, foil: conditionFoil } = parseConditionWithFoil(conditionValue);
+            // Use foil from condition string if present, otherwise from product Finish field
+            const foil = conditionFoil || productFoil;
             cards.push({
               image: this.cleanJsonString(variant.image.url),
               price: variant.price,
               currency: 'CAD',
-              condition: parseCondition(
-                variant.selectedOptions.find(
-                  (item) => item['name'] === 'Condition',
-                )?.value,
-              ),
+              condition,
+              foil,
               title: Array.isArray(cardInfo['Card Name'])
                 ? cardInfo['Card Name'][0]
                 : cardInfo['Card Name'],

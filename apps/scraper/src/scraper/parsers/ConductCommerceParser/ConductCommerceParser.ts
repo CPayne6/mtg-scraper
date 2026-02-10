@@ -17,6 +17,7 @@ const CONDITION_MAP: Record<string, Condition> = {
   'Lightly Played': Condition.LP,
   'Moderately Played': Condition.MP,
   'Heavily Played': Condition.HP,
+  'Damaged': Condition.DMG,
 };
 
 /**
@@ -153,10 +154,15 @@ export class ConductCommerceParser extends BaseParser {
     const { cardName, cardNumber } = parseInventoryName(listing.inventoryName);
     const setCode = extractSetCodeFromImage(listing.image);
 
+    // Check for foil suffix patterns (e.g., "Lightning Bolt - Foil", "Lightning Bolt (Borderless Foil)")
+    // Avoid matching cards that have "foil" in the actual card name
+    const foil = /[-–][^)]*\bfoil\b|\([^)]*\bfoil\b[^)]*\)/i.test(listing.inventoryName);
+
     return {
       title: cardName,
       price: variant.price,
       condition,
+      foil,
       currency: 'CAD',
       image: this.buildImageUrl(listing.image),
       link: this.buildProductLink(listing.inventoryID),
