@@ -1,4 +1,4 @@
-import { CardSearchResponse, CardWithStore } from "@scoutlgs/shared"
+import { CardSearchResponse, CardWithStore, StoreInfo, Condition } from "@scoutlgs/shared"
 import { useEffect, useState, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { Box, Stack, Typography } from "@mui/material"
@@ -9,9 +9,91 @@ import SkryfallAutocomplete from "../SkryfallAutocomplete/SkryfallAutocomplete"
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
+// v1 API response types
+interface V1ListingResult {
+  id: string
+  store: string
+  storeSlug: string
+  price: number
+  currency: string
+  condition: string
+  foil: boolean
+  inStock: boolean
+  quantity?: number
+  productLink: string
+  imageUrl?: string
+}
+
+interface V1CardResult {
+  printingId: number | null
+  scryfallId: string | null
+  cardName: string
+  setCode: string
+  setName: string
+  collectorNumber: string
+  rarity?: string
+  imageUri?: string
+  listings: V1ListingResult[]
+}
+
+interface V1SearchResponse {
+  query: string
+  totalCards: number
+  totalListings: number
+  priceStats: { min: number; max: number; avg: number }
+  results: V1CardResult[]
+}
+
+function transformV1Response(v1: V1SearchResponse): CardSearchResponse {
+  const cards: CardWithStore[] = []
+  const storeMap = new Map<string, { displayName: string; count: number }>()
+
+  for (const printing of v1.results) {
+    for (const listing of printing.listings) {
+      cards.push({
+        title: printing.cardName,
+        store: listing.store,
+        image: printing.imageUri ?? listing.imageUrl ?? '',
+        price: listing.price,
+        condition: (listing.condition as Condition) || Condition.UNKNOWN,
+        foil: listing.foil,
+        currency: listing.currency,
+        link: listing.productLink,
+        set: printing.setCode,
+        card_number: printing.collectorNumber,
+        scryfall_id: printing.scryfallId ?? undefined,
+      })
+
+      const existing = storeMap.get(listing.storeSlug)
+      if (existing) {
+        existing.count++
+      } else {
+        storeMap.set(listing.storeSlug, { displayName: listing.store, count: 1 })
+      }
+    }
+  }
+
+  const stores: StoreInfo[] = [...storeMap.entries()].map(([slug, info], i) => ({
+    id: i,
+    uuid: slug,
+    name: slug,
+    displayName: info.displayName,
+    cardCount: info.count,
+  }))
+
+  return {
+    cardName: v1.query,
+    stores,
+    priceStats: { ...v1.priceStats, count: v1.totalListings },
+    results: cards,
+    timestamp: Date.now(),
+  }
+}
+
 const fetchCardData = async (name: string) => {
-  const response = await fetch(`${API_URL}/card/${encodeURIComponent(name)}`)
-  return await response.json() as CardSearchResponse
+  const response = await fetch(`${API_URL}/v1/cards/search?name=${encodeURIComponent(name)}`)
+  const v1Data = await response.json() as V1SearchResponse
+  return transformV1Response(v1Data)
 }
 
 // Filter operation types

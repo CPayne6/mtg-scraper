@@ -1,5 +1,16 @@
 import { DataSource } from 'typeorm';
-import { Store } from '@scoutlgs/core';
+import {
+  Store,
+  Platform,
+  MtgSinglesCollection,
+  CardName,
+  ProductUrl,
+  ScryfallSet,
+  CardPrinting,
+  CardListing,
+  CardPriceHistory,
+  UnmatchedCard,
+} from '@scoutlgs/core';
 
 // TypeORM CLI configuration for migrations
 // In development: uses ts-node with .ts files (migration:run)
@@ -13,7 +24,18 @@ export default new DataSource({
   username: process.env.DATABASE_USER || 'postgres',
   password: process.env.DATABASE_PASSWORD || 'postgres',
   database: process.env.DATABASE_NAME || 'scoutlgs',
-  entities: [Store],
+  entities: [
+    Store,
+    Platform,
+    MtgSinglesCollection,
+    CardName,
+    ProductUrl,
+    ScryfallSet,
+    CardPrinting,
+    CardListing,
+    CardPriceHistory,
+    UnmatchedCard,
+  ],
   migrations: isProduction
     ? ['dist/database/migrations/*.js']
     : ['src/database/migrations/*.ts'],

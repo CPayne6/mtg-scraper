@@ -6,6 +6,7 @@ import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 import { PopularCardsModule } from './popular-cards/popular-cards.module';
 import { ManualModule } from './manual/manual.module';
+import { DiscoveryModule } from './discovery/discovery.module';
 import { getDatabaseConfig } from '@scoutlgs/core';
 
 @Module({
@@ -29,6 +30,9 @@ import { getDatabaseConfig } from '@scoutlgs/core';
 
     // Feature modules
     PopularCardsModule,
+
+    // Product discovery (V2 scraping)
+    DiscoveryModule,
 
     // API to access scheduler status
     ManualModule

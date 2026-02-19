@@ -5,6 +5,8 @@ import { ManualService } from './manual.service'
 export class ManualController {
   constructor(private readonly manualService: ManualService) {}
 
+  // Popular cards scrape (V1)
+
   @Put('trigger')
   putManualTrigger(
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
@@ -15,5 +17,17 @@ export class ManualController {
   @Get('status')
   getStatus() {
     return this.manualService.getStatus()
+  }
+
+  // Product discovery (V2)
+
+  @Put('discovery/trigger')
+  putDiscoveryTrigger() {
+    return this.manualService.triggerDiscovery()
+  }
+
+  @Get('discovery/status')
+  getDiscoveryStatus() {
+    return this.manualService.getDiscoveryStatus()
   }
 }

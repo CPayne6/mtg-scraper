@@ -41,7 +41,7 @@ TypeOrmModule.forRootAsync({
   password: process.env.DATABASE_PASSWORD,
   database: process.env.DATABASE_NAME,
   entities: [Store],
-  synchronize: process.env.DATABASE_SYNCHRONIZE === 'true',
+  synchronize: false,
   logging: process.env.NODE_ENV === 'development'
 }
 ```
@@ -412,7 +412,6 @@ DATABASE_PORT=5432
 DATABASE_NAME=mtg_scraper
 DATABASE_USER=postgres
 DATABASE_PASSWORD=postgres
-DATABASE_SYNCHRONIZE=false
 ```
 
 ### Redis (Queue & Cache)
