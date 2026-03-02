@@ -19,8 +19,8 @@ export type ExtractionStatus = 'pending' | 'success' | 'error';
 @Index('idx_product_urls_extraction', ['extractionStatus', 'lastExtractedAt'])
 @Index('idx_product_urls_collection', ['mtgSinglesCollectionId'])
 export class ProductUrl {
-  @PrimaryGeneratedColumn({ type: 'bigint' })
-  id: string;
+  @PrimaryGeneratedColumn('increment')
+  id: number;
 
   @ManyToOne(() => Store)
   @JoinColumn({ name: 'store_id' })
@@ -50,12 +50,6 @@ export class ProductUrl {
 
   @Column({ name: 'discovered_at', type: 'timestamp', default: () => 'NOW()' })
   discoveredAt: Date;
-
-  @Column({ name: 'last_validated_at', type: 'timestamp', nullable: true })
-  lastValidatedAt?: Date;
-
-  @Column({ name: 'is_invalid', type: 'boolean', default: false })
-  isInvalid: boolean;
 
   @Column({ name: 'last_extracted_at', type: 'timestamp', nullable: true })
   lastExtractedAt?: Date;
