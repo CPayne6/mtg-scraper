@@ -1,16 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   Store,
   ProductUrl,
   MtgSinglesCollection,
+  InvalidProductHandle,
   QueueService,
   PlatformAdapterFactory,
   ShopifyDiscoveryAdapter,
   ProxyService,
+  CacheService,
+  RateLimiterService,
 } from '@scoutlgs/core';
 import type { DiscoveredProduct } from '@scoutlgs/core';
+import { QUEUE_NAMES } from '@scoutlgs/shared';
 import pLimit from 'p-limit';
 
 export interface DiscoveryResult {
@@ -26,6 +30,9 @@ export interface DiscoveryResult {
   errors: string[];
 }
 
+const EXTRACTION_BACKPRESSURE = { maxDepth: 5_000 };
+const BACKPRESSURE_CHECK_INTERVAL = 50;
+
 @Injectable()
 export class DiscoveryService {
   private readonly logger = new Logger(DiscoveryService.name);
@@ -39,21 +46,33 @@ export class DiscoveryService {
     private readonly productUrlRepository: Repository<ProductUrl>,
     @InjectRepository(MtgSinglesCollection)
     private readonly collectionRepository: Repository<MtgSinglesCollection>,
+    @InjectRepository(InvalidProductHandle)
+    private readonly invalidHandleRepository: Repository<InvalidProductHandle>,
     private readonly queueService: QueueService,
     private readonly platformAdapterFactory: PlatformAdapterFactory,
     private readonly shopifyDiscoveryAdapter: ShopifyDiscoveryAdapter,
     private readonly proxyService: ProxyService,
+    private readonly cacheService: CacheService,
+    private readonly rateLimiterService: RateLimiterService,
   ) {
-    // Configure proxy for Shopify discovery adapter
+    // Configure rate-limited proxy for Shopify discovery adapter
     this.shopifyDiscoveryAdapter.setProxyAgentFactory(
       () => this.proxyService.getRotatingProxyAgent('discovery'),
+    );
+    this.shopifyDiscoveryAdapter.setRateLimiter(
+      this.rateLimiterService,
+      this.cacheService,
+      this.proxyService,
     );
   }
 
   /**
    * Discover products for a single store (called by queue processor).
    */
-  async discoverStore(storeId: number): Promise<DiscoveryResult> {
+  async discoverStore(
+    storeId: number,
+    options?: { skipExtraction?: boolean; discoveryRunId?: number },
+  ): Promise<DiscoveryResult> {
     const store = await this.storeRepository.findOne({
       where: { id: storeId },
       relations: ['platform'],
@@ -107,31 +126,43 @@ export class DiscoveryService {
       return result;
     }
 
+    // Configure per-store rate limiting for discovery
+    this.shopifyDiscoveryAdapter.setRateLimitConfig(
+      store.name,
+      store.rateLimitPerSecond,
+      this.proxyService.getIpCount(),
+    );
+
     // Discover products from sitemap
     const batchSize = 100;
     let batch: DiscoveredProduct[] = [];
 
     this.logger.log(`Discovering products from ${store.name} sitemap...`);
 
-    for await (const product of adapter.discoverProducts(store, collection)) {
-      batch.push(product);
-      result.discovered++;
+    try {
+      for await (const product of adapter.discoverProducts(store, collection)) {
+        batch.push(product);
+        result.discovered++;
 
-      if (batch.length >= batchSize) {
-        await this.processBatch(store, collection, batch, result);
-        batch = [];
+        if (batch.length >= batchSize) {
+          await this.processBatch(store, collection, batch, result, options);
+          batch = [];
+        }
+
+        if (result.discovered % 1000 === 0) {
+          this.logger.log(
+            `${store.name}: Discovered ${result.discovered} products so far`,
+          );
+        }
       }
 
-      if (result.discovered % 1000 === 0) {
-        this.logger.log(
-          `${store.name}: Discovered ${result.discovered} products so far`,
-        );
+      // Process remaining batch
+      if (batch.length > 0) {
+        await this.processBatch(store, collection, batch, result, options);
       }
-    }
-
-    // Process remaining batch
-    if (batch.length > 0) {
-      await this.processBatch(store, collection, batch, result);
+    } finally {
+      // Clean up any stale waitlist entries for this store (in case of crash/timeout)
+      await this.queueService.cleanupBackpressureWaiters(QUEUE_NAMES.PRODUCT_EXTRACTION, store.name);
     }
 
     this.logger.log(
@@ -152,57 +183,50 @@ export class DiscoveryService {
     collection: MtgSinglesCollection,
     products: DiscoveredProduct[],
     result: DiscoveryResult,
+    options?: { skipExtraction?: boolean; discoveryRunId?: number },
   ): Promise<void> {
-    // Check which handles already exist
-    const handles = products.map((p) => p.handle);
-    const existingUrls = await this.productUrlRepository.find({
-      where: handles.map((handle) => ({
-        storeId: store.id,
-        handle,
-      })),
-      select: ['id', 'handle', 'sitemapLastmod', 'lastExtractedAt', 'isInvalid', 'lastValidatedAt'],
-    });
+    // Deduplicate by handle (sitemaps can contain duplicates), keeping the last occurrence
+    const deduped = [...new Map(products.map((p) => [p.handle, p])).values()];
+
+    // Check which handles already exist in both tables in parallel
+    const handles = deduped.map((p) => p.handle);
+    const [existingUrls, existingInvalid] = await Promise.all([
+      this.productUrlRepository.find({
+        where: { storeId: store.id, handle: In(handles) },
+        select: ['id', 'handle', 'sitemapLastmod', 'lastExtractedAt'],
+      }),
+      this.invalidHandleRepository.find({
+        where: { storeId: store.id, handle: In(handles) },
+      }),
+    ]);
 
     const existingMap = new Map(existingUrls.map((u) => [u.handle, u]));
+    const invalidMap = new Map(existingInvalid.map((u) => [u.handle, u]));
 
     const newProducts: DiscoveredProduct[] = [];
     const staleProducts: DiscoveredProduct[] = [];
     const revalidateProducts: DiscoveredProduct[] = [];
 
     const now = new Date();
-    const stalenessThreshold = new Date(
-      Date.now() - this.STALENESS_HOURS * 60 * 60 * 1000,
-    );
     const revalidationThreshold = new Date(
       Date.now() - this.REVALIDATION_DAYS * 24 * 60 * 60 * 1000,
     );
 
-    for (const product of products) {
-      const existing = existingMap.get(product.handle);
-      if (!existing) {
-        newProducts.push(product);
-      } else if (existing.isInvalid) {
+    for (const product of deduped) {
+      const invalid = invalidMap.get(product.handle);
+      if (invalid) {
         // Known invalid — check if due for re-validation
-        if (
-          !existing.lastValidatedAt ||
-          existing.lastValidatedAt < revalidationThreshold
-        ) {
+        if (invalid.lastValidatedAt < revalidationThreshold) {
           revalidateProducts.push(product);
         } else {
           result.skippedInvalid++;
         }
       } else {
-        // Valid product — check if stale
-        const hasNewLastmod =
-          product.lastModified &&
-          existing.sitemapLastmod &&
-          product.lastModified > existing.sitemapLastmod;
-
-        const isStale =
-          !existing.lastExtractedAt ||
-          existing.lastExtractedAt < stalenessThreshold;
-
-        if (hasNewLastmod || isStale) {
+        const existing = existingMap.get(product.handle);
+        if (!existing) {
+          newProducts.push(product);
+        } else {
+          // Always re-extract existing products
           staleProducts.push(product);
         }
       }
@@ -245,22 +269,17 @@ export class DiscoveryService {
     result.updatedProducts += staleProducts.length;
     result.invalidProducts += invalidatedProducts.length;
 
-    // Bulk upsert invalid products
+    // Bulk upsert invalid product handles
     if (invalidatedProducts.length > 0) {
-      const invalidUrls = invalidatedProducts.map((p) =>
-        this.productUrlRepository.create({
+      const invalidHandles = invalidatedProducts.map((p) =>
+        this.invalidHandleRepository.create({
           storeId: store.id,
-          mtgSinglesCollectionId: collection.id,
           handle: p.handle,
-          sitemapLastmod: p.lastModified,
-          imageUrl: p.imageUrl,
-          imageTitle: p.imageTitle,
-          isInvalid: true,
           lastValidatedAt: now,
         }),
       );
 
-      await this.productUrlRepository.upsert(invalidUrls, {
+      await this.invalidHandleRepository.upsert(invalidHandles, {
         conflictPaths: ['storeId', 'handle'],
         skipUpdateIfNoValuesChanged: true,
       });
@@ -276,8 +295,6 @@ export class DiscoveryService {
           sitemapLastmod: p.lastModified,
           imageUrl: p.imageUrl,
           imageTitle: p.imageTitle,
-          isInvalid: false,
-          lastValidatedAt: now,
           extractionStatus: 'pending',
         }),
       );
@@ -287,12 +304,23 @@ export class DiscoveryService {
         skipUpdateIfNoValuesChanged: true,
       });
 
+      // Remove re-validated handles from invalid table
+      const revalidatedHandles = validatedProducts
+        .filter((p) => revalidateHandles.has(p.handle))
+        .map((p) => p.handle);
+      if (revalidatedHandles.length > 0) {
+        await this.invalidHandleRepository.delete({
+          storeId: store.id,
+          handle: In(revalidatedHandles),
+        });
+      }
+
       // Get IDs for newly inserted
       const insertedUrls = await this.productUrlRepository.find({
-        where: validatedProducts.map((p) => ({
+        where: {
           storeId: store.id,
-          handle: p.handle,
-        })),
+          handle: In(validatedProducts.map((p) => p.handle)),
+        },
         select: ['id', 'handle'],
       });
 
@@ -301,10 +329,28 @@ export class DiscoveryService {
         storeId: store.id,
         handle: url.handle,
         priority: 1,
+        discoveryRunId: options?.discoveryRunId,
       }));
 
-      if (extractionJobs.length > 0) {
-        await this.queueService.enqueueExtractionJobsBulk(extractionJobs);
+      if (extractionJobs.length > 0 && !options?.skipExtraction) {
+        for (let i = 0; i < extractionJobs.length; i++) {
+          if (i % BACKPRESSURE_CHECK_INTERVAL === 0) {
+            await this.queueService.waitForCapacity(
+              QUEUE_NAMES.PRODUCT_EXTRACTION,
+              Math.min(BACKPRESSURE_CHECK_INTERVAL, extractionJobs.length - i),
+              store.name,
+              EXTRACTION_BACKPRESSURE,
+            );
+          }
+          const job = extractionJobs[i];
+          await this.queueService.enqueueExtractionJob(
+            job.productUrlId,
+            job.storeId,
+            job.handle,
+            job.priority,
+            job.discoveryRunId,
+          );
+        }
         result.extractionJobsQueued += extractionJobs.length;
       }
     }
@@ -322,10 +368,10 @@ export class DiscoveryService {
         .execute();
 
       const staleUrls = await this.productUrlRepository.find({
-        where: staleProducts.map((p) => ({
+        where: {
           storeId: store.id,
-          handle: p.handle,
-        })),
+          handle: In(staleProducts.map((p) => p.handle)),
+        },
         select: ['id', 'handle'],
       });
 
@@ -334,10 +380,28 @@ export class DiscoveryService {
         storeId: store.id,
         handle: url.handle,
         priority: 1,
+        discoveryRunId: options?.discoveryRunId,
       }));
 
-      if (extractionJobs.length > 0) {
-        await this.queueService.enqueueExtractionJobsBulk(extractionJobs);
+      if (extractionJobs.length > 0 && !options?.skipExtraction) {
+        for (let i = 0; i < extractionJobs.length; i++) {
+          if (i % BACKPRESSURE_CHECK_INTERVAL === 0) {
+            await this.queueService.waitForCapacity(
+              QUEUE_NAMES.PRODUCT_EXTRACTION,
+              Math.min(BACKPRESSURE_CHECK_INTERVAL, extractionJobs.length - i),
+              store.name,
+              EXTRACTION_BACKPRESSURE,
+            );
+          }
+          const job = extractionJobs[i];
+          await this.queueService.enqueueExtractionJob(
+            job.productUrlId,
+            job.storeId,
+            job.handle,
+            job.priority,
+            job.discoveryRunId,
+          );
+        }
         result.extractionJobsQueued += extractionJobs.length;
       }
     }
