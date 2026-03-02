@@ -51,6 +51,9 @@ export class Store {
   @Column({ name: 'platform_type', length: 50, nullable: true })
   platformType?: PlatformType;
 
+  @Column({ name: 'rate_limit_per_second', type: 'int', default: 15 })
+  rateLimitPerSecond: number;
+
   @Column({ name: 'discovery_config', type: 'jsonb', nullable: true })
   discoveryConfig?: StoreDiscoveryConfig;
 
