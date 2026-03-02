@@ -2,27 +2,30 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import {
-  CardName,
-  CardPrinting,
-  CardListing,
-  CardVariant,
+  TokenName,
+  TokenPrinting,
+  TokenListing,
+  TokenVariant,
   ScryfallSet,
   Store,
-  StoreService,
 } from '@scoutlgs/core';
 
-export interface V1ListingResult {
+export interface V1TokenListingResult {
   id: number;
-  // Printing info
   printingId: number | null;
   scryfallId: string | null;
-  cardName: string;
+  tokenName: string;
+  typeLine: string;
+  cardType: string;
+  subtypes: string;
+  power: string;
+  toughness: string;
+  colors: string;
   setCode: string;
   setName: string;
   collectorNumber: string;
   rarity?: string;
   imageUri?: string;
-  // Store/variant info
   store: string;
   storeSlug: string;
   price: number;
@@ -34,21 +37,21 @@ export interface V1ListingResult {
   imageUrl?: string;
 }
 
-export interface V1StoreCount {
+export interface V1TokenStoreCount {
   storeSlug: string;
   storeName: string;
   count: number;
 }
 
-export interface V1ConditionCount {
+export interface V1TokenConditionCount {
   code: string;
   displayName: string;
   count: number;
   sortOrder: number;
 }
 
-export interface V1SearchResponse {
-  query: string;
+export interface V1TokenSearchResponse {
+  query: Record<string, string | undefined>;
   totalListings: number;
   priceStats: {
     min: number;
@@ -62,68 +65,68 @@ export interface V1SearchResponse {
     hasNextPage: boolean;
     hasPrevPage: boolean;
   };
-  storeCounts: V1StoreCount[];
-  conditionCounts: V1ConditionCount[];
-  results: V1ListingResult[];
+  storeCounts: V1TokenStoreCount[];
+  conditionCounts: V1TokenConditionCount[];
+  results: V1TokenListingResult[];
 }
 
-interface SearchFilters {
-  cardNameId: number;
+interface TokenSearchFilters {
+  tokenNameIds: number[];
   setCode?: string;
   stores?: string[];
   conditions?: string[];
 }
 
 @Injectable()
-export class V1CardsService {
-  private readonly logger = new Logger(V1CardsService.name);
+export class V1TokensService {
+  private readonly logger = new Logger(V1TokensService.name);
 
   constructor(
-    @InjectRepository(CardName)
-    private readonly cardNameRepository: Repository<CardName>,
-    @InjectRepository(CardPrinting)
-    private readonly cardPrintingRepository: Repository<CardPrinting>,
-    @InjectRepository(CardListing)
-    private readonly cardListingRepository: Repository<CardListing>,
-    @InjectRepository(CardVariant)
-    private readonly cardVariantRepository: Repository<CardVariant>,
+    @InjectRepository(TokenName)
+    private readonly tokenNameRepository: Repository<TokenName>,
+    @InjectRepository(TokenPrinting)
+    private readonly tokenPrintingRepository: Repository<TokenPrinting>,
+    @InjectRepository(TokenListing)
+    private readonly tokenListingRepository: Repository<TokenListing>,
+    @InjectRepository(TokenVariant)
+    private readonly tokenVariantRepository: Repository<TokenVariant>,
     @InjectRepository(ScryfallSet)
     private readonly setRepository: Repository<ScryfallSet>,
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
-    private readonly storeService: StoreService,
   ) {}
 
-  async searchCards(
-    name: string,
-    limit: number = 50,
-    page: number = 1,
-    setCode?: string,
-    stores?: string[],
-    conditions?: string[],
-  ): Promise<V1SearchResponse> {
-    const normalizedName = this.normalizeCardName(name);
+  async searchTokens(params: {
+    name?: string;
+    type?: string;
+    subtype?: string;
+    power?: string;
+    toughness?: string;
+    colors?: string;
+    setCode?: string;
+    stores?: string[];
+    conditions?: string[];
+    limit: number;
+    page: number;
+  }): Promise<V1TokenSearchResponse> {
+    const { name, type, subtype, power, toughness, colors, setCode, stores, conditions, limit, page } = params;
 
-    // Step 1: Find matching CardName (exact, then fuzzy)
-    let cardNameRecord = await this.cardNameRepository.findOne({
-      where: { normalizedName },
+    // Step 1: Find matching token names based on attribute filters
+    const tokenNameIds = await this.findMatchingTokenNameIds({
+      name, type, subtype, power, toughness, colors,
     });
 
-    if (!cardNameRecord) {
-      cardNameRecord = await this.findCardNameByFuzzyMatch(name);
+    if (tokenNameIds.length === 0) {
+      return this.buildEmptyResponse(params, page, limit);
     }
 
-    if (!cardNameRecord) {
-      return this.buildEmptyResponse(name, page, limit);
-    }
-
-    // Step 2: Resolve set filter to a code (handles full/partial names)
+    // Step 2: Resolve set filter
     const resolvedSetCode = setCode
       ? await this.resolveSetCode(setCode)
       : undefined;
 
-    const filters: SearchFilters = {
-      cardNameId: cardNameRecord.id,
+    const filters: TokenSearchFilters = {
+      tokenNameIds,
       setCode: resolvedSetCode,
       stores,
       conditions,
@@ -139,16 +142,16 @@ export class V1CardsService {
       ]);
 
     if (aggregates.count === 0) {
-      return this.buildEmptyResponse(name, page, limit);
+      return this.buildEmptyResponse(params, page, limit);
     }
 
-    // Step 4: Map variants to flat listing results (preserves DB price order)
-    const results = this.mapVariantsToResults(variants, cardNameRecord.name);
+    // Step 4: Map variants to flat listing results
+    const results = this.mapVariantsToResults(variants);
 
     const totalPages = Math.ceil(aggregates.count / limit);
 
     return {
-      query: name,
+      query: { name, type, subtype, power, toughness, colors, setCode },
       totalListings: aggregates.count,
       priceStats: {
         min: aggregates.min,
@@ -169,31 +172,83 @@ export class V1CardsService {
   }
 
   /**
-   * Build the base query builder with standard joins for count/aggregate queries.
-   * Joins: variant → listing → store, variant → condition.
-   * Optionally joins printing → set when setCode filter is present.
+   * Find token_names IDs matching the given attribute filters.
+   * Multiple tokens can share a name — this returns all matching IDs.
+   */
+  private async findMatchingTokenNameIds(params: {
+    name?: string;
+    type?: string;
+    subtype?: string;
+    power?: string;
+    toughness?: string;
+    colors?: string;
+  }): Promise<number[]> {
+    const { name, type, subtype, power, toughness, colors } = params;
+
+    const qb = this.tokenNameRepository.createQueryBuilder('tn')
+      .select('tn.id', 'id');
+
+    if (name) {
+      const normalized = this.normalizeCardName(name);
+      // Try exact first, then fuzzy
+      qb.andWhere(
+        `(tn.normalized_name = :exactName OR similarity(tn.normalized_name, :fuzzyName) > 0.3)`,
+        { exactName: normalized, fuzzyName: normalized },
+      );
+      qb.orderBy(`similarity(tn.normalized_name, :fuzzyName)`, 'DESC');
+    }
+
+    if (type) {
+      qb.andWhere('tn.card_type ILIKE :type', { type: `%${type}%` });
+    }
+
+    if (subtype) {
+      qb.andWhere('tn.subtypes ILIKE :subtype', { subtype: `%${subtype}%` });
+    }
+
+    if (power) {
+      qb.andWhere('tn.power = :power', { power });
+    }
+
+    if (toughness) {
+      qb.andWhere('tn.toughness = :toughness', { toughness });
+    }
+
+    if (colors) {
+      // Match exact color combination (order-independent)
+      // e.g., "W,U" should match tokens with colors "W,U" or "U,W"
+      const colorList = colors.split(',').map(c => c.trim()).sort();
+      qb.andWhere('tn.colors = :colors', { colors: colorList.join(',') });
+    }
+
+    qb.limit(500); // Cap token name matches
+
+    const rows = await qb.getRawMany();
+    return rows.map((r) => Number(r.id));
+  }
+
+  /**
+   * Build the base query builder for count/aggregate queries.
    */
   private buildCountQueryBuilder(
-    filters: SearchFilters,
-  ): SelectQueryBuilder<CardVariant> {
-    const qb = this.cardVariantRepository
+    filters: TokenSearchFilters,
+  ): SelectQueryBuilder<TokenVariant> {
+    const qb = this.tokenVariantRepository
       .createQueryBuilder('v')
-      .innerJoin('v.cardListing', 'l')
+      .innerJoin('v.tokenListing', 'l')
       .innerJoin('l.store', 's')
       .innerJoin('v.condition', 'c');
 
     if (filters.setCode) {
-      qb.leftJoin('l.cardPrinting', 'p').leftJoin('p.set', 'ps');
+      qb.leftJoin('l.tokenPrinting', 'p').leftJoin('p.set', 'ps');
     }
 
-    qb.where('l.card_name_id = :cardNameId', {
-      cardNameId: filters.cardNameId,
+    qb.where('l.token_name_id IN (:...tokenNameIds)', {
+      tokenNameIds: filters.tokenNameIds,
     });
 
     if (filters.setCode) {
-      qb.andWhere('ps.code = :setCode', {
-        setCode: filters.setCode,
-      });
+      qb.andWhere('ps.code = :setCode', { setCode: filters.setCode });
     }
 
     return qb;
@@ -203,7 +258,7 @@ export class V1CardsService {
    * Query 1: Aggregate stats with ALL filters applied
    */
   private async getAggregateStats(
-    filters: SearchFilters,
+    filters: TokenSearchFilters,
   ): Promise<{ count: number; min: number; max: number; avg: number }> {
     const qb = this.buildCountQueryBuilder(filters);
 
@@ -211,9 +266,7 @@ export class V1CardsService {
       qb.andWhere('s.name IN (:...stores)', { stores: filters.stores });
     }
     if (filters.conditions && filters.conditions.length > 0) {
-      qb.andWhere('c.code IN (:...conditions)', {
-        conditions: filters.conditions,
-      });
+      qb.andWhere('c.code IN (:...conditions)', { conditions: filters.conditions });
     }
 
     qb.select('COUNT(v.id)', 'count')
@@ -235,15 +288,12 @@ export class V1CardsService {
    * Query 2: Per-store counts — filtered by condition but NOT by store
    */
   private async getStoreCounts(
-    filters: SearchFilters,
-  ): Promise<V1StoreCount[]> {
+    filters: TokenSearchFilters,
+  ): Promise<V1TokenStoreCount[]> {
     const qb = this.buildCountQueryBuilder(filters);
 
-    // Apply condition filter but NOT store filter
     if (filters.conditions && filters.conditions.length > 0) {
-      qb.andWhere('c.code IN (:...conditions)', {
-        conditions: filters.conditions,
-      });
+      qb.andWhere('c.code IN (:...conditions)', { conditions: filters.conditions });
     }
 
     qb.select('s.name', 'storeSlug')
@@ -266,11 +316,10 @@ export class V1CardsService {
    * Query 3: Per-condition counts — filtered by store but NOT by condition
    */
   private async getConditionCounts(
-    filters: SearchFilters,
-  ): Promise<V1ConditionCount[]> {
+    filters: TokenSearchFilters,
+  ): Promise<V1TokenConditionCount[]> {
     const qb = this.buildCountQueryBuilder(filters);
 
-    // Apply store filter but NOT condition filter
     if (filters.stores && filters.stores.length > 0) {
       qb.andWhere('s.name IN (:...stores)', { stores: filters.stores });
     }
@@ -298,38 +347,35 @@ export class V1CardsService {
    * Query 4: Paginated variants with full hydration, ordered by price
    */
   private async getPaginatedVariants(
-    filters: SearchFilters,
+    filters: TokenSearchFilters,
     page: number,
     limit: number,
-  ): Promise<CardVariant[]> {
+  ): Promise<TokenVariant[]> {
     const offset = (page - 1) * limit;
 
-    const qb = this.cardVariantRepository
+    const qb = this.tokenVariantRepository
       .createQueryBuilder('v')
-      .innerJoinAndSelect('v.cardListing', 'l')
+      .innerJoinAndSelect('v.tokenListing', 'l')
       .innerJoinAndSelect('l.store', 's')
       .innerJoinAndSelect('v.condition', 'c')
       .leftJoinAndSelect('l.productUrl', 'pu')
-      .leftJoinAndSelect('l.cardPrinting', 'p')
+      .leftJoinAndSelect('l.tokenName', 'tn')
+      .leftJoinAndSelect('l.tokenPrinting', 'p')
       .leftJoinAndSelect('p.set', 'ps');
 
-    qb.where('l.card_name_id = :cardNameId', {
-      cardNameId: filters.cardNameId,
+    qb.where('l.token_name_id IN (:...tokenNameIds)', {
+      tokenNameIds: filters.tokenNameIds,
     });
 
     if (filters.setCode) {
-      qb.andWhere('ps.code = :setCode', {
-        setCode: filters.setCode,
-      });
+      qb.andWhere('ps.code = :setCode', { setCode: filters.setCode });
     }
 
     if (filters.stores && filters.stores.length > 0) {
       qb.andWhere('s.name IN (:...stores)', { stores: filters.stores });
     }
     if (filters.conditions && filters.conditions.length > 0) {
-      qb.andWhere('c.code IN (:...conditions)', {
-        conditions: filters.conditions,
-      });
+      qb.andWhere('c.code IN (:...conditions)', { conditions: filters.conditions });
     }
 
     qb.orderBy('v.price', 'ASC').offset(offset).limit(limit);
@@ -338,16 +384,13 @@ export class V1CardsService {
   }
 
   /**
-   * Map hydrated variants to flat listing results.
-   * Preserves the DB price-sort order (no re-grouping).
+   * Map hydrated token variants to flat listing results.
    */
-  private mapVariantsToResults(
-    variants: CardVariant[],
-    cardName: string,
-  ): V1ListingResult[] {
+  private mapVariantsToResults(variants: TokenVariant[]): V1TokenListingResult[] {
     return variants.map((variant) => {
-      const listing = variant.cardListing;
-      const printing = listing.cardPrinting;
+      const listing = variant.tokenListing;
+      const tokenName = listing.tokenName;
+      const printing = listing.tokenPrinting;
       const productLink = listing.productUrl
         ? `${listing.store.baseUrl}/products/${listing.productUrl.handle}`
         : listing.store.baseUrl;
@@ -356,7 +399,13 @@ export class V1CardsService {
         id: variant.id,
         printingId: printing?.id ?? null,
         scryfallId: printing?.scryfallId ?? null,
-        cardName,
+        tokenName: tokenName?.name ?? listing.rawTitle ?? '',
+        typeLine: tokenName?.typeLine ?? '',
+        cardType: tokenName?.cardType ?? '',
+        subtypes: tokenName?.subtypes ?? '',
+        power: tokenName?.power ?? '',
+        toughness: tokenName?.toughness ?? '',
+        colors: tokenName?.colors ?? '',
         setCode: printing?.set?.code ?? '',
         setName: printing?.set?.name ?? '',
         collectorNumber: printing?.collectorNumber ?? '',
@@ -375,22 +424,15 @@ export class V1CardsService {
     });
   }
 
-  /**
-   * Resolve a user-provided set filter to an actual set code.
-   * Tries exact code match first, then ILIKE on name.
-   * Returns the resolved code, or undefined if no match.
-   */
   private async resolveSetCode(input: string): Promise<string | undefined> {
     const lower = input.toLowerCase();
 
-    // Try exact code match (indexed, fast)
     const byCode = await this.setRepository.findOne({
       where: { code: lower },
       select: ['code'],
     });
     if (byCode) return byCode.code;
 
-    // Fall back to name search (small table, sequential scan is fine)
     const byName = await this.setRepository
       .createQueryBuilder('s')
       .select('s.code', 'code')
@@ -400,19 +442,6 @@ export class V1CardsService {
       .getRawOne();
 
     return byName?.code;
-  }
-
-  private async findCardNameByFuzzyMatch(
-    name: string,
-  ): Promise<CardName | null> {
-    const results = await this.cardNameRepository
-      .createQueryBuilder('cn')
-      .where(`similarity(cn.name, :name) > 0.3`, { name })
-      .orderBy(`similarity(cn.name, :name)`, 'DESC')
-      .limit(1)
-      .getMany();
-
-    return results[0] ?? null;
   }
 
   private normalizeCardName(name: string): string {
@@ -425,12 +454,20 @@ export class V1CardsService {
   }
 
   private buildEmptyResponse(
-    query: string,
+    params: Record<string, any>,
     page: number,
     limit: number,
-  ): V1SearchResponse {
+  ): V1TokenSearchResponse {
     return {
-      query,
+      query: {
+        name: params.name,
+        type: params.type,
+        subtype: params.subtype,
+        power: params.power,
+        toughness: params.toughness,
+        colors: params.colors,
+        setCode: params.setCode,
+      },
       totalListings: 0,
       priceStats: { min: 0, max: 0, avg: 0 },
       pagination: {

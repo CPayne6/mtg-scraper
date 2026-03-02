@@ -11,11 +11,20 @@ export class V1CardsController {
   async searchCards(
     @Query() query: SearchCardsQueryDto,
   ): Promise<V1SearchResponse> {
+    const stores = query.stores
+      ? query.stores.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined;
+    const conditions = query.conditions
+      ? query.conditions.split(',').map((c) => c.trim()).filter(Boolean)
+      : undefined;
+
     return this.v1CardsService.searchCards(
       query.name,
-      query.inStock,
       query.limit,
+      query.page,
       query.setCode,
+      stores,
+      conditions,
     );
   }
 }

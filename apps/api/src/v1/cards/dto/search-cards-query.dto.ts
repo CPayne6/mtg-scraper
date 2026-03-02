@@ -1,14 +1,9 @@
-import { IsString, IsOptional, IsBoolean, IsInt, Min, Max } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { IsString, IsOptional, IsInt, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class SearchCardsQueryDto {
   @IsString()
   name: string;
-
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  inStock?: boolean = true;
 
   @IsOptional()
   @IsInt()
@@ -18,6 +13,20 @@ export class SearchCardsQueryDto {
   limit?: number = 50;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  page?: number = 1;
+
+  @IsOptional()
   @IsString()
   setCode?: string;
+
+  @IsOptional()
+  @IsString()
+  stores?: string;
+
+  @IsOptional()
+  @IsString()
+  conditions?: string;
 }

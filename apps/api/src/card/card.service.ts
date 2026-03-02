@@ -61,33 +61,52 @@ export class CardService {
       return this.buildEmptyResponse(cardName);
     }
 
-    // Query all cards for this card name, join with store info
-    const cards = await this.cardRepository
-      .createQueryBuilder('card')
-      .leftJoinAndSelect('card.store', 'store')
-      .where('card.card_name_id = :cardNameId', { cardNameId: cardNameRecord.id })
-      .andWhere('card.in_stock = true')
-      .orderBy('card.price', 'ASC')
+    // Query all listings for this card name, join with store, product_url, variants, printing
+    const listings = await this.cardRepository
+      .createQueryBuilder('listing')
+      .leftJoinAndSelect('listing.store', 'store')
+      .leftJoinAndSelect('listing.productUrl', 'productUrl')
+      .leftJoinAndSelect('listing.variants', 'variant')
+      .leftJoinAndSelect('variant.condition', 'condition')
+      .leftJoinAndSelect('listing.cardPrinting', 'printing')
+      .leftJoinAndSelect('printing.set', 'printingSet')
+      .where('listing.card_name_id = :cardNameId', { cardNameId: cardNameRecord.id })
+      .orderBy('variant.price', 'ASC')
       .getMany();
 
-    this.logger.log(`[V2] Found ${cards.length} results for: ${cardName}`);
+    this.logger.log(`[V2] Found ${listings.length} listings for: ${cardName}`);
 
-    // Convert to CardWithStore format
-    const cardResults: CardWithStore[] = cards.map((card) => ({
-      price: Number(card.price),
-      condition: card.condition as Condition,
-      foil: card.foil,
-      image: card.imageUrl || '',
-      title: card.title,
-      currency: card.currency,
-      link: card.productLink,
-      set: card.setName || '',
-      card_number: card.collectorNumber || '',
-      store: card.store.displayName,
-    }));
+    // Convert to CardWithStore format — one entry per variant
+    const cardResults: CardWithStore[] = [];
+
+    for (const listing of listings) {
+      const setName = listing.cardPrinting?.set?.name ?? '';
+      const collectorNumber = listing.cardPrinting?.collectorNumber ?? '';
+      const scryfallId = listing.cardPrinting?.scryfallId;
+      const title = `${cardNameRecord.name}${setName ? ` [${setName}]` : ''}`;
+      const productLink = listing.productUrl
+        ? `${listing.store.baseUrl}/products/${listing.productUrl.handle}`
+        : listing.store.baseUrl;
+
+      for (const variant of listing.variants ?? []) {
+        cardResults.push({
+          price: Number(variant.price),
+          condition: (variant.condition?.code ?? 'unknown') as Condition,
+          foil: variant.foil,
+          image: listing.imageUrl || '',
+          title,
+          currency: listing.currency,
+          link: productLink,
+          set: setName,
+          card_number: collectorNumber,
+          scryfall_id: scryfallId,
+          store: listing.store.displayName,
+        });
+      }
+    }
 
     // Get all stores that have results
-    const storesWithCards = new Set(cards.map((c) => c.store.id));
+    const storesWithCards = new Set(listings.map((l) => l.store.id));
     const allStores = await this.storeService.findAllActive();
     const storesInfo = allStores.filter((s) => storesWithCards.has(s.id));
 
