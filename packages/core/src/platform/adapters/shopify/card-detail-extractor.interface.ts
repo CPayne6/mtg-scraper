@@ -8,6 +8,7 @@ export interface SkuInfo {
   setCode?: string;
   collectorNumber?: string;
   foil?: boolean;
+  isToken?: boolean;
 }
 
 export interface TagsInfo {

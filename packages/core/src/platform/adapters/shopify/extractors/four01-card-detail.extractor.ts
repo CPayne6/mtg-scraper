@@ -104,6 +104,7 @@ export class Four01CardDetailExtractor implements ICardDetailExtractor {
         setCode: match[2].toLowerCase(),
         collectorNumber: match[3],
         foil: type === 'F' || type === 'TF',
+        isToken: type === 'TN' || type === 'TF',
       };
     }
 
