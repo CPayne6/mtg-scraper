@@ -87,8 +87,9 @@ export class PrintingMatcherService {
       }
     }
 
-    // Stage 1: Resolve card name
-    const normalizedName = this.normalizeCardName(cardName);
+    // Stage 1: Resolve card name — strip parenthetical suffixes first
+    // e.g. "Shadowborn Apostle (Borderless)" → "shadowborn apostle"
+    const normalizedName = this.stripParentheticals(this.normalizeCardName(cardName));
     const nameResult = await this.resolveCardName(normalizedName);
 
     if (nameResult.cardNameId === null) {
@@ -121,6 +122,22 @@ export class PrintingMatcherService {
 
     if (exact.length > 0) {
       const result: NameCacheEntry = { cardNameId: Number(exact[0].id), confidence: 'exact' };
+      this.nameCache.set(normalizedName, result);
+      return result;
+    }
+
+    // Step 1.5: Front-face match for double-faced cards
+    // Stores list DFCs by front face only (e.g. "Neglected Heirloom")
+    // but card_names stores full name ("Neglected Heirloom // Ashmouth Blade")
+    const frontFace = await this.dataSource.query(
+      `SELECT id FROM card_names
+       WHERE normalized_name LIKE $1 || ' // %'
+       LIMIT 1`,
+      [normalizedName],
+    );
+
+    if (frontFace.length > 0) {
+      const result: NameCacheEntry = { cardNameId: Number(frontFace[0].id), confidence: 'exact' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
@@ -178,24 +195,41 @@ export class PrintingMatcherService {
   }
 
   /**
-   * Resolve a set name (e.g. "Eighth Edition") to a set code (e.g. "8ed")
-   * by looking up the sets table.
+   * Resolve a set name (e.g. "Eighth Edition") to a set code (e.g. "8ed").
+   * Tries exact name match first, then ILIKE for partial/fuzzy names.
+   * Shortest matching name wins (most specific match).
    */
   private async resolveSetCode(setName: string): Promise<string | null> {
     const key = setName.toLowerCase();
     const cached = this.setNameCache.get(key);
     if (cached !== undefined) return cached || null;
 
-    const set = await this.setRepository.findOne({
+    // Try exact name match first (fast)
+    const exact = await this.setRepository.findOne({
       where: { name: setName },
       select: ['code'],
     });
 
-    const setCode = set?.code ?? '';
+    if (exact) {
+      this.setNameCache.set(key, exact.code);
+      this.logger.debug(`Resolved set name "${setName}" → ${exact.code} (exact)`);
+      return exact.code;
+    }
+
+    // Fall back to ILIKE (handles partial names like "Neon Dynasty" → "Kamigawa: Neon Dynasty")
+    const fuzzy = await this.setRepository
+      .createQueryBuilder('s')
+      .select('s.code', 'code')
+      .where('s.name ILIKE :pattern', { pattern: `%${setName}%` })
+      .orderBy('LENGTH(s.name)', 'ASC')
+      .limit(1)
+      .getRawOne();
+
+    const setCode = fuzzy?.code ?? '';
     this.setNameCache.set(key, setCode);
 
     if (setCode) {
-      this.logger.debug(`Resolved set name "${setName}" → ${setCode}`);
+      this.logger.debug(`Resolved set name "${setName}" → ${setCode} (ILIKE)`);
     }
 
     return setCode || null;
@@ -240,5 +274,19 @@ export class PrintingMatcherService {
       .replace(/\s+/g, ' ')
       .replace(/['']/g, "'")
       .replace(/[""]/g, '"');
+  }
+
+  /**
+   * Strip parenthetical suffixes from card names.
+   * "Shadowborn Apostle (Borderless)" → "shadowborn apostle"
+   * "Abbey Gargoyles (Bertrand Lestree) (SB)" → "abbey gargoyles"
+   * Also handles " - Promo Pack (Foil)" style suffixes.
+   */
+  private stripParentheticals(name: string): string {
+    // Remove all trailing parenthetical groups
+    let stripped = name.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+    // Remove trailing " - <variant info>" (e.g. " - Promo Pack", " - French")
+    stripped = stripped.replace(/\s+-\s+(?:promo pack|french|german|italian|chinese|japanese|limited edition.*|unlimited.*|artist signed.*)$/i, '').trim();
+    return stripped;
   }
 }

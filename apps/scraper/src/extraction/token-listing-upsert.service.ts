@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-export interface ListingRow {
-  cardNameId: number | null;
-  cardPrintingId: number | null;
+export interface TokenListingRow {
+  tokenNameId: number | null;
+  tokenPrintingId: number | null;
   storeId: number;
   productUrlId: number;
   rawTitle: string;
@@ -11,7 +11,7 @@ export interface ListingRow {
   currency: string;
 }
 
-export interface VariantRow {
+export interface TokenVariantRow {
   conditionCode: string;
   foil: boolean;
   price: number;
@@ -20,9 +20,9 @@ export interface VariantRow {
   sku: string | null;
 }
 
-export interface ListingWithVariants {
-  listing: ListingRow;
-  variants: VariantRow[];
+export interface TokenListingWithVariants {
+  listing: TokenListingRow;
+  variants: TokenVariantRow[];
   staleCleanup?: {
     productUrlId: number;
     inStockVariantIds: string[];
@@ -31,8 +31,8 @@ export interface ListingWithVariants {
 }
 
 @Injectable()
-export class ListingUpsertService implements OnModuleInit {
-  private readonly logger = new Logger(ListingUpsertService.name);
+export class TokenListingUpsertService implements OnModuleInit {
+  private readonly logger = new Logger(TokenListingUpsertService.name);
 
   /** Cached condition code → id mapping */
   private conditionMap = new Map<string, number>();
@@ -59,23 +59,22 @@ export class ListingUpsertService implements OnModuleInit {
   }
 
   /**
-   * Batch upsert listings and their variants in two steps:
-   * 1. Upsert card_listings ON CONFLICT (store_id, product_url_id)
-   * 2. Upsert card_variants ON CONFLICT (card_listing_id, condition_id, foil)
+   * Batch upsert token listings and their variants in two steps:
+   * 1. Upsert token_listings ON CONFLICT (store_id, product_url_id)
+   * 2. Upsert token_variants ON CONFLICT (token_listing_id, condition_id, foil)
    */
-  async upsertBatch(items: ListingWithVariants[]): Promise<number> {
+  async upsertBatch(items: TokenListingWithVariants[]): Promise<number> {
     if (items.length === 0) return 0;
 
     // Deduplicate listings by (storeId, productUrlId) — keep last occurrence
     const seen = new Map<string, number>();
-    const deduped: ListingWithVariants[] = [];
+    const deduped: TokenListingWithVariants[] = [];
     for (const item of items) {
       const key = `${item.listing.storeId}:${item.listing.productUrlId}`;
       const existingIdx = seen.get(key);
       if (existingIdx !== undefined) {
-        // Merge variants from duplicate into existing
         deduped[existingIdx].variants.push(...item.variants);
-        deduped[existingIdx].listing = item.listing; // use latest listing data
+        deduped[existingIdx].listing = item.listing;
         continue;
       }
       seen.set(key, deduped.length);
@@ -84,13 +83,13 @@ export class ListingUpsertService implements OnModuleInit {
 
     if (deduped.length < items.length) {
       this.logger.warn(
-        `Deduplicated ${items.length - deduped.length} duplicate listings by (store_id, product_url_id)`,
+        `Deduplicated ${items.length - deduped.length} duplicate token listings by (store_id, product_url_id)`,
       );
     }
 
-    // Step 1: Upsert card_listings
-    const cardNameIds: (number | null)[] = [];
-    const cardPrintingIds: (number | null)[] = [];
+    // Step 1: Upsert token_listings
+    const tokenNameIds: (number | null)[] = [];
+    const tokenPrintingIds: (number | null)[] = [];
     const storeIds: number[] = [];
     const productUrlIds: number[] = [];
     const rawTitles: string[] = [];
@@ -98,8 +97,8 @@ export class ListingUpsertService implements OnModuleInit {
     const currencies: string[] = [];
 
     for (const item of deduped) {
-      cardNameIds.push(item.listing.cardNameId);
-      cardPrintingIds.push(item.listing.cardPrintingId);
+      tokenNameIds.push(item.listing.tokenNameId);
+      tokenPrintingIds.push(item.listing.tokenPrintingId);
       storeIds.push(item.listing.storeId);
       productUrlIds.push(item.listing.productUrlId);
       rawTitles.push(item.listing.rawTitle);
@@ -107,11 +106,10 @@ export class ListingUpsertService implements OnModuleInit {
       currencies.push(item.listing.currency);
     }
 
-    // Upsert listings and get their IDs back
     const listingRows: Array<{ id: number }> = await this.dataSource.query(
       `
-      INSERT INTO card_listings (
-        card_name_id, card_printing_id, store_id, product_url_id,
+      INSERT INTO token_listings (
+        token_name_id, token_printing_id, store_id, product_url_id,
         raw_title, image_url, currency, price_updated_at
       )
       SELECT
@@ -124,8 +122,8 @@ export class ListingUpsertService implements OnModuleInit {
         unnest($7::varchar[]),
         NOW()
       ON CONFLICT (store_id, product_url_id) DO UPDATE SET
-        card_name_id = EXCLUDED.card_name_id,
-        card_printing_id = EXCLUDED.card_printing_id,
+        token_name_id = EXCLUDED.token_name_id,
+        token_printing_id = EXCLUDED.token_printing_id,
         raw_title = EXCLUDED.raw_title,
         image_url = EXCLUDED.image_url,
         currency = EXCLUDED.currency,
@@ -133,8 +131,8 @@ export class ListingUpsertService implements OnModuleInit {
       RETURNING id
       `,
       [
-        cardNameIds,
-        cardPrintingIds,
+        tokenNameIds,
+        tokenPrintingIds,
         storeIds,
         productUrlIds,
         rawTitles,
@@ -143,7 +141,7 @@ export class ListingUpsertService implements OnModuleInit {
       ],
     );
 
-    // Step 2: Upsert card_variants
+    // Step 2: Upsert token_variants
     const variantListingIds: number[] = [];
     const variantConditionIds: number[] = [];
     const variantFoils: boolean[] = [];
@@ -163,7 +161,6 @@ export class ListingUpsertService implements OnModuleInit {
         const dedupKey = `${conditionId}:${variant.foil}`;
         const existingIdx = seenKeys.get(dedupKey);
         if (existingIdx !== undefined) {
-          // Keep the later variant (overwrite)
           const offset = existingIdx;
           variantPrices[offset] = variant.price;
           variantQuantities[offset] = variant.quantity;
@@ -186,8 +183,8 @@ export class ListingUpsertService implements OnModuleInit {
     if (variantListingIds.length > 0) {
       const variantResult = await this.dataSource.query(
         `
-        INSERT INTO card_variants (
-          card_listing_id, condition_id, foil, price, quantity,
+        INSERT INTO token_variants (
+          token_listing_id, condition_id, foil, price, quantity,
           platform_variant_id, sku, price_updated_at
         )
         SELECT
@@ -199,7 +196,7 @@ export class ListingUpsertService implements OnModuleInit {
           unnest($6::varchar[]),
           unnest($7::varchar[]),
           NOW()
-        ON CONFLICT (card_listing_id, condition_id, foil) DO UPDATE SET
+        ON CONFLICT (token_listing_id, condition_id, foil) DO UPDATE SET
           price = EXCLUDED.price,
           quantity = EXCLUDED.quantity,
           platform_variant_id = EXCLUDED.platform_variant_id,
@@ -220,15 +217,13 @@ export class ListingUpsertService implements OnModuleInit {
     }
 
     this.logger.debug(
-      `Batch upserted ${listingRows.length} listings, ${variantsUpserted} variants`,
+      `Batch upserted ${listingRows.length} token listings, ${variantsUpserted} token variants`,
     );
     return listingRows.length;
   }
 
   /**
-   * Delete variants for a product URL that are no longer in stock.
-   * If inStockVariantIds is empty, deletes ALL variants for listings under the product URL.
-   * Otherwise, deletes variants whose platform_variant_id is NOT in the given set.
+   * Delete token variants for a product URL that are no longer in stock.
    */
   /**
    * Increment extractions_succeeded counter on a discovery run.
@@ -248,19 +243,17 @@ export class ListingUpsertService implements OnModuleInit {
     let result: any;
 
     if (inStockVariantIds.length === 0) {
-      // Delete all variants for listings belonging to this product URL
       result = await this.dataSource.query(
-        `DELETE FROM card_variants WHERE card_listing_id IN (
-          SELECT id FROM card_listings WHERE product_url_id = $1
+        `DELETE FROM token_variants WHERE token_listing_id IN (
+          SELECT id FROM token_listings WHERE product_url_id = $1
         )`,
         [productUrlId],
       );
     } else {
-      // Delete variants whose platform_variant_id is not in the in-stock set
       result = await this.dataSource.query(
-        `DELETE FROM card_variants
-         WHERE card_listing_id IN (
-           SELECT id FROM card_listings WHERE product_url_id = $1
+        `DELETE FROM token_variants
+         WHERE token_listing_id IN (
+           SELECT id FROM token_listings WHERE product_url_id = $1
          )
          AND (platform_variant_id IS NULL OR platform_variant_id NOT IN (${inStockVariantIds.map((_, i) => `$${i + 2}`).join(', ')}))`,
         [productUrlId, ...inStockVariantIds],
@@ -270,7 +263,7 @@ export class ListingUpsertService implements OnModuleInit {
     const deletedCount = result?.[1] ?? 0;
     if (deletedCount > 0) {
       this.logger.debug(
-        `Deleted ${deletedCount} stale variants for product URL ${productUrlId}`,
+        `Deleted ${deletedCount} stale token variants for product URL ${productUrlId}`,
       );
     }
     return deletedCount;
