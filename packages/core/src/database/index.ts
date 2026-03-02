@@ -10,5 +10,15 @@ export { ScryfallSet } from './scryfall-set.entity';
 export { CardPrinting } from './card-printing.entity';
 export { CardListing } from './card.entity';
 export { CardListing as Card } from './card.entity';
-export { CardPriceHistory } from './card-price-history.entity';
+export { CardCondition } from './card-condition.entity';
+export { CardVariant } from './card-variant.entity';
 export { UnmatchedCard } from './unmatched-card.entity';
+export { InvalidProductHandle } from './invalid-product-handle.entity';
+
+export { TokenName } from './token-name.entity';
+export { TokenPrinting } from './token-printing.entity';
+export { TokenListing } from './token-listing.entity';
+export { TokenVariant } from './token-variant.entity';
+
+export { DiscoveryRun } from './discovery-run.entity';
+export type { DiscoveryRunStatus, DiscoveryRunTrigger } from './discovery-run.entity';

@@ -32,16 +32,22 @@ export interface StoreDiscoveryConfig {
 export interface DiscoverStoreJobData {
   storeId: number;
   priority?: number;
+  /** When true, discovery will upsert product URLs but skip enqueueing extraction jobs. */
+  skipExtraction?: boolean;
+  /** ID of the discovery_runs row tracking this run. */
+  discoveryRunId?: number;
 }
 
 /**
  * Job data for extracting product data from a discovered URL
  */
 export interface ExtractProductJobData {
-  productUrlId: string;
+  productUrlId: number;
   storeId: number;
   handle: string;
   priority?: number;
+  /** ID of the discovery_runs row tracking this run. */
+  discoveryRunId?: number;
 }
 
 /**
@@ -59,7 +65,7 @@ export interface DiscoverStoreJobResult {
  * Result from extracting a single product
  */
 export interface ExtractProductJobResult {
-  productUrlId: string;
+  productUrlId: number;
   variantsExtracted: number;
   success: boolean;
   error?: string;

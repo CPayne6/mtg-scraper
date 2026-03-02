@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '../cache/cache.module';
 import { ProxyModule } from '../proxy/proxy.module';
+import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { ShopifyDiscoveryAdapter } from './adapters/shopify/shopify-discovery.adapter';
 import { ShopifyExtractionAdapter } from './adapters/shopify/shopify-extraction.adapter';
 import { F2fCardDetailExtractor } from './adapters/shopify/extractors/f2f-card-detail.extractor';
@@ -14,7 +16,7 @@ import { PlatformAdapterFactory } from './platform-adapter.factory';
 export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
 
 @Module({
-  imports: [ProxyModule],
+  imports: [CacheModule, ProxyModule, RateLimiterModule],
   providers: [
     F2fCardDetailExtractor,
     BinderposCardDetailExtractor,

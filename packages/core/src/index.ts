@@ -10,10 +10,17 @@ export {
   CardPrinting,
   CardListing,
   Card,
-  CardPriceHistory,
+  CardCondition,
+  CardVariant,
   UnmatchedCard,
+  InvalidProductHandle,
+  TokenName,
+  TokenPrinting,
+  TokenListing,
+  TokenVariant,
+  DiscoveryRun,
 } from './database/index';
-export type { ExtractionStatus } from './database/index';
+export type { ExtractionStatus, DiscoveryRunStatus, DiscoveryRunTrigger } from './database/index';
 
 // Queue
 export { QueueModule, QueueService } from './queue/index';
@@ -56,6 +63,10 @@ export type {
   SitemapEntry,
   GetProxyAgentFn,
 } from './platform/index';
+
+// Rate Limiter
+export { RateLimiterModule, RateLimiterService } from './rate-limiter/index';
+export type { RateLimitResult } from './rate-limiter/index';
 
 // Logger
 export type { NestLogLevel } from './logger/index';
