@@ -1,13 +1,14 @@
 import { DataSource } from 'typeorm';
-import { Store, Platform, MtgSinglesCollection } from '@scoutlgs/core';
+import { Store, Platform, MtgSinglesCollection, CardCondition } from '@scoutlgs/core';
 
 const stores: Partial<Store>[] = [
   {
     name: 'face-to-face-games',
     displayName: 'Face to Face Games',
-    baseUrl: 'https://www.facetofacegames.com',
+    baseUrl: 'https://facetofacegames.com',
     scraperType: 'f2f' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 12,
     isActive: true,
   },
   {
@@ -16,14 +17,16 @@ const stores: Partial<Store>[] = [
     baseUrl: 'https://store.401games.ca',
     scraperType: '401' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 25,
     isActive: true,
   },
   {
     name: 'hobbiesville',
     displayName: 'Hobbiesville',
-    baseUrl: 'https://www.hobbiesville.ca',
+    baseUrl: 'https://hobbiesville.com',
     scraperType: 'hobbies' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 15,
     isActive: true,
   },
   {
@@ -32,6 +35,7 @@ const stores: Partial<Store>[] = [
     baseUrl: 'https://houseofcards.ca',
     scraperType: 'binderpos' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 20,
     scraperConfig: {
       searchPath: 'mtg-advanced-search',
       shopifyUrl: 'house-of-cards-mtg.myshopify.com',
@@ -44,6 +48,7 @@ const stores: Partial<Store>[] = [
     baseUrl: 'https://blackknightgames.ca',
     scraperType: 'binderpos' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 20,
     scraperConfig: {
       searchPath: 'magic-the-gathering-search',
       shopifyUrl: 'black-knight-games.myshopify.com',
@@ -56,6 +61,7 @@ const stores: Partial<Store>[] = [
     baseUrl: 'https://exorgames.com',
     scraperType: 'binderpos' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 20,
     scraperConfig: {
       searchPath: 'advanced-search',
       shopifyUrl: 'most-wanted-ca.myshopify.com',
@@ -68,6 +74,7 @@ const stores: Partial<Store>[] = [
     baseUrl: 'https://gameknight.ca',
     scraperType: 'binderpos' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 20,
     scraperConfig: {
       searchPath: 'magic-the-gathering-singles',
       shopifyUrl: 'gameknight-games.myshopify.com',
@@ -80,6 +87,7 @@ const stores: Partial<Store>[] = [
     baseUrl: 'https://www.thecgrealm.com',
     scraperType: 'binderpos' as const,
     platformType: 'shopify',
+    rateLimitPerSecond: 15,
     scraperConfig: {
       searchPath: 'search',
       shopifyUrl: 'the-cg-realm.myshopify.com',
@@ -96,6 +104,16 @@ const mtgSinglesCollections: Partial<MtgSinglesCollection>[] = [
   { slug: 'magic-the-gathering-singles', displayName: 'MTG Singles' },
   { slug: 'mtg-singles-all-products', displayName: 'MTG Singles - All Products' },
   { slug: 'magic-singles', displayName: 'Magic Singles' },
+];
+
+// Card conditions for the card_variants lookup table
+const cardConditions: Partial<CardCondition>[] = [
+  { code: 'nm', displayName: 'Near Mint', sortOrder: 1 },
+  { code: 'lp', displayName: 'Lightly Played', sortOrder: 2 },
+  { code: 'mp', displayName: 'Moderately Played', sortOrder: 3 },
+  { code: 'hp', displayName: 'Heavily Played', sortOrder: 4 },
+  { code: 'dmg', displayName: 'Damaged', sortOrder: 5 },
+  { code: 'unknown', displayName: 'Unknown', sortOrder: 6 },
 ];
 
 // Map store name → collection slug for discovery config
@@ -118,7 +136,7 @@ async function seed() {
     username: process.env.DATABASE_USER || 'postgres',
     password: process.env.DATABASE_PASSWORD || 'postgres',
     database: process.env.DATABASE_NAME || 'scoutlgs',
-    entities: [Store, Platform, MtgSinglesCollection],
+    entities: [Store, Platform, MtgSinglesCollection, CardCondition],
     synchronize: false, // Don't sync - use migrations
   });
 
@@ -128,6 +146,14 @@ async function seed() {
 
     const storeRepository = AppDataSource.getRepository(Store);
     const collectionRepository = AppDataSource.getRepository(MtgSinglesCollection);
+    const conditionRepository = AppDataSource.getRepository(CardCondition);
+
+    // Seed card conditions
+    await conditionRepository.upsert(cardConditions, {
+      conflictPaths: ['code'],
+      skipUpdateIfNoValuesChanged: true,
+    });
+    console.log(`Upserted ${cardConditions.length} card conditions!`);
 
     // Seed MTG singles collections
     await collectionRepository.upsert(mtgSinglesCollections, {

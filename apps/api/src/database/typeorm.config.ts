@@ -8,8 +8,14 @@ import {
   ScryfallSet,
   CardPrinting,
   CardListing,
-  CardPriceHistory,
+  CardCondition,
+  CardVariant,
   UnmatchedCard,
+  TokenName,
+  TokenPrinting,
+  TokenListing,
+  TokenVariant,
+  DiscoveryRun,
 } from '@scoutlgs/core';
 
 // TypeORM CLI configuration for migrations
@@ -33,8 +39,14 @@ export default new DataSource({
     ScryfallSet,
     CardPrinting,
     CardListing,
-    CardPriceHistory,
+    CardCondition,
+    CardVariant,
     UnmatchedCard,
+    TokenName,
+    TokenPrinting,
+    TokenListing,
+    TokenVariant,
+    DiscoveryRun,
   ],
   migrations: isProduction
     ? ['dist/database/migrations/*.js']
