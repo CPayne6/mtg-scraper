@@ -3,21 +3,22 @@ import { Box, Button, Checkbox, Collapse, FormControl, FormControlLabel, FormGro
 import ExpandLess from '@mui/icons-material/ExpandLess'
 import ExpandMore from '@mui/icons-material/ExpandMore'
 
-export interface StoreCountEntry {
-  storeSlug: string;
-  storeName: string;
+export interface ConditionCountEntry {
+  code: string;
+  displayName: string;
   count: number;
+  sortOrder: number;
 }
 
-interface StoreFilterProps {
-  storeCounts: StoreCountEntry[];
-  selectedSlugs: string[];
-  onStoresChange: (slugs: string[]) => void;
+interface ConditionFilterProps {
+  conditionCounts: ConditionCountEntry[];
+  selectedConditions: string[];
+  onConditionsChange: (codes: string[]) => void;
 }
 
-const STORAGE_KEY = 'store-filter-expanded';
+const STORAGE_KEY = 'condition-filter-expanded';
 
-export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: StoreFilterProps) {
+export function ConditionFilter({ conditionCounts, selectedConditions, onConditionsChange }: ConditionFilterProps) {
   const [expanded, setExpanded] = useState(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -33,40 +34,40 @@ export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: Stor
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newExpanded));
   };
 
-  const handleToggleStore = (slug: string) => {
-    if (selectedSlugs.includes(slug)) {
-      onStoresChange(selectedSlugs.filter(s => s !== slug));
+  const handleToggleCondition = (code: string) => {
+    if (selectedConditions.includes(code)) {
+      onConditionsChange(selectedConditions.filter(c => c !== code));
     } else {
-      onStoresChange([...selectedSlugs, slug]);
+      onConditionsChange([...selectedConditions, code]);
     }
   };
 
   const handleClearAll = () => {
-    onStoresChange([]);
+    onConditionsChange([]);
   };
 
   const totalCount = useMemo(
-    () => storeCounts.reduce((sum, s) => sum + s.count, 0),
-    [storeCounts]
+    () => conditionCounts.reduce((sum, c) => sum + c.count, 0),
+    [conditionCounts]
   );
 
   const selectedCount = useMemo(
-    () => selectedSlugs.length === 0
+    () => selectedConditions.length === 0
       ? totalCount
-      : storeCounts
-          .filter(s => selectedSlugs.includes(s.storeSlug))
-          .reduce((sum, s) => sum + s.count, 0),
-    [storeCounts, selectedSlugs, totalCount]
+      : conditionCounts
+          .filter(c => selectedConditions.includes(c.code))
+          .reduce((sum, c) => sum + c.count, 0),
+    [conditionCounts, selectedConditions, totalCount]
   );
 
   const displayText = useMemo(
-    () => selectedSlugs.length === 0
-      ? 'All Stores'
-      : `${selectedSlugs.length} store${selectedSlugs.length !== 1 ? 's' : ''}`,
-    [selectedSlugs.length]
+    () => selectedConditions.length === 0
+      ? 'All Conditions'
+      : `${selectedConditions.length} condition${selectedConditions.length !== 1 ? 's' : ''}`,
+    [selectedConditions.length]
   );
 
-  const hasStores = storeCounts.length > 0;
+  const hasConditions = conditionCounts.length > 0;
 
   return (
     <Box
@@ -82,9 +83,9 @@ export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: Stor
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          cursor: hasStores ? 'pointer' : 'default',
+          cursor: hasConditions ? 'pointer' : 'default',
         }}
-        onClick={hasStores ? handleToggleExpanded : undefined}
+        onClick={hasConditions ? handleToggleExpanded : undefined}
       >
         <Box>
           <FormLabel
@@ -93,46 +94,46 @@ export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: Stor
               fontWeight: 600,
               fontSize: '1rem',
               color: 'text.primary',
-              cursor: hasStores ? 'pointer' : 'default',
+              cursor: hasConditions ? 'pointer' : 'default',
             }}
           >
-            Filter by Store
+            Filter by Condition
           </FormLabel>
           <Typography variant="caption" color="text.secondary">
-            {hasStores ? `${displayText} (${selectedCount} cards)` : 'No stores available'}
+            {hasConditions ? `${displayText} (${selectedCount} cards)` : 'No conditions available'}
           </Typography>
         </Box>
-        {hasStores && (
+        {hasConditions && (
           <IconButton size="small">
             {expanded ? <ExpandLess /> : <ExpandMore />}
           </IconButton>
         )}
       </Box>
 
-      {hasStores && (
+      {hasConditions && (
         <Collapse in={expanded}>
           <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
             <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-              <Button size="small" onClick={handleClearAll} disabled={selectedSlugs.length === 0}>
+              <Button size="small" onClick={handleClearAll} disabled={selectedConditions.length === 0}>
                 Clear
               </Button>
             </Box>
 
             <FormGroup>
-              {storeCounts.map((store) => {
-                const isSelected = selectedSlugs.length > 0 && selectedSlugs.includes(store.storeSlug);
+              {conditionCounts.map((condition) => {
+                const isSelected = selectedConditions.length > 0 && selectedConditions.includes(condition.code);
                 return (
                   <FormControlLabel
-                    key={store.storeSlug}
+                    key={condition.code}
                     control={
                       <Checkbox
                         checked={isSelected}
-                        onChange={() => handleToggleStore(store.storeSlug)}
+                        onChange={() => handleToggleCondition(condition.code)}
                       />
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2">{store.storeName}</Typography>
+                        <Typography variant="body2">{condition.displayName}</Typography>
                         <Typography
                           variant="caption"
                           sx={{
@@ -144,7 +145,7 @@ export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: Stor
                             fontWeight: 600,
                           }}
                         >
-                          {store.count}
+                          {condition.count}
                         </Typography>
                       </Box>
                     }
