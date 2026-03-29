@@ -22,3 +22,6 @@ export { TokenVariant } from './token-variant.entity';
 
 export { DiscoveryRun } from './discovery-run.entity';
 export type { DiscoveryRunStatus, DiscoveryRunTrigger } from './discovery-run.entity';
+
+export { CardList } from './card-list.entity';
+export { CardListEntry } from './card-list-entry.entity';

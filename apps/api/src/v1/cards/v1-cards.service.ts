@@ -10,6 +10,7 @@ import {
   Store,
   StoreService,
 } from '@scoutlgs/core';
+import { CardNameResolverService } from '../shared/card-name-resolver.service';
 
 export interface V1ListingResult {
   id: number;
@@ -92,6 +93,7 @@ export class V1CardsService {
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
     private readonly storeService: StoreService,
+    private readonly cardNameResolver: CardNameResolverService,
   ) {}
 
   async searchCards(
@@ -102,7 +104,7 @@ export class V1CardsService {
     stores?: string[],
     conditions?: string[],
   ): Promise<V1SearchResponse> {
-    const normalizedName = this.normalizeCardName(name);
+    const normalizedName = this.cardNameResolver.normalizeCardName(name);
 
     // Step 1: Find matching CardName (exact, then fuzzy)
     let cardNameRecord = await this.cardNameRepository.findOne({
@@ -110,7 +112,7 @@ export class V1CardsService {
     });
 
     if (!cardNameRecord) {
-      cardNameRecord = await this.findCardNameByFuzzyMatch(name);
+      cardNameRecord = await this.cardNameResolver.findCardNameByFuzzyMatch(name);
     }
 
     if (!cardNameRecord) {
@@ -400,28 +402,6 @@ export class V1CardsService {
       .getRawOne();
 
     return byName?.code;
-  }
-
-  private async findCardNameByFuzzyMatch(
-    name: string,
-  ): Promise<CardName | null> {
-    const results = await this.cardNameRepository
-      .createQueryBuilder('cn')
-      .where(`similarity(cn.name, :name) > 0.3`, { name })
-      .orderBy(`similarity(cn.name, :name)`, 'DESC')
-      .limit(1)
-      .getMany();
-
-    return results[0] ?? null;
-  }
-
-  private normalizeCardName(name: string): string {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/['']/g, "'")
-      .replace(/[""]/g, '"');
   }
 
   private buildEmptyResponse(

@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { Logger, ValidationPipe } from '@nestjs/common';
@@ -11,6 +12,9 @@ async function bootstrap() {
   });
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
+
+  // Cookie parser
+  app.use(cookieParser());
 
   // Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());

@@ -19,6 +19,8 @@ export {
   TokenListing,
   TokenVariant,
   DiscoveryRun,
+  CardList,
+  CardListEntry,
 } from './database/index';
 export type { ExtractionStatus, DiscoveryRunStatus, DiscoveryRunTrigger } from './database/index';
 
