@@ -139,13 +139,32 @@ export class DiscoveryService {
 
     this.logger.log(`Discovering products from ${store.name} sitemap...`);
 
+    // Preload all known handles into memory to avoid per-batch DB queries
+    const [existingRows, invalidRows] = await Promise.all([
+      this.preloadInBatches<{ handle: string }>(
+        'SELECT handle FROM product_urls WHERE store_id = $1 ORDER BY id',
+        [store.id],
+      ),
+      this.preloadInBatches<{ handle: string; lastValidatedAt: Date }>(
+        `SELECT handle, last_validated_at AS "lastValidatedAt" FROM invalid_product_handles WHERE store_id = $1 ORDER BY handle`,
+        [store.id],
+      ),
+    ]);
+
+    const knownHandles = new Set(existingRows.map((r) => r.handle));
+    const knownInvalid = new Map(invalidRows.map((r) => [r.handle, r.lastValidatedAt]));
+
+    this.logger.log(
+      `${store.name}: Preloaded ${knownHandles.size} known handles, ${knownInvalid.size} invalid handles`,
+    );
+
     try {
       for await (const product of adapter.discoverProducts(store, collection)) {
         batch.push(product);
         result.discovered++;
 
         if (batch.length >= batchSize) {
-          await this.processBatch(store, collection, batch, result, options);
+          await this.processBatch(store, collection, batch, result, knownHandles, knownInvalid, options);
           batch = [];
         }
 
@@ -158,7 +177,7 @@ export class DiscoveryService {
 
       // Process remaining batch
       if (batch.length > 0) {
-        await this.processBatch(store, collection, batch, result, options);
+        await this.processBatch(store, collection, batch, result, knownHandles, knownInvalid, options);
       }
     } finally {
       // Clean up any stale waitlist entries for this store (in case of crash/timeout)
@@ -183,25 +202,12 @@ export class DiscoveryService {
     collection: MtgSinglesCollection,
     products: DiscoveredProduct[],
     result: DiscoveryResult,
+    knownHandles: Set<string>,
+    knownInvalid: Map<string, Date>,
     options?: { skipExtraction?: boolean; discoveryRunId?: number },
   ): Promise<void> {
     // Deduplicate by handle (sitemaps can contain duplicates), keeping the last occurrence
     const deduped = [...new Map(products.map((p) => [p.handle, p])).values()];
-
-    // Check which handles already exist in both tables in parallel
-    const handles = deduped.map((p) => p.handle);
-    const [existingUrls, existingInvalid] = await Promise.all([
-      this.productUrlRepository.find({
-        where: { storeId: store.id, handle: In(handles) },
-        select: ['id', 'handle', 'sitemapLastmod', 'lastExtractedAt'],
-      }),
-      this.invalidHandleRepository.find({
-        where: { storeId: store.id, handle: In(handles) },
-      }),
-    ]);
-
-    const existingMap = new Map(existingUrls.map((u) => [u.handle, u]));
-    const invalidMap = new Map(existingInvalid.map((u) => [u.handle, u]));
 
     const newProducts: DiscoveredProduct[] = [];
     const staleProducts: DiscoveredProduct[] = [];
@@ -213,22 +219,19 @@ export class DiscoveryService {
     );
 
     for (const product of deduped) {
-      const invalid = invalidMap.get(product.handle);
-      if (invalid) {
+      const lastValidatedAt = knownInvalid.get(product.handle);
+      if (lastValidatedAt) {
         // Known invalid — check if due for re-validation
-        if (invalid.lastValidatedAt < revalidationThreshold) {
+        if (lastValidatedAt < revalidationThreshold) {
           revalidateProducts.push(product);
         } else {
           result.skippedInvalid++;
         }
+      } else if (knownHandles.has(product.handle)) {
+        // Already discovered — re-extract
+        staleProducts.push(product);
       } else {
-        const existing = existingMap.get(product.handle);
-        if (!existing) {
-          newProducts.push(product);
-        } else {
-          // Always re-extract existing products
-          staleProducts.push(product);
-        }
+        newProducts.push(product);
       }
     }
 
@@ -283,6 +286,9 @@ export class DiscoveryService {
         conflictPaths: ['storeId', 'handle'],
         skipUpdateIfNoValuesChanged: true,
       });
+      for (const p of invalidatedProducts) {
+        knownInvalid.set(p.handle, now);
+      }
     }
 
     // Upsert validated products
@@ -313,6 +319,14 @@ export class DiscoveryService {
           storeId: store.id,
           handle: In(revalidatedHandles),
         });
+        for (const h of revalidatedHandles) {
+          knownInvalid.delete(h);
+        }
+      }
+
+      // Update preloaded handles for subsequent batches
+      for (const p of validatedProducts) {
+        knownHandles.add(p.handle);
       }
 
       // Get IDs for newly inserted
@@ -405,5 +419,29 @@ export class DiscoveryService {
         result.extractionJobsQueued += extractionJobs.length;
       }
     }
+  }
+
+  /**
+   * Load rows from a table in batches to avoid large single queries.
+   */
+  private async preloadInBatches<T>(
+    query: string,
+    params: unknown[],
+    batchSize = 50_000,
+  ): Promise<T[]> {
+    const results: T[] = [];
+    let offset = 0;
+
+    while (true) {
+      const rows: T[] = await this.productUrlRepository.query(
+        `${query} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, batchSize, offset],
+      );
+      results.push(...rows);
+      if (rows.length < batchSize) break;
+      offset += batchSize;
+    }
+
+    return results;
   }
 }
