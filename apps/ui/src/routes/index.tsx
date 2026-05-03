@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Box, Button, FormControl, FormHelperText, FormLabel, Stack, TextField, Typography, useTheme } from '@mui/material'
+import Storefront from '@mui/icons-material/Storefront'
 import { UploadLibrary } from '../components'
 import { SavedDecklistsMenu } from '../components/SavedDecklistsMenu'
 import SkryfallAutocomplete from '../components/SkryfallAutocomplete/SkryfallAutocomplete'
@@ -115,7 +116,18 @@ function Home() {
           >
             Scout your local game stores - Search across Hobbiesville, 401 Games and FacetoFace Games and more!
           </Typography>
-          <SavedDecklistsMenu />
+          <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="center" sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+            <Link to="/stores" style={{ textDecoration: 'none' }}>
+              <Button
+                variant="outlined"
+                startIcon={<Storefront fontSize="small" />}
+                sx={{ textTransform: 'none' }}
+              >
+                Stores
+              </Button>
+            </Link>
+            <SavedDecklistsMenu />
+          </Stack>
         </Stack>
 
         {/* Two Column Layout for Desktop */}

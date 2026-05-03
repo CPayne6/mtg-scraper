@@ -228,8 +228,12 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
             <StoreFilterSkeleton />
           ) : (
             <StoreFilter
-              stores={currentCardData.data.stores}
-              selectedStores={currentCardData.selectedStores || []}
+              storeCounts={currentCardData.data.stores.map((store) => ({
+                storeSlug: store.displayName,
+                storeName: store.displayName,
+                count: store.cardCount,
+              }))}
+              selectedSlugs={currentCardData.selectedStores || []}
               onStoresChange={handleStoreFilterChange}
             />
           )}

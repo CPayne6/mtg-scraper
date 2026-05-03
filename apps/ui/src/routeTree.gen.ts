@@ -10,12 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StoresRouteImport } from './routes/stores'
+import { Route as StoresSlugRouteImport } from './routes/stores.$slug'
 import { Route as ListListNameRouteImport } from './routes/list.$listName'
 import { Route as CardNameRouteImport } from './routes/card.$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoresRoute = StoresRouteImport.update({
+  id: '/stores',
+  path: '/stores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoresSlugRoute = StoresSlugRouteImport.update({
+  id: '/stores/$slug',
+  path: '/stores/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ListListNameRoute = ListListNameRouteImport.update({
@@ -31,30 +43,38 @@ const CardNameRoute = CardNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/stores': typeof StoresRoute
+  '/stores/$slug': typeof StoresSlugRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/stores': typeof StoresRoute
+  '/stores/$slug': typeof StoresSlugRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/stores': typeof StoresRoute
+  '/stores/$slug': typeof StoresSlugRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/card/$name' | '/list/$listName'
+  fullPaths: '/' | '/stores' | '/stores/$slug' | '/card/$name' | '/list/$listName'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/card/$name' | '/list/$listName'
-  id: '__root__' | '/' | '/card/$name' | '/list/$listName'
+  to: '/' | '/stores' | '/stores/$slug' | '/card/$name' | '/list/$listName'
+  id: '__root__' | '/' | '/stores' | '/stores/$slug' | '/card/$name' | '/list/$listName'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  StoresRoute: typeof StoresRoute
+  StoresSlugRoute: typeof StoresSlugRoute
   CardNameRoute: typeof CardNameRoute
   ListListNameRoute: typeof ListListNameRoute
 }
@@ -66,6 +86,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stores': {
+      id: '/stores'
+      path: '/stores'
+      fullPath: '/stores'
+      preLoaderRoute: typeof StoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stores/$slug': {
+      id: '/stores/$slug'
+      path: '/stores/$slug'
+      fullPath: '/stores/$slug'
+      preLoaderRoute: typeof StoresSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/list/$listName': {
@@ -87,6 +121,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  StoresRoute: StoresRoute,
+  StoresSlugRoute: StoresSlugRoute,
   CardNameRoute: CardNameRoute,
   ListListNameRoute: ListListNameRoute,
 }
