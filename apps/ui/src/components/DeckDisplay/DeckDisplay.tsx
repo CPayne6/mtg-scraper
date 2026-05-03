@@ -1,126 +1,137 @@
-import { CardSearchResponse } from "@scoutlgs/shared"
-import { SetStateAction, useEffect, useMemo, useRef, useState } from "react"
+import { CardWithStore, Condition } from "@scoutlgs/shared"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { Box, Button, FormControl, MenuItem, Select, Stack, TextField, Typography } from "@mui/material"
 import { CardList } from "../CardsList"
 import { StoreFilter, StoreFilterSkeleton } from "../StoreFilter"
+import type { StoreCountEntry } from "../StoreFilter"
 import { PreviewLibrary } from "../Library"
-import { useLocalStorage } from "@/hooks"
+import { getList, updateListFilters, type CheapestVariant, type ListWithPricesResponse } from "@/api/lists"
 import { toaster } from "../ui/toaster"
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
-interface DataState {
-  cardName: string;
-  data: null | CardSearchResponse;
-  loading: boolean;
-  selectedStores: string[];
-  error?: string;
-}
-
-const fetchCardData = async (name: string): Promise<CardSearchResponse> => {
-  const response = await fetch(`${API_URL}/card/${encodeURIComponent(name)}`)
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(`Card "${name}" not found`)
-    }
-    throw new Error(`Failed to fetch card: ${response.status}`)
-  }
-  return await response.json() as CardSearchResponse
-}
-
 interface DeckListProps {
-  listName: string;
-  pagination?: boolean;
+  listName: string
+  pagination?: boolean
+}
+
+function pageToIndex(page: number, cardCount: number): number {
+  if (!Number.isFinite(page) || page <= 1 || cardCount <= 0) return 0
+  return Math.min(page - 1, cardCount - 1)
+}
+
+function parseStoreFilter(filterStores: string | null | undefined): string[] {
+  return filterStores
+    ? filterStores.split(',').map((store) => store.trim()).filter(Boolean)
+    : []
+}
+
+function buildStoreCounts(cards: CheapestVariant[]): StoreCountEntry[] {
+  const counts = new Map<string, StoreCountEntry>()
+
+  for (const card of cards) {
+    if (!card.storeSlug || !card.store) continue
+
+    const current = counts.get(card.storeSlug)
+    if (current) {
+      current.count += 1
+    } else {
+      counts.set(card.storeSlug, {
+        storeSlug: card.storeSlug,
+        storeName: card.store,
+        count: 1,
+      })
+    }
+  }
+
+  return Array.from(counts.values()).sort((a, b) => a.storeName.localeCompare(b.storeName))
+}
+
+function buildProductLink(card: CheapestVariant): string {
+  if (!card.storeBaseUrl) return ''
+  const baseUrl = card.storeBaseUrl.replace(/\/$/, '')
+  return card.productHandle ? `${baseUrl}/products/${card.productHandle}` : baseUrl
+}
+
+function mapCheapestVariant(card: CheapestVariant | undefined): CardWithStore | null {
+  if (!card || card.price == null || !card.store) return null
+
+  return {
+    title: card.cardName,
+    store: card.store,
+    image: card.imageUri ?? card.imageUrl ?? '',
+    price: card.price,
+    condition: (card.condition?.toLowerCase() as Condition) || Condition.UNKNOWN,
+    foil: card.foil ?? false,
+    currency: card.currency ?? 'CAD',
+    link: buildProductLink(card),
+    set: card.setCode ?? '',
+    card_number: card.collectorNumber ?? '',
+    scryfall_id: card.scryfallId ?? undefined,
+  }
+}
+
+function formatListings(count: number): string {
+  return `${count} listing${count === 1 ? '' : 's'}`
 }
 
 export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
+  const listId = listName
   const navigate = useNavigate({ from: '/list/$listName' })
   const searchParams = useSearch({ from: '/list/$listName' })
   const page = Number(searchParams.page || 0)
-  const [listStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
-  const cardNames = listStorage[listName] ?? []
-  const [cardIndex, setCardIndex] = useState((isNaN(page) || page > cardNames.length || page <= 1) ? 0 : page - 1)
 
-  const [data, setDataState] = useState<DataState[]>(cardNames.map(name => ({
-    cardName: name,
-    loading: true,
-    data: null,
-    selectedStores: []
-  })))
+  const [list, setList] = useState<ListWithPricesResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [updatingFilters, setUpdatingFilters] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedStores, setSelectedStores] = useState<string[]>([])
+  const [cardIndex, setCardIndex] = useState(0)
 
-  // Track which cards are currently being fetched to prevent duplicate requests
-  const fetchingRef = useRef<Set<number>>(new Set())
-
-  const setDataStateByIndex = (index: number, data: SetStateAction<DataState>) => {
-    setDataState((prev) =>
-      prev.map(
-        (prevData, idx) => idx !== index
-          ? prevData
-          : typeof data === 'function'
-            ? data(prevData)
-            : data
-      )
-    )
-  }
-
-  const fetchCardFromIndex = async (index: number) => {
-    // Check if already fetching
-    if (fetchingRef.current.has(index)) {
-      return
-    }
-
-    // Check current state from data
-    const cardState = data[index]
-    if (!cardState || cardState.data !== null) {
-      return
-    }
-
-    // Mark as fetching
-    fetchingRef.current.add(index)
-
-    // Mark as loading in state and clear old data
-    setDataStateByIndex(index, (prev) => ({
-      ...prev,
-      loading: true,
-      data: null
-    }))
-
+  const loadList = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
+    setError(null)
     try {
-      // Fetch the card data
-      const response = await fetchCardData(cardState.cardName)
-      setDataStateByIndex(index, (prev) => ({
-        ...prev,
-        loading: false,
-        data: response,
-        selectedStores: []
-      }))
+      const response = await getList(listId, signal)
+      if (signal?.aborted) return
+      setList(response)
+      setSelectedStores(parseStoreFilter(response.filterStores))
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch card data'
-      console.error(err)
-      toaster.error({ title: errorMessage })
-      setDataStateByIndex(index, (prev) => ({
-        ...prev,
-        loading: false,
-        error: errorMessage
-      }))
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      const message = err instanceof Error ? err.message : 'Unable to load list'
+      setError(message)
+      toaster.error({ title: message })
     } finally {
-      fetchingRef.current.delete(index)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
-  }
+  }, [listId])
 
-  const preloadPage = (index: number) => {
-    // Check if already fetching
-    if (fetchingRef.current.has(index)) {
-      return
-    }
+  useEffect(() => {
+    setList(null)
+    setCardIndex(0)
+    const controller = new AbortController()
+    void loadList(controller.signal)
+    return () => controller.abort()
+  }, [loadList])
 
-    // Bounds check will happen in fetchCardFromIndex
-    fetchCardFromIndex(index)
-  }
+  useEffect(() => {
+    if (!list) return
+    setCardIndex(pageToIndex(page, list.cards.length))
+  }, [page, list])
+
+  const cards = list?.cards ?? []
+  const currentCard = cards[cardIndex]
+  const currentCardResult = useMemo(() => mapCheapestVariant(currentCard), [currentCard])
+  const storeCounts = useMemo(() => buildStoreCounts(cards), [cards])
+
+  const sortedCardNames = useMemo(() =>
+    cards.map((card, index) => ({ label: card.cardName, value: (index + 1).toString() }))
+      .sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
+    , [cards])
 
   const updatePage = (index: number) => {
-    const cardName = cardNames[index] ?? 'Unknown'
+    const cardName = cards[index]?.cardName ?? 'Unknown'
     setCardIndex(index)
     navigate({
       search: (prev) => ({
@@ -129,63 +140,79 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
         name: cardName
       })
     })
-    fetchCardFromIndex(index)
   }
 
   const onPageChange = (pageStr: string) => {
-    const page = Math.max(Math.min(Number(pageStr), cardNames.length), 1)
-    preloadPage(page - 2)
-    preloadPage(page)
-    updatePage(page - 1)
+    if (cards.length === 0) return
+    const nextPage = Math.max(Math.min(Number(pageStr), cards.length), 1)
+    updatePage(nextPage - 1)
   }
 
   const onNextPage = () => {
-    preloadPage(cardIndex + 2)
     updatePage(cardIndex + 1)
   }
 
   const onPreviousPage = () => {
-    preloadPage(cardIndex - 2)
     updatePage(cardIndex - 1)
   }
 
-  useEffect(() => {
-    // Initialize the data before and after the page number
-    fetchCardFromIndex(cardIndex)
-    preloadPage(cardIndex + 1)
-    preloadPage(cardIndex - 1)
-  }, [])
-
-  const currentCardData: DataState | undefined = data[cardIndex]
-  const sortedCardNames = useMemo(() =>
-    cardNames.map((name, index) => ({ label: name, value: (index + 1).toString() }))
-      .sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
-    , [cardNames])
-
-  // Filter cards by selected stores
-  const filteredCards = useMemo(() => {
-    if (!currentCardData?.data) return undefined
-
-    const { selectedStores, data: cardData } = currentCardData
-
-    // If no stores selected or all stores selected, return all cards
-    if (selectedStores.length === 0 || selectedStores.length === (cardData.stores?.length ?? 0)) {
-      return cardData.results
+  const handleStoreFilterChange = async (storeSlugs: string[]) => {
+    setSelectedStores(storeSlugs)
+    setUpdatingFilters(true)
+    setError(null)
+    try {
+      await updateListFilters(listId, {
+        filterStores: storeSlugs.join(','),
+        filterConditions: list?.filterConditions ?? undefined,
+        filterSetCode: list?.filterSetCode ?? undefined,
+      })
+      const refreshed = await getList(listId)
+      setList(refreshed)
+      setSelectedStores(parseStoreFilter(refreshed.filterStores))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to update store filter'
+      setError(message)
+      toaster.error({ title: message })
+    } finally {
+      setUpdatingFilters(false)
     }
-
-    // Filter cards by selected stores
-    return cardData.results.filter(card => selectedStores.includes(card.store))
-  }, [currentCardData])
-
-  // Handler for store filter changes
-  const handleStoreFilterChange = (storeNames: string[]) => {
-    setDataStateByIndex(cardIndex, (prev) => ({
-      ...prev,
-      selectedStores: storeNames
-    }))
   }
 
-  if (cardNames.length === 0) {
+  if (loading) {
+    return (
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        py: 8
+      }}>
+        <Typography variant="h6" color="text.secondary">
+          Loading card list...
+        </Typography>
+      </Box>
+    )
+  }
+
+  if (error && !list) {
+    return (
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 8,
+        gap: 2
+      }}>
+        <Typography variant="h6" color="error">
+          Unable to load this list
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {error}
+        </Typography>
+      </Box>
+    )
+  }
+
+  if (cards.length === 0) {
     return (
       <Box sx={{
         display: 'flex',
@@ -205,7 +232,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
     )
   }
 
-  if (!currentCardData) {
+  if (!currentCard) {
     return (
       <Box sx={{
         display: 'flex',
@@ -219,18 +246,22 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
     )
   }
 
+  const showCards = currentCardResult ? [currentCardResult] : []
+  const totalListings = currentCard.totalListings ?? 0
+  const hasPrice = currentCard.price != null
+
   return (
     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, width: '100%' }}>
       {/* Left Sidebar - Filters */}
       <Box sx={{ width: { xs: '100%', md: '200px' }, flexShrink: 0, position: { md: 'sticky' }, top: { md: 120 }, alignSelf: 'flex-start' }}>
         <Stack spacing={2}>
-          {currentCardData.loading || !currentCardData.data ? (
+          {updatingFilters ? (
             <StoreFilterSkeleton />
           ) : (
             <StoreFilter
-              stores={currentCardData.data.stores}
-              selectedStores={currentCardData.selectedStores || []}
-              onStoresChange={handleStoreFilterChange}
+              storeCounts={storeCounts}
+              selectedSlugs={selectedStores}
+              onStoresChange={(slugs) => void handleStoreFilterChange(slugs)}
             />
           )}
         </Stack>
@@ -257,9 +288,9 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
               <Typography
                 variant="h4"
                 sx={{
-                  fontSize: currentCardData.cardName.length > 40
+                  fontSize: currentCard.cardName.length > 40
                     ? { xs: '1.1rem', md: '1.4rem' }
-                    : currentCardData.cardName.length > 25
+                    : currentCard.cardName.length > 25
                       ? { xs: '1.3rem', md: '1.7rem' }
                       : { xs: '1.5rem', md: '2rem' },
                   fontWeight: 600,
@@ -272,19 +303,23 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                   lineHeight: 1.2,
                   minHeight: { xs: '1.8rem', md: '2.4rem' }
                 }}
-                title={currentCardData.cardName}
+                title={currentCard.cardName}
               >
-                {currentCardData.cardName}
+                {currentCard.cardName}
               </Typography>
-              {currentCardData.loading ? (
+              {updatingFilters ? (
                 <Typography variant="body2" color="text.secondary">
-                  Loading price data...
+                  Updating store filter...
                 </Typography>
-              ) : currentCardData.data?.priceStats ? (
+              ) : hasPrice ? (
                 <Typography variant="body2" color="text.secondary">
-                  {filteredCards?.length || 0} / {currentCardData.data.priceStats.count} results • ${currentCardData.data.priceStats.min.toFixed(2)} - ${currentCardData.data.priceStats.max.toFixed(2)}
+                  Best price ${currentCard.price?.toFixed(2)} at {currentCard.store} - {formatListings(totalListings)}
                 </Typography>
-              ) : null}
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No current listings found
+                </Typography>
+              )}
             </Box>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -293,7 +328,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
               justifyContent="flex-end"
               sx={{ flexWrap: 'wrap' }}
             >
-              {currentCardData.cardName && (
+              {currentCard.cardName && (
                 <FormControl sx={{ minWidth: { xs: '100%', sm: 200 }, maxWidth: 300 }}>
                   <Select
                     value={(cardIndex + 1).toString()}
@@ -326,10 +361,10 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                     size="small"
                     value={cardIndex + 1}
                     onChange={(e) => onPageChange(e.target.value)}
-                    inputProps={{ min: 1, max: cardNames.length }}
+                    inputProps={{ min: 1, max: cards.length }}
                     sx={{ width: '70px' }}
                   />
-                  <Typography variant="body2">of {cardNames.length}</Typography>
+                  <Typography variant="body2">of {cards.length}</Typography>
                 </Stack>
               )}
               <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
@@ -352,7 +387,7 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                   onClick={onNextPage}
                   variant="outlined"
                   size="small"
-                  disabled={cardIndex >= cardNames.length - 1}
+                  disabled={cardIndex >= cards.length - 1}
                   sx={{
                     flex: { xs: 1, sm: 0 },
                     '&:hover': {
@@ -363,10 +398,10 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
                   Next
                 </Button>
               </Stack>
-              <PreviewLibrary name={currentCardData.cardName} />
+              <PreviewLibrary name={currentCard.cardName} />
             </Stack>
           </Stack>
-        <CardList cards={filteredCards} loading={currentCardData.loading} />
+        <CardList cards={showCards} loading={updatingFilters} />
       </Box>
     </Box>
   )

@@ -1,84 +1,89 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Box,
   Button,
+  CircularProgress,
   Menu,
   MenuItem,
   ListItemText,
   IconButton,
   Divider,
   Typography,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
 } from '@mui/material'
 import Delete from '@mui/icons-material/Delete'
 import ExpandMore from '@mui/icons-material/ExpandMore'
-import Edit from '@mui/icons-material/Edit'
-import { useLocalStorage } from '@/hooks'
+import { deleteList, getLists, type ListSummary } from '@/api/lists'
 
 export function SavedDecklistsMenu() {
   const navigate = useNavigate()
-  const [listStorage, setListStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
+  const [lists, setLists] = useState<ListSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [deletingListId, setDeletingListId] = useState<string | null>(null)
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [editingList, setEditingList] = useState<string>('')
-  const [newName, setNewName] = useState<string>('')
   const open = Boolean(anchorEl)
 
-  const savedLists = Object.keys(listStorage)
+  const loadLists = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await getLists(signal)
+      if (!signal?.aborted) {
+        setLists(response.lists)
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      const message = err instanceof Error ? err.message : 'Unable to load saved lists'
+      setError(message)
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
+    }
+  }, [])
 
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadLists(controller.signal)
+    return () => controller.abort()
+  }, [loadLists])
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget)
+    void loadLists()
   }
 
   const handleClose = () => {
     setAnchorEl(null)
   }
 
-  const handleSelectList = (listName: string) => {
-    navigate({ to: `/list/${listName}` })
+  const handleSelectList = (listId: string) => {
+    navigate({
+      to: '/list/$listName',
+      params: { listName: listId },
+      search: { page: undefined, name: undefined },
+    })
     handleClose()
   }
 
-  const handleDeleteList = (event: React.MouseEvent, listName: string) => {
+  const handleDeleteList = async (event: MouseEvent, listId: string) => {
     event.stopPropagation()
-    const { [listName]: _, ...rest } = listStorage
-    setListStorage(rest)
-  }
-
-  const handleEditClick = (event: React.MouseEvent, listName: string) => {
-    event.stopPropagation()
-    setEditingList(listName)
-    setNewName(listName)
-    setEditDialogOpen(true)
-    handleClose()
-  }
-
-  const handleSaveEdit = () => {
-    if (newName && newName !== editingList && newName.trim().length > 0) {
-      const cleanedNewName = newName.replaceAll(/\W/g, '')
-      if (cleanedNewName && !listStorage[cleanedNewName]) {
-        const cards = listStorage[editingList]
-        const { [editingList]: _, ...rest } = listStorage
-        setListStorage({ ...rest, [cleanedNewName]: cards })
-      }
+    setDeletingListId(listId)
+    setError(null)
+    try {
+      await deleteList(listId)
+      setLists((prev) => prev.filter((list) => list.id !== listId))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to delete list'
+      setError(message)
+    } finally {
+      setDeletingListId(null)
     }
-    setEditDialogOpen(false)
-    setEditingList('')
-    setNewName('')
   }
 
-  const handleCancelEdit = () => {
-    setEditDialogOpen(false)
-    setEditingList('')
-    setNewName('')
-  }
-
-  if (savedLists.length === 0) {
+  if (!loading && lists.length === 0 && !error) {
     return null
   }
 
@@ -87,7 +92,8 @@ export function SavedDecklistsMenu() {
       <Button
         variant="outlined"
         onClick={handleClick}
-        endIcon={<ExpandMore />}
+        disabled={loading && lists.length === 0}
+        endIcon={loading && lists.length === 0 ? <CircularProgress size={16} /> : <ExpandMore />}
         sx={{
           textTransform: 'none',
           '&:hover': {
@@ -96,7 +102,7 @@ export function SavedDecklistsMenu() {
           }
         }}
       >
-        Saved Lists ({savedLists.length})
+        Saved Lists{lists.length > 0 ? ` (${lists.length})` : ''}
       </Button>
       <Menu
         anchorEl={anchorEl}
@@ -116,60 +122,67 @@ export function SavedDecklistsMenu() {
           </Typography>
         </Box>
         <Divider />
-        {savedLists.map((listName) => (
-          <MenuItem
-            key={listName}
-            onClick={() => handleSelectList(listName)}
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 1,
-              py: 1.5,
-              '&:hover .action-button': {
-                opacity: 1
-              }
-            }}
-          >
+        {error ? (
+          <MenuItem disabled>
             <ListItemText
-              primary={listName}
-              secondary={`${listStorage[listName].length} cards`}
+              primary="Unable to load lists"
+              secondary={error}
               slotProps={{
-                primary: {
-                  sx: {
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    fontWeight: 500
-                  },
-
-                },
                 secondary: {
-                  sx: { fontSize: '0.75rem' }
+                  sx: { whiteSpace: 'normal' }
                 }
               }}
             />
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <IconButton
-                className="action-button"
-                size="small"
-                onClick={(e) => handleEditClick(e, listName)}
-                sx={{
-                  opacity: 0,
-                  transition: 'opacity 0.2s',
-                  color: 'text.secondary',
-                  '&:hover': {
-                    color: 'primary.main',
-                    bgcolor: 'action.hover'
+          </MenuItem>
+        ) : loading && lists.length === 0 ? (
+          <MenuItem disabled>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2">Loading lists...</Typography>
+            </Box>
+          </MenuItem>
+        ) : lists.length === 0 ? (
+          <MenuItem disabled>
+            <ListItemText primary="No saved lists" />
+          </MenuItem>
+        ) : (
+          lists.map((list) => (
+            <MenuItem
+              key={list.id}
+              onClick={() => handleSelectList(list.id)}
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 1,
+                py: 1.5,
+                '&:hover .action-button': {
+                  opacity: 1
+                }
+              }}
+            >
+              <ListItemText
+                primary={list.name}
+                secondary={`${list.cardCount} cards`}
+                slotProps={{
+                  primary: {
+                    sx: {
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontWeight: 500
+                    },
+                  },
+                  secondary: {
+                    sx: { fontSize: '0.75rem' }
                   }
                 }}
-              >
-                <Edit fontSize="small" />
-              </IconButton>
+              />
               <IconButton
                 className="action-button"
                 size="small"
-                onClick={(e) => handleDeleteList(e, listName)}
+                disabled={deletingListId === list.id}
+                onClick={(e) => void handleDeleteList(e, list.id)}
                 sx={{
                   opacity: 0,
                   transition: 'opacity 0.2s',
@@ -180,53 +193,12 @@ export function SavedDecklistsMenu() {
                   }
                 }}
               >
-                <Delete fontSize="small" />
+                {deletingListId === list.id ? <CircularProgress size={16} /> : <Delete fontSize="small" />}
               </IconButton>
-            </Box>
-          </MenuItem>
-        ))}
+            </MenuItem>
+          ))
+        )}
       </Menu>
-
-      {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onClose={handleCancelEdit} maxWidth="sm" fullWidth>
-        <DialogTitle>Rename Decklist</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Decklist Name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSaveEdit()
-              }
-            }}
-            sx={{ mt: 2 }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 1 }}>
-          <Button
-            onClick={handleCancelEdit}
-            variant="outlined"
-            sx={{
-              '&:hover': {
-                bgcolor: 'action.hover',
-                borderColor: 'currentColor'
-              }
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveEdit}
-            variant="contained"
-            disabled={!newName.trim() || newName === editingList}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
     </>
   )
 }

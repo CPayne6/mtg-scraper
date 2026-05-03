@@ -4,7 +4,7 @@ import { Box, Button, FormControl, FormHelperText, FormLabel, Stack, TextField, 
 import { UploadLibrary } from '../components'
 import { SavedDecklistsMenu } from '../components/SavedDecklistsMenu'
 import SkryfallAutocomplete from '../components/SkryfallAutocomplete/SkryfallAutocomplete'
-import { useLocalStorage } from '../hooks'
+import { createList } from '../api/lists'
 import { generateRandomName } from '../utils/randomNameGenerator'
 
 export const cardNameRegex = /^\d*\s*([\w ,'-]+)(?: \()*.*$/i
@@ -18,14 +18,14 @@ function Home() {
   const [listName, setListName] = useState<string>('')
   const [cardsList, setCardsList] = useState<string>('')
   const [cardName, setCardName] = useState<string>('')
+  const [submittingList, setSubmittingList] = useState(false)
 
   const [deckListHelperText, setMoxHelperText] = useState<string>()
   const [nameHelperText, setNameHelperText] = useState<string>()
-  const [listStorage, setListStorage] = useLocalStorage<Record<string, string[]>>('deck-lists', {})
 
   const navigate = useNavigate()
 
-  const onSubmitCardList = () => {
+  const onSubmitCardList = async () => {
     if (!cardsList || cardsList.length === 0) {
       setMoxHelperText("Enter a deck list to get started")
       return
@@ -47,10 +47,23 @@ function Home() {
       return
     }
 
-    const cleanedListName = listName.replaceAll(/\W/g, '')
-    const storageName = cleanedListName.length > 0 ? cleanedListName : generateRandomName()
-    setListStorage({ ...listStorage, [storageName]: cardsListArr })
-    navigate({ to: `/list/${storageName}` })
+    const name = listName.trim().length > 0 ? listName.trim() : generateRandomName()
+
+    setSubmittingList(true)
+    setMoxHelperText(undefined)
+    try {
+      const created = await createList({ name, cards: cardsListArr })
+      navigate({
+        to: '/list/$listName',
+        params: { listName: created.id },
+        search: { page: undefined, name: undefined },
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to save list'
+      setMoxHelperText(message)
+    } finally {
+      setSubmittingList(false)
+    }
   }
 
   const onSubmitCardName = (name: string) => {
@@ -192,6 +205,7 @@ function Home() {
             <Button
               variant="contained"
               onClick={onSubmitCardList}
+              disabled={submittingList}
               size="large"
               fullWidth
               sx={{
@@ -202,7 +216,7 @@ function Home() {
                 mt: 1
               }}
             >
-              Search Deck List
+              {submittingList ? 'Saving List...' : 'Search Deck List'}
             </Button>
           </Stack>
 
