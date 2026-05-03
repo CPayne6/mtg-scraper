@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TokensRouteImport } from './routes/tokens'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ListListNameRouteImport } from './routes/list.$listName'
 import { Route as CardNameRouteImport } from './routes/card.$name'
 
+const TokensRoute = TokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,36 +37,47 @@ const CardNameRoute = CardNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/tokens': typeof TokensRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/tokens': typeof TokensRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/tokens': typeof TokensRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/card/$name' | '/list/$listName'
+  fullPaths: '/' | '/tokens' | '/card/$name' | '/list/$listName'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/card/$name' | '/list/$listName'
-  id: '__root__' | '/' | '/card/$name' | '/list/$listName'
+  to: '/' | '/tokens' | '/card/$name' | '/list/$listName'
+  id: '__root__' | '/' | '/tokens' | '/card/$name' | '/list/$listName'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  TokensRoute: typeof TokensRoute
   CardNameRoute: typeof CardNameRoute
   ListListNameRoute: typeof ListListNameRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tokens': {
+      id: '/tokens'
+      path: '/tokens'
+      fullPath: '/tokens'
+      preLoaderRoute: typeof TokensRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  TokensRoute: TokensRoute,
   CardNameRoute: CardNameRoute,
   ListListNameRoute: ListListNameRoute,
 }

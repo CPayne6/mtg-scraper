@@ -14,11 +14,12 @@ interface ConditionFilterProps {
   conditionCounts: ConditionCountEntry[];
   selectedConditions: string[];
   onConditionsChange: (codes: string[]) => void;
+  itemLabel?: string;
 }
 
 const STORAGE_KEY = 'condition-filter-expanded';
 
-export function ConditionFilter({ conditionCounts, selectedConditions, onConditionsChange }: ConditionFilterProps) {
+export function ConditionFilter({ conditionCounts, selectedConditions, onConditionsChange, itemLabel = 'cards' }: ConditionFilterProps) {
   const [expanded, setExpanded] = useState(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -100,7 +101,7 @@ export function ConditionFilter({ conditionCounts, selectedConditions, onConditi
             Filter by Condition
           </FormLabel>
           <Typography variant="caption" color="text.secondary">
-            {hasConditions ? `${displayText} (${selectedCount} cards)` : 'No conditions available'}
+            {hasConditions ? `${displayText} (${selectedCount} ${itemLabel})` : 'No conditions available'}
           </Typography>
         </Box>
         {hasConditions && (

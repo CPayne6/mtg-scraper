@@ -13,11 +13,12 @@ interface StoreFilterProps {
   storeCounts: StoreCountEntry[];
   selectedSlugs: string[];
   onStoresChange: (slugs: string[]) => void;
+  itemLabel?: string;
 }
 
 const STORAGE_KEY = 'store-filter-expanded';
 
-export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: StoreFilterProps) {
+export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange, itemLabel = 'cards' }: StoreFilterProps) {
   const [expanded, setExpanded] = useState(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -99,7 +100,7 @@ export function StoreFilter({ storeCounts, selectedSlugs, onStoresChange }: Stor
             Filter by Store
           </FormLabel>
           <Typography variant="caption" color="text.secondary">
-            {hasStores ? `${displayText} (${selectedCount} cards)` : 'No stores available'}
+            {hasStores ? `${displayText} (${selectedCount} ${itemLabel})` : 'No stores available'}
           </Typography>
         </Box>
         {hasStores && (
