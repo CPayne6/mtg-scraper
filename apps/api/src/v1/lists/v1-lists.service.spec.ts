@@ -14,6 +14,12 @@ const makeList = (overrides: Partial<CardList> = {}): CardList => ({
   id: 1,
   uuid: LIST_UUID,
   ownerCookie: OWNER_COOKIE,
+  ownerUserUuid: null,
+  visibility: 'private',
+  publicShareEnabled: false,
+  publicShareTokenHash: null,
+  publicShareExpiresAt: null,
+  claimedAt: null,
   name: 'My Deck',
   filterStores: undefined,
   filterConditions: undefined,
@@ -151,6 +157,20 @@ describe('V1ListsService', () => {
         service.createList({ name: 'Deck', cards: ['Sol Ring'] }, OWNER_COOKIE),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('should only count unclaimed owner-cookie lists against anonymous quota', async () => {
+      await service.createList(
+        { name: 'Deck', cards: ['Sol Ring'] },
+        OWNER_COOKIE,
+      );
+
+      const qb = cardListRepo.createQueryBuilder();
+      expect(qb.where).toHaveBeenCalledWith('cl.owner_cookie = :ownerCookie', {
+        ownerCookie: OWNER_COOKIE,
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('cl.owner_user_uuid IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('cl.expires_at > NOW()');
+    });
   });
 
   describe('getListsForOwner', () => {
@@ -175,6 +195,18 @@ describe('V1ListsService', () => {
       const result = await service.getListsForOwner(OWNER_COOKIE);
 
       expect(result).toHaveLength(0);
+    });
+
+    it('should only return unclaimed owner-cookie lists', async () => {
+      const qb = cardListRepo.createQueryBuilder();
+
+      await service.getListsForOwner(OWNER_COOKIE);
+
+      expect(qb.where).toHaveBeenCalledWith('cl.owner_cookie = :ownerCookie', {
+        ownerCookie: OWNER_COOKIE,
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('cl.owner_user_uuid IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('cl.expires_at > NOW()');
     });
   });
 
@@ -343,6 +375,16 @@ describe('V1ListsService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('should throw ForbiddenException for claimed account lists with stale owner cookie', async () => {
+      cardListRepo.findOne.mockResolvedValue(
+        makeList({ ownerUserUuid: '22222222-2222-2222-2222-222222222222' }),
+      );
+
+      await expect(
+        service.updateFilters(LIST_UUID, OWNER_COOKIE, {}),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('should throw NotFoundException for missing list', async () => {
       cardListRepo.findOne.mockResolvedValue(null);
 
@@ -381,6 +423,16 @@ describe('V1ListsService', () => {
         service.replaceCards(LIST_UUID, 'wrong-cookie', ['Sol Ring']),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('should throw ForbiddenException for claimed account lists with stale owner cookie', async () => {
+      cardListRepo.findOne.mockResolvedValue(
+        makeList({ ownerUserUuid: '22222222-2222-2222-2222-222222222222' }),
+      );
+
+      await expect(
+        service.replaceCards(LIST_UUID, OWNER_COOKIE, ['Sol Ring']),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('deleteList', () => {
@@ -397,6 +449,16 @@ describe('V1ListsService', () => {
 
       await expect(
         service.deleteList(LIST_UUID, 'wrong-cookie'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException for claimed account lists with stale owner cookie', async () => {
+      cardListRepo.findOne.mockResolvedValue(
+        makeList({ ownerUserUuid: '22222222-2222-2222-2222-222222222222' }),
+      );
+
+      await expect(
+        service.deleteList(LIST_UUID, OWNER_COOKIE),
       ).rejects.toThrow(ForbiddenException);
     });
 

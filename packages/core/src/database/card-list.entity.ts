@@ -9,9 +9,16 @@ import {
 } from 'typeorm';
 import { CardListEntry } from './card-list-entry.entity';
 
+export type CardListVisibility = 'private' | 'unlisted' | 'public';
+
 @Entity('card_lists')
 @Index('idx_card_lists_owner_cookie', ['ownerCookie'])
+@Index('idx_card_lists_owner_user_uuid', ['ownerUserUuid'])
 @Index('idx_card_lists_expires_at', ['expiresAt'])
+@Index('idx_card_lists_visibility', ['visibility'])
+@Index('idx_card_lists_public_share_token_hash', ['publicShareTokenHash'], {
+  where: '"public_share_token_hash" IS NOT NULL',
+})
 export class CardList {
   @PrimaryGeneratedColumn()
   id: number;
@@ -21,6 +28,28 @@ export class CardList {
 
   @Column({ name: 'owner_cookie', type: 'uuid' })
   ownerCookie: string;
+
+  @Column({ name: 'owner_user_uuid', type: 'uuid', nullable: true })
+  ownerUserUuid?: string | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'private' })
+  visibility: CardListVisibility = 'private';
+
+  @Column({ name: 'public_share_enabled', type: 'boolean', default: false })
+  publicShareEnabled: boolean = false;
+
+  @Column({ name: 'public_share_token_hash', type: 'text', nullable: true })
+  publicShareTokenHash?: string | null;
+
+  @Column({
+    name: 'public_share_expires_at',
+    type: 'timestamp',
+    nullable: true,
+  })
+  publicShareExpiresAt?: Date | null;
+
+  @Column({ name: 'claimed_at', type: 'timestamp', nullable: true })
+  claimedAt?: Date | null;
 
   @Column({ length: 100 })
   name: string;

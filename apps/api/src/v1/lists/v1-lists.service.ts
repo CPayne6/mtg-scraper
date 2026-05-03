@@ -94,6 +94,7 @@ export class V1ListsService {
     const existingCount = await this.cardListRepository
       .createQueryBuilder('cl')
       .where('cl.owner_cookie = :ownerCookie', { ownerCookie })
+      .andWhere('cl.owner_user_uuid IS NULL')
       .andWhere('cl.expires_at > NOW()')
       .getCount();
 
@@ -153,6 +154,7 @@ export class V1ListsService {
       .createQueryBuilder('cl')
       .loadRelationCountAndMap('cl.cardCount', 'cl.entries')
       .where('cl.owner_cookie = :ownerCookie', { ownerCookie })
+      .andWhere('cl.owner_user_uuid IS NULL')
       .andWhere('cl.expires_at > NOW()')
       .orderBy('cl.created_at', 'DESC')
       .getMany();
@@ -319,11 +321,15 @@ export class V1ListsService {
       throw new NotFoundException('List not found');
     }
 
-    if (list.ownerCookie !== ownerCookie) {
+    if (!this.isAnonymousOwner(list, ownerCookie)) {
       throw new ForbiddenException('You do not own this list');
     }
 
     return list;
+  }
+
+  private isAnonymousOwner(list: CardList, ownerCookie: string): boolean {
+    return !list.ownerUserUuid && list.ownerCookie === ownerCookie;
   }
 
   private async getCheapestVariants(
