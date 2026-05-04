@@ -88,12 +88,14 @@ export class V1ListsService {
 
   async createList(
     dto: CreateListDto,
-    ownerCookie: string,
+    ownerPrincipalUuid: string,
   ): Promise<CreateListResponse> {
     // Enforce max lists per owner
     const existingCount = await this.cardListRepository
       .createQueryBuilder('cl')
-      .where('cl.owner_cookie = :ownerCookie', { ownerCookie })
+      .where('cl.owner_principal_uuid = :ownerPrincipalUuid', {
+        ownerPrincipalUuid,
+      })
       .andWhere('cl.expires_at > NOW()')
       .getCount();
 
@@ -109,11 +111,12 @@ export class V1ListsService {
 
     // Create list
     const cardList = new CardList();
-    cardList.ownerCookie = ownerCookie;
+    cardList.ownerPrincipalUuid = ownerPrincipalUuid;
     cardList.name = dto.name;
     cardList.filterStores = dto.filterStores;
     cardList.filterConditions = dto.filterConditions;
     cardList.filterSetCode = dto.filterSetCode;
+    cardList.visibility = dto.visibility ?? 'unlisted';
     const savedList = await this.cardListRepository.save(cardList);
 
     // Create entries
@@ -148,11 +151,13 @@ export class V1ListsService {
     };
   }
 
-  async getListsForOwner(ownerCookie: string): Promise<ListSummary[]> {
+  async getListsForOwner(ownerPrincipalUuid: string): Promise<ListSummary[]> {
     const lists = await this.cardListRepository
       .createQueryBuilder('cl')
       .loadRelationCountAndMap('cl.cardCount', 'cl.entries')
-      .where('cl.owner_cookie = :ownerCookie', { ownerCookie })
+      .where('cl.owner_principal_uuid = :ownerPrincipalUuid', {
+        ownerPrincipalUuid,
+      })
       .andWhere('cl.expires_at > NOW()')
       .orderBy('cl.created_at', 'DESC')
       .getMany();
@@ -170,12 +175,22 @@ export class V1ListsService {
     }));
   }
 
-  async getListWithPrices(listUuid: string): Promise<ListWithPricesResponse> {
+  async getListWithPrices(
+    listUuid: string,
+    principalUuid?: string,
+  ): Promise<ListWithPricesResponse> {
     const list = await this.cardListRepository.findOne({
       where: { uuid: listUuid },
     });
 
     if (!list || list.expiresAt < new Date()) {
+      throw new NotFoundException('List not found');
+    }
+
+    if (
+      list.visibility === 'private' &&
+      list.ownerPrincipalUuid !== principalUuid
+    ) {
       throw new NotFoundException('List not found');
     }
 
@@ -248,10 +263,10 @@ export class V1ListsService {
 
   async updateFilters(
     listUuid: string,
-    ownerCookie: string,
+    ownerPrincipalUuid: string,
     dto: UpdateFiltersDto,
   ): Promise<void> {
-    const list = await this.findOwnedList(listUuid, ownerCookie);
+    const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
 
     list.filterStores = dto.filterStores;
     list.filterConditions = dto.filterConditions;
@@ -262,10 +277,10 @@ export class V1ListsService {
 
   async replaceCards(
     listUuid: string,
-    ownerCookie: string,
+    ownerPrincipalUuid: string,
     cards: string[],
   ): Promise<{ cardCount: number; warnings: string[] }> {
-    const list = await this.findOwnedList(listUuid, ownerCookie);
+    const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
 
     const { resolved, unresolved } =
       await this.cardNameResolver.resolveCardNames(cards);
@@ -302,14 +317,17 @@ export class V1ListsService {
     return { cardCount: resolved.length, warnings };
   }
 
-  async deleteList(listUuid: string, ownerCookie: string): Promise<void> {
-    const list = await this.findOwnedList(listUuid, ownerCookie);
+  async deleteList(
+    listUuid: string,
+    ownerPrincipalUuid: string,
+  ): Promise<void> {
+    const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
     await this.cardListRepository.delete(list.id);
   }
 
   private async findOwnedList(
     listUuid: string,
-    ownerCookie: string,
+    ownerPrincipalUuid: string,
   ): Promise<CardList> {
     const list = await this.cardListRepository.findOne({
       where: { uuid: listUuid },
@@ -319,7 +337,7 @@ export class V1ListsService {
       throw new NotFoundException('List not found');
     }
 
-    if (list.ownerCookie !== ownerCookie) {
+    if (list.ownerPrincipalUuid !== ownerPrincipalUuid) {
       throw new ForbiddenException('You do not own this list');
     }
 

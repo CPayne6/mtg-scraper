@@ -23,6 +23,7 @@ export {
   CardListEntry,
 } from './database/index';
 export type { ExtractionStatus, DiscoveryRunStatus, DiscoveryRunTrigger } from './database/index';
+export type { CardListVisibility } from './database/index';
 
 // Queue
 export { QueueModule, QueueService } from './queue/index';

@@ -8,7 +8,8 @@ export class AddCardLists1772200000000 implements MigrationInterface {
       CREATE TABLE "card_lists" (
         "id" SERIAL PRIMARY KEY,
         "uuid" uuid NOT NULL DEFAULT gen_random_uuid(),
-        "owner_cookie" uuid NOT NULL,
+        "owner_principal_uuid" uuid NOT NULL,
+        "visibility" varchar(16) NOT NULL DEFAULT 'unlisted',
         "name" varchar(100) NOT NULL,
         "filter_stores" text,
         "filter_conditions" text,
@@ -23,7 +24,10 @@ export class AddCardLists1772200000000 implements MigrationInterface {
       `CREATE UNIQUE INDEX "IDX_card_lists_uuid" ON "card_lists" ("uuid")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_card_lists_owner_cookie" ON "card_lists" ("owner_cookie")`,
+      `ALTER TABLE "card_lists" ADD CONSTRAINT "CHK_card_lists_visibility" CHECK ("visibility" IN ('private', 'unlisted', 'public'))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_card_lists_owner_principal_uuid" ON "card_lists" ("owner_principal_uuid")`,
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_card_lists_expires_at" ON "card_lists" ("expires_at")`,
