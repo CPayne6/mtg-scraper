@@ -30,6 +30,34 @@ services:
         limits:
           memory: 1G
 
+  # PostgreSQL - Identity/auth database
+  auth-postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=scoutlgs_auth
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD_FILE=/run/secrets/auth_database_password
+    volumes:
+      - scoutlgs-auth-postgres-data:/var/lib/postgresql/data
+    networks:
+      - auth-postgres-network
+    secrets:
+      - auth_database_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 512M
+
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
@@ -69,12 +97,16 @@ services:
       - USE_DOCKER_SECRETS=true
       - FRONTEND_URL=https://scoutlgs.ca
       - LOG_LEVEL=error,fatal
+      - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
+      - AUTH_JWT_ISSUER=scoutlgs-auth
+      - AUTH_JWT_AUDIENCE=scoutlgs-api
     secrets:
       - api_frontend_url
       - api_database_password
     networks:
       - redis-network
       - postgres-network
+      - auth-network
       - tunnel-network
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -91,6 +123,55 @@ services:
       resources:
         limits:
           memory: 2G
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+
+  # Auth Service
+  auth:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-auth:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - PORT=5002
+      - DATABASE_HOST=auth-postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs_auth
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD_FILE=/run/secrets/auth_database_password
+      - FRONTEND_URL=https://scoutlgs.ca
+      - COOKIE_DOMAIN=scoutlgs.ca
+      - COOKIE_SECURE=true
+      - AUTH_JWT_ISSUER=scoutlgs-auth
+      - AUTH_JWT_AUDIENCE=scoutlgs-api
+      - AUTH_JWT_KEY_ID=primary-1
+      - AUTH_INTERNAL_ALLOWED_HOSTS=auth,localhost,127.0.0.1
+      - AUTH_JWT_PRIVATE_KEY_FILE=/run/secrets/auth_jwt_private_key
+      - AUTH_TOKEN_HASH_SECRET_FILE=/run/secrets/auth_token_hash_secret
+      - LOG_LEVEL=error,warn,fatal
+    secrets:
+      - auth_database_password
+      - auth_jwt_private_key
+      - auth_token_hash_secret
+    networks:
+      - auth-postgres-network
+      - auth-network
+      - tunnel-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5002/auth/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 512M
       update_config:
         parallelism: 1
         delay: 10s
@@ -248,6 +329,12 @@ networks:
   # Postgres access: api, scraper only
   postgres-network:
     driver: overlay
+  # Auth service access: api only
+  auth-network:
+    driver: overlay
+  # Auth Postgres access: auth only
+  auth-postgres-network:
+    driver: overlay
   # Tunnel routing: cloudflared, ui, api
   tunnel-network:
     driver: overlay
@@ -255,6 +342,7 @@ networks:
 volumes:
   scoutlgs-redis-data:
   scoutlgs-postgres-data:
+  scoutlgs-auth-postgres-data:
 
 # Docker Secrets Configuration
 # Secrets must be created before deployment using scripts/setup-secrets.sh
@@ -274,6 +362,17 @@ secrets:
   api_database_password:
     external: true
     name: api_database_password
+
+  # Auth secrets
+  auth_database_password:
+    external: true
+    name: auth_database_password
+  auth_jwt_private_key:
+    external: true
+    name: auth_jwt_private_key
+  auth_token_hash_secret:
+    external: true
+    name: auth_token_hash_secret
 
   # UI secrets
   ui_vite_api_url:

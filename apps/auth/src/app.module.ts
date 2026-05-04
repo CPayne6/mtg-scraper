@@ -1,14 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CardModule } from './card/card.module';
-import { HealthModule } from './health/health.module';
-import { V1Module } from './v1/v1.module';
-import { StoreModule } from '@scoutlgs/core';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
-import { getDatabaseConfig } from '@scoutlgs/core';
+import { getAuthDatabaseConfig } from './database/auth-database.config';
 import { AuthModule } from './auth/auth.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -20,12 +17,9 @@ import { AuthModule } from './auth/auth.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: getDatabaseConfig
+      useFactory: getAuthDatabaseConfig,
     }),
-    StoreModule,
     AuthModule,
-    CardModule,
-    V1Module,
     HealthModule,
   ],
 })
