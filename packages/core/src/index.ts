@@ -73,3 +73,6 @@ export type { RateLimitResult } from './rate-limiter/index';
 // Logger
 export type { NestLogLevel } from './logger/index';
 export { parseLogLevel } from './logger/index';
+
+// Web Bot Auth
+export { WebBotAuthModule, WebBotAuthService } from './web-bot-auth/index';
