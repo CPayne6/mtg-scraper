@@ -17,6 +17,22 @@ export type {
   ImageInfo,
   ProductMetaInfo,
 } from './adapters/shopify';
+export {
+  StorefrontClient,
+  StorefrontExtractionAdapter,
+  STOREFRONT_API_VERSION,
+  COLLECTION_PRODUCTS_QUERY,
+  PRODUCT_BY_HANDLE_QUERY,
+} from './adapters/shopify-storefront';
+export type {
+  StorefrontGraphQLResponse,
+  StorefrontGraphQLError,
+  StorefrontProduct,
+  StorefrontVariant,
+  CollectionProductsData,
+  ProductByHandleData,
+  PageInfo,
+} from './adapters/shopify-storefront';
 export type {
   IDiscoveryAdapter,
   IExtractionAdapter,
