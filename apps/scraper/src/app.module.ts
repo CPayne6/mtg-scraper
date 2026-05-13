@@ -9,6 +9,7 @@ import { getDatabaseConfig } from '@scoutlgs/core';
 import { ScraperModule } from './scraper/scraper.module';
 import { ExtractionModule } from './extraction/extraction.module';
 import { DiscoveryModule } from './discovery/discovery.module';
+import { StorefrontModule } from './storefront/storefront.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { HealthModule } from './health/health.module';
     ScraperModule,
     ExtractionModule,
     DiscoveryModule,
+    StorefrontModule,
     HealthModule,
   ],
 })
