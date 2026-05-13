@@ -7,7 +7,7 @@ import { CacheService } from '../../../cache/cache.service';
 import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
 import { WebBotAuthService } from '../../../web-bot-auth/web-bot-auth.service';
 import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
-import { STOREFRONT_API_VERSION } from './storefront.queries';
+import { getStorefrontApiVersion } from './storefront.queries';
 import type { StorefrontGraphQLResponse } from './storefront.types';
 
 @Injectable()
@@ -51,11 +51,6 @@ export class StorefrontClient {
         'Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)',
       Accept: 'application/json',
     };
-
-    if (store.scraperConfig?.storefrontAccessToken) {
-      headers['X-Shopify-Storefront-Access-Token'] =
-        store.scraperConfig.storefrontAccessToken;
-    }
 
     // Web Bot Auth signing (sign before proxy so signed components stay intact)
     if (this.webBotAuth.isEnabled()) {
@@ -168,6 +163,8 @@ export class StorefrontClient {
   getEndpointUrl(store: Store): string {
     const host =
       store.scraperConfig?.shopifyUrl || new URL(store.baseUrl).host;
-    return `https://${host}/api/${STOREFRONT_API_VERSION}/graphql.json`;
+    const apiVersion =
+      store.scraperConfig?.storefrontApiVersion || getStorefrontApiVersion();
+    return `https://${host}/api/${apiVersion}/graphql.json`;
   }
 }

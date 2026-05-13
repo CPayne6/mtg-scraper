@@ -10,6 +10,8 @@ describe('WebBotAuthService', () => {
     // Save env vars we may modify
     savedEnv.WEB_BOT_AUTH_ENABLED = process.env.WEB_BOT_AUTH_ENABLED;
     savedEnv.WEB_BOT_AUTH_SEED = process.env.WEB_BOT_AUTH_SEED;
+    savedEnv.WEB_BOT_AUTH_SIGNATURE_AGENT = process.env.WEB_BOT_AUTH_SIGNATURE_AGENT;
+    savedEnv.WEB_BOT_AUTH_KEY_COUNT = process.env.WEB_BOT_AUTH_KEY_COUNT;
     savedEnv.PROXY_COUNT = process.env.PROXY_COUNT;
   });
 
@@ -46,7 +48,9 @@ describe('WebBotAuthService', () => {
     beforeEach(async () => {
       process.env.WEB_BOT_AUTH_ENABLED = 'true';
       process.env.WEB_BOT_AUTH_SEED = 'test-seed-for-unit-tests';
-      process.env.PROXY_COUNT = '5';
+      process.env.WEB_BOT_AUTH_SIGNATURE_AGENT =
+        'https://bot.example/.well-known/http-message-signatures-directory';
+      process.env.WEB_BOT_AUTH_KEY_COUNT = '5';
       await service.onModuleInit();
     });
 
@@ -58,27 +62,30 @@ describe('WebBotAuthService', () => {
       const result = await service.signRequest(
         1,
         'POST',
-        'https://test-store.myshopify.com/api/2025-07/graphql.json',
+        'https://test-store.myshopify.com/api/2026-04/graphql.json',
       );
 
       expect(result).not.toBeNull();
       expect(result).toHaveProperty('Signature-Input');
       expect(result).toHaveProperty('Signature');
       expect(result).toHaveProperty('Signature-Agent');
-      expect(result!['Signature-Agent']).toBe('ScoutLGS/1.0');
+      expect(result!['Signature-Agent']).toBe(
+        '"https://bot.example/.well-known/http-message-signatures-directory"',
+      );
     });
 
     it('Signature-Input contains expected structured fields', async () => {
       const result = await service.signRequest(
         1,
         'POST',
-        'https://test-store.myshopify.com/api/2025-07/graphql.json',
+        'https://test-store.myshopify.com/api/2026-04/graphql.json',
       );
 
       expect(result!['Signature-Input']).toMatch(/^sig=/);
       expect(result!['Signature-Input']).toContain('"@method"');
       expect(result!['Signature-Input']).toContain('"@authority"');
       expect(result!['Signature-Input']).toContain('"@path"');
+      expect(result!['Signature-Input']).toContain('"signature-agent"');
       expect(result!['Signature-Input']).toContain('alg="ed25519"');
       expect(result!['Signature-Input']).toContain('tag="web-bot-auth"');
     });
@@ -87,14 +94,14 @@ describe('WebBotAuthService', () => {
       const result = await service.signRequest(
         1,
         'POST',
-        'https://test-store.myshopify.com/api/2025-07/graphql.json',
+        'https://test-store.myshopify.com/api/2026-04/graphql.json',
       );
 
       expect(result!['Signature']).toMatch(/^sig=:.+:$/);
     });
 
     it('different proxy numbers produce different signatures', async () => {
-      const url = 'https://test-store.myshopify.com/api/2025-07/graphql.json';
+      const url = 'https://test-store.myshopify.com/api/2026-04/graphql.json';
 
       const result1 = await service.signRequest(1, 'POST', url);
       const result2 = await service.signRequest(2, 'POST', url);
@@ -117,6 +124,26 @@ describe('WebBotAuthService', () => {
     it('disables itself when seed is not set', async () => {
       process.env.WEB_BOT_AUTH_ENABLED = 'true';
       delete process.env.WEB_BOT_AUTH_SEED;
+      await service.onModuleInit();
+      expect(service.isEnabled()).toBe(false);
+    });
+  });
+
+  describe('enabled but missing signature agent', () => {
+    it('disables itself when key directory URL is not set', async () => {
+      process.env.WEB_BOT_AUTH_ENABLED = 'true';
+      process.env.WEB_BOT_AUTH_SEED = 'test-seed-for-unit-tests';
+      delete process.env.WEB_BOT_AUTH_SIGNATURE_AGENT;
+      delete process.env.WEB_BOT_AUTH_KEY_DIRECTORY_URL;
+      await service.onModuleInit();
+      expect(service.isEnabled()).toBe(false);
+    });
+
+    it('disables itself when signature agent is not https', async () => {
+      process.env.WEB_BOT_AUTH_ENABLED = 'true';
+      process.env.WEB_BOT_AUTH_SEED = 'test-seed-for-unit-tests';
+      process.env.WEB_BOT_AUTH_SIGNATURE_AGENT =
+        'http://bot.example/.well-known/http-message-signatures-directory';
       await service.onModuleInit();
       expect(service.isEnabled()).toBe(false);
     });

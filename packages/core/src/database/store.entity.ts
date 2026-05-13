@@ -39,7 +39,11 @@ export class Store {
   scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos';
 
   @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
-  scraperConfig?: { searchPath?: string; shopifyUrl?: string; storefrontAccessToken?: string };
+  scraperConfig?: {
+    searchPath?: string;
+    shopifyUrl?: string;
+    storefrontApiVersion?: string;
+  };
 
   @ManyToOne(() => Platform, { nullable: true })
   @JoinColumn({ name: 'platform_id' })

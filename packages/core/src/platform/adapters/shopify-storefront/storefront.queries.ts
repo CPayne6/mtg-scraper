@@ -1,4 +1,12 @@
-export const STOREFRONT_API_VERSION = '2025-07';
+export const DEFAULT_STOREFRONT_API_VERSION = '2026-04';
+export const STOREFRONT_API_VERSION = DEFAULT_STOREFRONT_API_VERSION;
+
+export function getStorefrontApiVersion(): string {
+  return (
+    process.env.SHOPIFY_STOREFRONT_API_VERSION?.trim() ||
+    DEFAULT_STOREFRONT_API_VERSION
+  );
+}
 
 export const COLLECTION_PRODUCTS_QUERY = `
   query CollectionProducts($handle: String!, $first: Int!, $after: String) {
@@ -30,7 +38,6 @@ export const COLLECTION_PRODUCTS_QUERY = `
                   title
                   sku
                   availableForSale
-                  quantityAvailable
                   price {
                     amount
                     currencyCode
@@ -81,7 +88,6 @@ export const PRODUCT_BY_HANDLE_QUERY = `
             title
             sku
             availableForSale
-            quantityAvailable
             price {
               amount
               currencyCode

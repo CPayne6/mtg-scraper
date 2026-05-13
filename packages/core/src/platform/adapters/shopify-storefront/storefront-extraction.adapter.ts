@@ -194,7 +194,6 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
         price: parseFloat(variant.price.amount),
         currency: variant.price.currencyCode,
         inStock: variant.availableForSale,
-        quantity: variant.quantityAvailable ?? undefined,
         imageUrl: firstImageUrl,
         productUrl,
         sku: variant.sku ?? undefined,

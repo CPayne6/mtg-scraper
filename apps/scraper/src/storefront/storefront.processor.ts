@@ -21,7 +21,8 @@ import { ExtractionService } from '../extraction/extraction.service';
 @Processor(QUEUE_NAMES.STOREFRONT_EXTRACTION)
 export class StorefrontProcessor {
   private readonly logger = new Logger(StorefrontProcessor.name);
-  private readonly STALENESS_HOURS = 24;
+  private readonly ERROR_RATE_THRESHOLD = 0.25;
+  private readonly MIN_ERRORS_FOR_RATE_FAILURE = 10;
 
   constructor(
     @InjectRepository(Store)
@@ -38,7 +39,7 @@ export class StorefrontProcessor {
   async process(
     job: Job<StorefrontExtractionJobData>,
   ): Promise<StorefrontExtractionJobResult> {
-    const { storeId, collectionHandle, discoveryRunId } = job.data;
+    const { storeId, discoveryRunId } = job.data;
 
     const store = await this.storeRepository.findOne({
       where: { id: storeId },
@@ -48,23 +49,25 @@ export class StorefrontProcessor {
     }
 
     this.logger.log(
-      `Starting Storefront collection extraction for ${store.name} (collection: ${collectionHandle})`,
+      `Starting Storefront collection extraction for ${store.name}`,
     );
 
-    // Get the MTG singles collection by slug
-    const collection = await this.getCollection(store, collectionHandle);
+    const collection = await this.getCollection(store);
     if (!collection) {
       throw new Error(
-        `No MTG singles collection found for ${store.name} (handle: ${collectionHandle})`,
+        `No MTG singles collection configured for ${store.name}`,
       );
     }
+    const collectionHandle = collection.slug;
 
     // Get the Storefront extraction adapter
     const adapter = this.platformAdapterFactory.getExtractionAdapter(
       store.platformType!,
     ) as StorefrontExtractionAdapter;
 
-    let productsExtracted = 0;
+    let productsAttempted = 0;
+    let productsProcessed = 0;
+    let productsSkipped = 0;
     let variantsExtracted = 0;
     let errors = 0;
 
@@ -73,6 +76,8 @@ export class StorefrontProcessor {
         store,
         collectionHandle,
       )) {
+        productsAttempted++;
+
         try {
           // 1. Upsert product_url row
           const productUrl = await this.upsertProductUrl(
@@ -82,9 +87,9 @@ export class StorefrontProcessor {
             product.updatedAt,
           );
 
-          // 2. Skip if recently extracted and not stale
-          if (this.isRecentlyExtracted(productUrl)) {
-            productsExtracted++;
+          // 2. Skip only if the stored extraction is newer than Shopify's updatedAt.
+          if (this.isCurrentExtraction(productUrl, product.updatedAt)) {
+            productsSkipped++;
             continue;
           }
 
@@ -97,17 +102,24 @@ export class StorefrontProcessor {
             discoveryRunId,
           );
 
-          variantsExtracted += result.variantsExtracted;
-          productsExtracted++;
+          if (result.success) {
+            variantsExtracted += result.variantsExtracted;
+            productsProcessed++;
+          } else {
+            errors++;
+          }
 
           // 4. Report progress periodically
-          if (productsExtracted % 100 === 0) {
+          if (productsAttempted % 100 === 0) {
             await job.updateProgress({
-              productsExtracted,
+              productsAttempted,
+              productsProcessed,
+              productsSkipped,
+              errors,
               variantsExtracted,
             });
             this.logger.log(
-              `${store.name}: Processed ${productsExtracted} products, ${variantsExtracted} variants`,
+              `${store.name}: Attempted ${productsAttempted} products, processed ${productsProcessed}, skipped ${productsSkipped}, errors ${errors}`,
             );
           }
         } catch (error) {
@@ -126,26 +138,46 @@ export class StorefrontProcessor {
       throw error;
     }
 
+    if (productsAttempted > 0 && productsProcessed === 0 && errors > 0) {
+      throw new Error(
+        `Storefront extraction failed for ${store.name}: all ${productsAttempted} attempted products failed`,
+      );
+    }
+
+    const errorRate = productsAttempted > 0 ? errors / productsAttempted : 0;
+    if (
+      errors >= this.MIN_ERRORS_FOR_RATE_FAILURE &&
+      errorRate > this.ERROR_RATE_THRESHOLD
+    ) {
+      throw new Error(
+        `Storefront extraction failed for ${store.name}: ${errors}/${productsAttempted} products failed`,
+      );
+    }
+
     this.logger.log(
       `Completed Storefront extraction for ${store.name}: ` +
-        `${productsExtracted} products, ${variantsExtracted} variants, ${errors} errors`,
+        `${productsProcessed} processed, ${productsSkipped} skipped, ${variantsExtracted} variants, ${errors} errors`,
     );
 
     return {
       storeId,
       collectionHandle,
-      productsExtracted,
+      productsAttempted,
+      productsProcessed,
+      productsSkipped,
+      errors,
       variantsExtracted,
       success: true,
     };
   }
 
-  private async getCollection(
-    store: Store,
-    collectionHandle: string,
-  ): Promise<MtgSinglesCollection | null> {
+  private async getCollection(store: Store): Promise<MtgSinglesCollection | null> {
+    if (!store.discoveryConfig?.mtgSinglesCollectionId) {
+      return null;
+    }
+
     return this.collectionRepository.findOne({
-      where: { slug: collectionHandle },
+      where: { id: store.discoveryConfig.mtgSinglesCollectionId },
     });
   }
 
@@ -178,12 +210,11 @@ export class StorefrontProcessor {
     return productUrl;
   }
 
-  private isRecentlyExtracted(productUrl: ProductUrl): boolean {
+  private isCurrentExtraction(productUrl: ProductUrl, storefrontUpdatedAt: Date): boolean {
     if (!productUrl.lastExtractedAt) return false;
     if (productUrl.extractionStatus === 'error') return false;
+    if (Number.isNaN(storefrontUpdatedAt.getTime())) return false;
 
-    const hoursAgo =
-      (Date.now() - productUrl.lastExtractedAt.getTime()) / (1000 * 60 * 60);
-    return hoursAgo < this.STALENESS_HOURS;
+    return productUrl.lastExtractedAt >= storefrontUpdatedAt;
   }
 }

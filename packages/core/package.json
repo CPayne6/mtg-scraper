@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run",
     "watch": "tsc --watch --project tsconfig.build.json",
     "clean": "rm -rf dist"
   },

@@ -41,7 +41,7 @@ export interface StorefrontProduct {
   descriptionHtml: string;
   availableForSale: boolean;
   updatedAt: string;       // ISO 8601
-  tags: string[];          // empty array without token
+  tags: string[];
   onlineStoreUrl: string;
   images: {
     edges: Array<{
@@ -61,7 +61,6 @@ export interface StorefrontVariant {
   title: string;
   sku: string | null;
   availableForSale: boolean;
-  quantityAvailable: number | null;  // null without token
   price: {
     amount: string;        // e.g. "2.50" (dollars, not cents)
     currencyCode: string;  // e.g. "CAD"

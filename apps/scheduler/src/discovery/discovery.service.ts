@@ -35,12 +35,15 @@ export class DiscoveryService {
       where: { isActive: true },
     });
 
-    const discoveryStores = stores.filter(
+    const enabledStores = stores.filter(
       (s) => s.platformType && s.discoveryConfig?.discoveryEnabled,
     );
+    const discoveryStores = options?.skipExtraction
+      ? enabledStores.filter((s) => s.platformType !== 'shopify_storefront')
+      : enabledStores;
 
     this.logger.log(
-      `Found ${discoveryStores.length} stores with discovery enabled out of ${stores.length} active stores` +
+      `Found ${discoveryStores.length} stores to queue out of ${enabledStores.length} discovery-enabled stores` +
         (options?.skipExtraction ? ' (extraction skipped)' : ''),
     );
 
@@ -55,11 +58,22 @@ export class DiscoveryService {
     this.logger.log(`Created discovery run #${savedRun.id} (trigger: ${savedRun.trigger})`);
 
     for (const store of discoveryStores) {
-      await this.queueService.enqueueDiscoveryJob(store.id, priority, {
-        skipExtraction: options?.skipExtraction,
-        discoveryRunId: savedRun.id,
-      });
-      this.logger.log(`Enqueued discovery job for store: ${store.name} (ID: ${store.id})`);
+      if (store.platformType === 'shopify_storefront') {
+        await this.queueService.enqueueStorefrontExtractionJob(
+          store.id,
+          priority,
+          savedRun.id,
+        );
+        this.logger.log(
+          `Enqueued Storefront extraction job for store: ${store.name} (ID: ${store.id})`,
+        );
+      } else {
+        await this.queueService.enqueueDiscoveryJob(store.id, priority, {
+          skipExtraction: options?.skipExtraction,
+          discoveryRunId: savedRun.id,
+        });
+        this.logger.log(`Enqueued discovery job for store: ${store.name} (ID: ${store.id})`);
+      }
     }
 
     return {
