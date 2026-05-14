@@ -7,6 +7,7 @@ export type {
   StorefrontVariant,
   CollectionProductsData,
   ProductByHandleData,
+  ProductsQueryData,
   PageInfo,
 } from './storefront.types';
 export {
@@ -15,4 +16,5 @@ export {
   getStorefrontApiVersion,
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
+  PRODUCTS_QUERY,
 } from './storefront.queries';

@@ -60,6 +60,119 @@ export const COLLECTION_PRODUCTS_QUERY = `
   }
 `;
 
+/**
+ * Search for products by vendor (set name) with full variant details.
+ * Used to iterate products set-by-set to avoid the 25K pagination limit.
+ * Variables: $query (search string e.g. 'vendor:"Set Name"'), $first, $after
+ */
+export const SEARCH_PRODUCTS_QUERY = `
+  query SearchProducts($query: String!, $first: Int!, $after: String) {
+    search(query: $query, types: PRODUCT, first: $first, after: $after) {
+      totalCount
+      edges {
+        node {
+          ... on Product {
+            handle
+            title
+            vendor
+            productType
+            descriptionHtml
+            availableForSale
+            updatedAt
+            tags
+            onlineStoreUrl
+            images(first: 10) {
+              edges {
+                node {
+                  url
+                  altText
+                }
+              }
+            }
+            variants(first: 100) {
+              edges {
+                node {
+                  id
+                  title
+                  sku
+                  availableForSale
+                  price {
+                    amount
+                    currencyCode
+                  }
+                  selectedOptions {
+                    name
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
+/**
+ * Root products query with full variant details.
+ * Used for prefix-based extraction via products(query: "scope title:prefix*").
+ * Variables: $query (filter string), $first, $after
+ */
+export const PRODUCTS_QUERY = `
+  query ProductsByQuery($query: String!, $first: Int!, $after: String) {
+    products(first: $first, query: $query, after: $after) {
+      edges {
+        node {
+          handle
+          title
+          vendor
+          productType
+          descriptionHtml
+          availableForSale
+          updatedAt
+          tags
+          onlineStoreUrl
+          images(first: 10) {
+            edges {
+              node {
+                url
+                altText
+              }
+            }
+          }
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                title
+                sku
+                availableForSale
+                price {
+                  amount
+                  currencyCode
+                }
+                selectedOptions {
+                  name
+                  value
+                }
+              }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
 export const PRODUCT_BY_HANDLE_QUERY = `
   query ProductByHandle($handle: String!) {
     product(handle: $handle) {

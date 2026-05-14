@@ -13,10 +13,12 @@ import { StorefrontClient } from './storefront-client';
 import {
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
+  PRODUCTS_QUERY,
 } from './storefront.queries';
 import type {
   StorefrontProduct,
   CollectionProductsData,
+  ProductsQueryData,
   ProductByHandleData,
 } from './storefront.types';
 
@@ -127,6 +129,57 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
 
     this.logger.log(
       `${store.name} collection "${collectionSlug}": finished — ${totalYielded} products total`,
+    );
+  }
+
+  /**
+   * Paginate through products matching a query string via the root `products` endpoint.
+   * Yields one product at a time with its extracted variants.
+   *
+   * Throws the raw GraphQL error if the 25K pagination limit is hit,
+   * allowing the caller (processor) to catch it and split into sub-prefixes.
+   *
+   * @param store - Store to extract from
+   * @param query - Full products query string (e.g. 'product_type:"MTG Single" title:a*')
+   */
+  async *extractByProductsQuery(
+    store: Store,
+    query: string,
+  ): AsyncGenerator<{
+    handle: string;
+    updatedAt: Date;
+    variants: ExtractedCardVariant[];
+  }> {
+    let cursor: string | undefined;
+    let totalYielded = 0;
+
+    while (true) {
+      const data = await this.storefrontClient.query<ProductsQueryData>(
+        store,
+        PRODUCTS_QUERY,
+        { query, first: 250, after: cursor ?? null },
+      );
+
+      const { edges, pageInfo } = data.products;
+      if (edges.length === 0) break;
+
+      for (const { node: product } of edges) {
+        const variants = this.extractVariantsFromProduct(store, product);
+        totalYielded++;
+
+        yield {
+          handle: product.handle,
+          updatedAt: new Date(product.updatedAt),
+          variants,
+        };
+      }
+
+      if (!pageInfo.hasNextPage) break;
+      cursor = pageInfo.endCursor;
+    }
+
+    this.logger.log(
+      `${store.name} query "${query.substring(0, 60)}...": ${totalYielded} products extracted`,
     );
   }
 

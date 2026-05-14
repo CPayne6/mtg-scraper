@@ -25,6 +25,7 @@ export {
   getStorefrontApiVersion,
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
+  PRODUCTS_QUERY,
 } from './adapters/shopify-storefront';
 export type {
   StorefrontGraphQLResponse,
@@ -33,6 +34,7 @@ export type {
   StorefrontVariant,
   CollectionProductsData,
   ProductByHandleData,
+  ProductsQueryData,
   PageInfo,
 } from './adapters/shopify-storefront';
 export type {

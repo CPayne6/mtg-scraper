@@ -1,28 +1,31 @@
-import { Process, Processor } from '@nestjs/bull';
+import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
-  StorefrontExtractionJobData,
-  StorefrontExtractionJobResult,
+  StorefrontPlanJobData,
+  StorefrontPrefixJobData,
+  StorefrontPrefixJobResult,
 } from '@scoutlgs/shared';
 import {
   Store,
   ProductUrl,
   MtgSinglesCollection,
+  CardName,
   PlatformAdapterFactory,
 } from '@scoutlgs/core';
 import type { StorefrontExtractionAdapter } from '@scoutlgs/core';
 import { ExtractionService } from '../extraction/extraction.service';
 
+const NON_ALPHA_PREFIX = '__nonalpha__';
+const MAX_SPLIT_DEPTH = 3;
+
 @Processor(QUEUE_NAMES.STOREFRONT_EXTRACTION)
 export class StorefrontProcessor {
   private readonly logger = new Logger(StorefrontProcessor.name);
-  private readonly ERROR_RATE_THRESHOLD = 0.25;
-  private readonly MIN_ERRORS_FOR_RATE_FAILURE = 10;
 
   constructor(
     @InjectRepository(Store)
@@ -31,16 +34,22 @@ export class StorefrontProcessor {
     private readonly productUrlRepository: Repository<ProductUrl>,
     @InjectRepository(MtgSinglesCollection)
     private readonly collectionRepository: Repository<MtgSinglesCollection>,
+    @InjectRepository(CardName)
+    private readonly cardNameRepository: Repository<CardName>,
+    @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
+    private readonly storefrontQueue: Queue,
     private readonly platformAdapterFactory: PlatformAdapterFactory,
     private readonly extractionService: ExtractionService,
   ) {
     this.logger.log('StorefrontProcessor instantiated');
   }
 
-  @Process({ name: JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION, concurrency: 1 })
-  async process(
-    job: Job<StorefrontExtractionJobData>,
-  ): Promise<StorefrontExtractionJobResult> {
+  // ---------------------------------------------------------------------------
+  // Phase 1: Plan — query prefixes, enqueue one job per prefix
+  // ---------------------------------------------------------------------------
+
+  @Process({ name: JOB_NAMES.STOREFRONT_PLAN, concurrency: 1 })
+  async processPlan(job: Job<StorefrontPlanJobData>): Promise<void> {
     const { storeId, discoveryRunId, maxCardsAdded } = job.data;
 
     const store = await this.storeRepository.findOne({
@@ -50,131 +59,301 @@ export class StorefrontProcessor {
       throw new Error(`Store ${storeId} not found`);
     }
 
-    this.logger.warn(
-      `Starting Storefront collection extraction for ${store.name}` +
-        (maxCardsAdded ? ` (limit: ${maxCardsAdded} cards)` : ''),
-    );
-
-    const collection = await this.getCollection(store);
-    if (!collection) {
+    const scope = store.scraperConfig?.storefrontScope;
+    if (!scope) {
       throw new Error(
-        `No MTG singles collection configured for ${store.name}`,
+        `Store ${store.name} (${storeId}) is missing scraperConfig.storefrontScope`,
       );
     }
-    const collectionHandle = collection.slug;
 
-    // Get the Storefront extraction adapter
+    this.logger.warn(
+      `Planning storefront extraction for ${store.name} (scope: "${scope}")`,
+    );
+
+    // Get distinct first-character prefixes from card_names
+    const rows: { prefix: string }[] = await this.cardNameRepository.query(
+      `SELECT DISTINCT LOWER(LEFT(name, 1)) AS prefix
+       FROM card_names
+       WHERE name IS NOT NULL AND name != ''
+       ORDER BY prefix`,
+    );
+
+    const alphaPrefixes: string[] = [];
+    const nonAlphaPrefixes: string[] = [];
+    for (const { prefix } of rows) {
+      if (/^[a-z]$/.test(prefix)) {
+        alphaPrefixes.push(prefix);
+      } else {
+        nonAlphaPrefixes.push(prefix);
+      }
+    }
+
+    // Enqueue one STOREFRONT_PREFIX job per alpha prefix
+    const jobs: { name: string; data: StorefrontPrefixJobData }[] =
+      alphaPrefixes.map((prefix) => ({
+        name: JOB_NAMES.STOREFRONT_PREFIX,
+        data: { storeId, prefix, scope, depth: 1, discoveryRunId, maxCardsAdded },
+      }));
+
+    // Enqueue a single job for all non-alpha card names (numbers, special chars, accented)
+    if (nonAlphaPrefixes.length > 0) {
+      jobs.push({
+        name: JOB_NAMES.STOREFRONT_PREFIX,
+        data: {
+          storeId,
+          prefix: NON_ALPHA_PREFIX,
+          scope,
+          depth: 1,
+          discoveryRunId,
+          maxCardsAdded,
+        },
+      });
+    }
+
+    if (jobs.length > 0) {
+      await this.storefrontQueue.addBulk(jobs);
+    }
+
+    this.logger.warn(
+      `${store.name}: enqueued ${alphaPrefixes.length} alpha prefix jobs` +
+        (nonAlphaPrefixes.length > 0
+          ? ` + 1 non-alpha job (${nonAlphaPrefixes.length} prefixes)`
+          : ''),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Prefix — extract products matching a title prefix
+  // ---------------------------------------------------------------------------
+
+  @Process({ name: JOB_NAMES.STOREFRONT_PREFIX, concurrency: 5 })
+  async processPrefix(
+    job: Job<StorefrontPrefixJobData>,
+  ): Promise<StorefrontPrefixJobResult> {
+    const { storeId, prefix, scope, depth, discoveryRunId, maxCardsAdded } =
+      job.data;
+
+    const store = await this.storeRepository.findOne({
+      where: { id: storeId },
+    });
+    if (!store) {
+      throw new Error(`Store ${storeId} not found`);
+    }
+
     const adapter = this.platformAdapterFactory.getExtractionAdapter(
       store.platformType!,
     ) as StorefrontExtractionAdapter;
 
-    let productsAttempted = 0;
+    const collection = await this.getCollection(store);
+    const collectionId = collection?.id ?? 0;
+
+    // Build the query string
+    const query = await this.buildQuery(prefix, scope);
+
+    this.logger.log(
+      `${store.name}: extracting prefix "${prefix}" (depth ${depth})`,
+    );
+
     let productsProcessed = 0;
-    let variantsExtracted = 0;
     let cardsAdded = 0;
     let errors = 0;
-    let limitReached = false;
 
     try {
-      for await (const product of adapter.extractCollection(
+      for await (const product of adapter.extractByProductsQuery(
         store,
-        collectionHandle,
+        query,
       )) {
-        productsAttempted++;
-
         try {
-          // 1. Upsert product_url row
           const productUrl = await this.upsertProductUrl(
             store.id,
             product.handle,
-            collection.id,
+            collectionId,
             product.updatedAt,
           );
 
-          // 2. Process variants inline
-          const result = await this.extractionService.processExtractedVariants(
-            productUrl.id,
-            store.id,
-            product.handle,
-            product.variants,
-            discoveryRunId,
-          );
+          const extractResult =
+            await this.extractionService.processExtractedVariants(
+              productUrl.id,
+              store.id,
+              product.handle,
+              product.variants,
+              discoveryRunId,
+            );
 
-          if (result.success) {
-            variantsExtracted += result.variantsExtracted;
-            cardsAdded += result.cardsUpserted ?? 0;
+          if (extractResult.success) {
             productsProcessed++;
+            cardsAdded += extractResult.cardsUpserted ?? 0;
           } else {
             errors++;
           }
 
-          // 3. Check card limit
-          if (maxCardsAdded && cardsAdded >= maxCardsAdded) {
-            limitReached = true;
-            this.logger.warn(
-              `${store.name}: Card limit reached (${cardsAdded}/${maxCardsAdded}). Stopping.`,
-            );
-            break;
-          }
-
-          // 4. Report progress every 100 products
-          if (productsAttempted % 100 === 0) {
-            this.logger.warn(
-              `${store.name}: ${productsAttempted} products attempted, ${productsProcessed} processed, ${cardsAdded} cards added, ${errors} errors`,
+          if (productsProcessed % 500 === 0) {
+            this.logger.log(
+              `${store.name} prefix "${prefix}": ${productsProcessed} products, ${cardsAdded} cards, ${errors} errors`,
             );
           }
         } catch (error) {
           errors++;
           this.logger.error(
-            `Error processing ${product.handle} at ${store.name}: ${error}`,
+            `Error processing ${product.handle} at ${store.name} (prefix "${prefix}"): ${error}`,
           );
         }
       }
+
+      return {
+        storeId,
+        prefix,
+        productsProcessed,
+        cardsAdded,
+        errors,
+        wasSplit: false,
+        success: true,
+      };
     } catch (error) {
-      this.logger.error(
-        `Collection extraction failed for ${store.name}: ${error}`,
-      );
+      // Check if this is the 25K pagination limit
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('Platform limit') || msg.includes('pagination')) {
+        return this.handlePaginationLimitSplit(
+          store,
+          prefix,
+          scope,
+          depth,
+          discoveryRunId,
+          maxCardsAdded,
+          productsProcessed,
+          cardsAdded,
+          errors,
+        );
+      }
+
+      // Unknown error — rethrow
       throw error;
     }
+  }
 
-    if (productsAttempted > 0 && productsProcessed === 0 && errors > 0) {
-      throw new Error(
-        `Storefront extraction failed for ${store.name}: all ${productsAttempted} attempted products failed`,
+  // ---------------------------------------------------------------------------
+  // Handle 25K pagination limit by splitting into sub-prefix jobs
+  // ---------------------------------------------------------------------------
+
+  private async handlePaginationLimitSplit(
+    store: Store,
+    prefix: string,
+    scope: string,
+    depth: number,
+    discoveryRunId: number | undefined,
+    maxCardsAdded: number | undefined,
+    productsProcessed: number,
+    cardsAdded: number,
+    errors: number,
+  ): Promise<StorefrontPrefixJobResult> {
+    if (depth >= MAX_SPLIT_DEPTH) {
+      this.logger.warn(
+        `${store.name}: prefix "${prefix}" hit 25K limit at max depth ${depth} — cannot split further`,
       );
+      return {
+        storeId: store.id,
+        prefix,
+        productsProcessed,
+        cardsAdded,
+        errors,
+        wasSplit: false,
+        success: true,
+        error: `Hit 25K pagination limit at max depth ${depth}`,
+      };
     }
 
-    const errorRate = productsAttempted > 0 ? errors / productsAttempted : 0;
-    if (
-      errors >= this.MIN_ERRORS_FOR_RATE_FAILURE &&
-      errorRate > this.ERROR_RATE_THRESHOLD
-    ) {
-      throw new Error(
-        `Storefront extraction failed for ${store.name}: ${errors}/${productsAttempted} products failed (${Math.round(errorRate * 100)}% error rate)`,
+    const nextDepth = depth + 1;
+
+    // Query distinct sub-prefixes from card_names at the next depth level
+    const subRows: { prefix: string }[] = await this.cardNameRepository.query(
+      `SELECT DISTINCT LOWER(LEFT(name, $1)) AS prefix
+       FROM card_names
+       WHERE LOWER(name) LIKE $2 || '%'
+       ORDER BY prefix`,
+      [nextDepth, prefix],
+    );
+
+    const subPrefixes = subRows.map((r) => r.prefix).filter(Boolean);
+
+    if (subPrefixes.length === 0) {
+      this.logger.warn(
+        `${store.name}: prefix "${prefix}" hit 25K limit but no sub-prefixes found`,
       );
+      return {
+        storeId: store.id,
+        prefix,
+        productsProcessed,
+        cardsAdded,
+        errors,
+        wasSplit: false,
+        success: true,
+      };
     }
+
+    const jobs = subPrefixes.map((subPrefix) => ({
+      name: JOB_NAMES.STOREFRONT_PREFIX,
+      data: {
+        storeId: store.id,
+        prefix: subPrefix,
+        scope,
+        depth: nextDepth,
+        discoveryRunId,
+        maxCardsAdded,
+      } as StorefrontPrefixJobData,
+    }));
+
+    await this.storefrontQueue.addBulk(jobs);
 
     this.logger.warn(
-      `Completed Storefront extraction for ${store.name}: ` +
-        `${productsProcessed} processed, ${variantsExtracted} variants, ${cardsAdded} cards, ${errors} errors` +
-        (limitReached ? ` (limit ${maxCardsAdded} reached)` : ''),
+      `${store.name}: prefix "${prefix}" hit 25K limit, splitting into ${subPrefixes.length} sub-prefixes at depth ${nextDepth}`,
     );
 
     return {
-      storeId,
-      collectionHandle,
-      productsAttempted,
+      storeId: store.id,
+      prefix,
       productsProcessed,
-      productsSkipped: 0,
-      errors,
-      variantsExtracted,
       cardsAdded,
-      maxCardsAdded,
-      limitReached,
+      errors,
+      wasSplit: true,
       success: true,
     };
   }
 
-  private async getCollection(store: Store): Promise<MtgSinglesCollection | null> {
+  // ---------------------------------------------------------------------------
+  // Build the Storefront API query string for a prefix
+  // ---------------------------------------------------------------------------
+
+  private async buildQuery(prefix: string, scope: string): Promise<string> {
+    if (prefix === NON_ALPHA_PREFIX) {
+      // Fetch all card names starting with non-alpha characters
+      const rows: { name: string }[] = await this.cardNameRepository.query(
+        `SELECT name FROM card_names
+         WHERE name IS NOT NULL AND name != ''
+           AND LEFT(name, 1) !~ '[a-zA-Z]'
+         ORDER BY name`,
+      );
+
+      if (rows.length === 0) {
+        return scope;
+      }
+
+      // Build OR-joined exact title queries
+      const titleClauses = rows
+        .map((r) => `title:"${r.name}"`)
+        .join(' OR ');
+      return `${scope} ${titleClauses}`;
+    }
+
+    return `${scope} title:${prefix}*`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers (retained from previous processor)
+  // ---------------------------------------------------------------------------
+
+  private async getCollection(
+    store: Store,
+  ): Promise<MtgSinglesCollection | null> {
     if (!store.discoveryConfig?.mtgSinglesCollectionId) {
       return null;
     }
@@ -195,11 +374,9 @@ export class StorefrontProcessor {
     });
 
     if (productUrl) {
-      // Update sitemapLastmod with the Storefront API's updatedAt
       productUrl.sitemapLastmod = updatedAt;
       await this.productUrlRepository.save(productUrl);
     } else {
-      // Create new product_url
       productUrl = this.productUrlRepository.create({
         storeId,
         handle,
@@ -211,13 +388,5 @@ export class StorefrontProcessor {
     }
 
     return productUrl;
-  }
-
-  private isCurrentExtraction(productUrl: ProductUrl, storefrontUpdatedAt: Date): boolean {
-    if (!productUrl.lastExtractedAt) return false;
-    if (productUrl.extractionStatus === 'error') return false;
-    if (Number.isNaN(storefrontUpdatedAt.getTime())) return false;
-
-    return productUrl.lastExtractedAt >= storefrontUpdatedAt;
   }
 }
