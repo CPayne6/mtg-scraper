@@ -35,14 +35,9 @@ export class StorefrontClient {
   ): Promise<T> {
     const url = this.getEndpointUrl(store);
 
-    // Acquire rate-limited proxy slot (same pattern as ShopifyExtractionAdapter)
-    const ipCount = this.proxyService.getIpCount();
-    const { proxyNumber } = await this.rateLimiter.acquireWithRotation(
-      store.name,
-      store.rateLimitPerSecond,
-      () => this.cacheService.getNextProxyNumber(store.name, ipCount),
-    );
-    const proxyAgent = this.proxyService.getProxyAgentForNumber(proxyNumber);
+    // Storefront API does not use proxies - per-store complexity throttling
+    // means proxy rotation doesn't increase throughput. Direct requests only.
+    const proxyNumber = 0;
 
     // Build headers
     const headers: Record<string, string> = {
@@ -64,12 +59,12 @@ export class StorefrontClient {
       }
     }
 
-    // Execute request
+    // Execute request (no proxy - direct to Shopify)
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ query: gql, variables }),
-      dispatcher: dispatcher ?? (proxyAgent as Dispatcher | undefined),
+      ...(dispatcher ? { dispatcher } : {}),
       signal: AbortSignal.timeout(15000),
     });
 

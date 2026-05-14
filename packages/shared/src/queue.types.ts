@@ -81,6 +81,8 @@ export interface StorefrontExtractionJobData {
   priority?: number;
   /** ID of the discovery_runs row tracking this run. */
   discoveryRunId?: number;
+  /** Stop after this many cards have been upserted. */
+  maxCardsAdded?: number;
 }
 
 /**
@@ -94,6 +96,9 @@ export interface StorefrontExtractionJobResult {
   productsSkipped: number;
   errors: number;
   variantsExtracted: number;
+  cardsAdded?: number;
+  maxCardsAdded?: number;
+  limitReached: boolean;
   success: boolean;
   error?: string;
 }

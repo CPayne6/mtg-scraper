@@ -33,13 +33,15 @@ export class StorefrontProcessor {
     private readonly collectionRepository: Repository<MtgSinglesCollection>,
     private readonly platformAdapterFactory: PlatformAdapterFactory,
     private readonly extractionService: ExtractionService,
-  ) {}
+  ) {
+    this.logger.log('StorefrontProcessor instantiated');
+  }
 
   @Process({ name: JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION, concurrency: 1 })
   async process(
     job: Job<StorefrontExtractionJobData>,
   ): Promise<StorefrontExtractionJobResult> {
-    const { storeId, discoveryRunId } = job.data;
+    const { storeId, discoveryRunId, maxCardsAdded } = job.data;
 
     const store = await this.storeRepository.findOne({
       where: { id: storeId },
@@ -48,8 +50,9 @@ export class StorefrontProcessor {
       throw new Error(`Store ${storeId} not found`);
     }
 
-    this.logger.log(
-      `Starting Storefront collection extraction for ${store.name}`,
+    this.logger.warn(
+      `Starting Storefront collection extraction for ${store.name}` +
+        (maxCardsAdded ? ` (limit: ${maxCardsAdded} cards)` : ''),
     );
 
     const collection = await this.getCollection(store);
@@ -67,9 +70,10 @@ export class StorefrontProcessor {
 
     let productsAttempted = 0;
     let productsProcessed = 0;
-    let productsSkipped = 0;
     let variantsExtracted = 0;
+    let cardsAdded = 0;
     let errors = 0;
+    let limitReached = false;
 
     try {
       for await (const product of adapter.extractCollection(
@@ -87,13 +91,7 @@ export class StorefrontProcessor {
             product.updatedAt,
           );
 
-          // 2. Skip only if the stored extraction is newer than Shopify's updatedAt.
-          if (this.isCurrentExtraction(productUrl, product.updatedAt)) {
-            productsSkipped++;
-            continue;
-          }
-
-          // 3. Process variants inline
+          // 2. Process variants inline
           const result = await this.extractionService.processExtractedVariants(
             productUrl.id,
             store.id,
@@ -104,22 +102,25 @@ export class StorefrontProcessor {
 
           if (result.success) {
             variantsExtracted += result.variantsExtracted;
+            cardsAdded += result.cardsUpserted ?? 0;
             productsProcessed++;
           } else {
             errors++;
           }
 
-          // 4. Report progress periodically
+          // 3. Check card limit
+          if (maxCardsAdded && cardsAdded >= maxCardsAdded) {
+            limitReached = true;
+            this.logger.warn(
+              `${store.name}: Card limit reached (${cardsAdded}/${maxCardsAdded}). Stopping.`,
+            );
+            break;
+          }
+
+          // 4. Report progress every 100 products
           if (productsAttempted % 100 === 0) {
-            await job.updateProgress({
-              productsAttempted,
-              productsProcessed,
-              productsSkipped,
-              errors,
-              variantsExtracted,
-            });
-            this.logger.log(
-              `${store.name}: Attempted ${productsAttempted} products, processed ${productsProcessed}, skipped ${productsSkipped}, errors ${errors}`,
+            this.logger.warn(
+              `${store.name}: ${productsAttempted} products attempted, ${productsProcessed} processed, ${cardsAdded} cards added, ${errors} errors`,
             );
           }
         } catch (error) {
@@ -127,11 +128,9 @@ export class StorefrontProcessor {
           this.logger.error(
             `Error processing ${product.handle} at ${store.name}: ${error}`,
           );
-          // Continue with next product rather than failing the entire job
         }
       }
     } catch (error) {
-      // Collection-level error (e.g., API down, collection not found after first page)
       this.logger.error(
         `Collection extraction failed for ${store.name}: ${error}`,
       );
@@ -150,13 +149,14 @@ export class StorefrontProcessor {
       errorRate > this.ERROR_RATE_THRESHOLD
     ) {
       throw new Error(
-        `Storefront extraction failed for ${store.name}: ${errors}/${productsAttempted} products failed`,
+        `Storefront extraction failed for ${store.name}: ${errors}/${productsAttempted} products failed (${Math.round(errorRate * 100)}% error rate)`,
       );
     }
 
-    this.logger.log(
+    this.logger.warn(
       `Completed Storefront extraction for ${store.name}: ` +
-        `${productsProcessed} processed, ${productsSkipped} skipped, ${variantsExtracted} variants, ${errors} errors`,
+        `${productsProcessed} processed, ${variantsExtracted} variants, ${cardsAdded} cards, ${errors} errors` +
+        (limitReached ? ` (limit ${maxCardsAdded} reached)` : ''),
     );
 
     return {
@@ -164,9 +164,12 @@ export class StorefrontProcessor {
       collectionHandle,
       productsAttempted,
       productsProcessed,
-      productsSkipped,
+      productsSkipped: 0,
       errors,
       variantsExtracted,
+      cardsAdded,
+      maxCardsAdded,
+      limitReached,
       success: true,
     };
   }
