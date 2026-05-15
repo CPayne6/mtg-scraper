@@ -6,9 +6,7 @@ import {
   Store,
   ProductUrl,
   MtgSinglesCollection,
-  CardName,
   PlatformModule,
-  CacheModule,
   QueueModule,
 } from '@scoutlgs/core';
 import { ExtractionModule } from '../extraction/extraction.module';
@@ -16,12 +14,11 @@ import { StorefrontProcessor } from './storefront.processor';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store, ProductUrl, MtgSinglesCollection, CardName]),
+    TypeOrmModule.forFeature([Store, ProductUrl, MtgSinglesCollection]),
     QueueModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.STOREFRONT_EXTRACTION }),
     PlatformModule,
     ExtractionModule,
-    CacheModule,
   ],
   providers: [StorefrontProcessor],
 })

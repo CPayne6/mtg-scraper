@@ -12,8 +12,6 @@ export const JOB_NAMES = {
   DISCOVER_STORE: 'discover-store',
   EXTRACT_PRODUCT: 'extract-product',
   EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
-  STOREFRONT_PLAN: 'storefront-plan',
-  STOREFRONT_PREFIX: 'storefront-prefix',
 } as const;
 
 /**

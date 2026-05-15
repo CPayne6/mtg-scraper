@@ -133,34 +133,40 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   }
 
   /**
-   * Paginate through products matching a query string via the root `products` endpoint.
-   * Yields one product at a time with its extracted variants.
+   * Paginate through all products matching a scope using ID-based stepping.
    *
-   * Throws the raw GraphQL error if the 25K pagination limit is hit,
-   * allowing the caller (processor) to catch it and split into sub-prefixes.
+   * Uses `products(query: "scope id:>lastId", sortKey: ID)` to step through
+   * the entire catalog. Each request starts fresh from the last seen ID,
+   * so there's no cursor accumulation and no 25K pagination limit.
+   *
+   * Products are yielded in ascending ID order with zero duplicates.
    *
    * @param store - Store to extract from
-   * @param query - Full products query string (e.g. 'product_type:"MTG Single" title:a*')
+   * @param scope - Query scope (e.g. 'product_type:"MTG Single"')
    */
-  async *extractByProductsQuery(
+  async *extractByIdPagination(
     store: Store,
-    query: string,
+    scope: string,
   ): AsyncGenerator<{
     handle: string;
     updatedAt: Date;
     variants: ExtractedCardVariant[];
   }> {
-    let cursor: string | undefined;
+    let lastId: string | undefined;
     let totalYielded = 0;
+    let pageNumber = 0;
 
     while (true) {
+      pageNumber++;
+      const query = lastId ? `${scope} id:>${lastId}` : scope;
+
       const data = await this.storefrontClient.query<ProductsQueryData>(
         store,
         PRODUCTS_QUERY,
-        { query, first: 250, after: cursor ?? null },
+        { query, first: 250 },
       );
 
-      const { edges, pageInfo } = data.products;
+      const { edges } = data.products;
       if (edges.length === 0) break;
 
       for (const { node: product } of edges) {
@@ -174,12 +180,21 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
         };
       }
 
-      if (!pageInfo.hasNextPage) break;
-      cursor = pageInfo.endCursor;
+      // Use the last product's numeric ID for the next page
+      const lastProduct = edges[edges.length - 1].node;
+      lastId = lastProduct.id.split('/').pop()!;
+
+      if (edges.length < 250) break;
+
+      if (pageNumber % 20 === 0) {
+        this.logger.warn(
+          `${store.name}: page ${pageNumber}, ${totalYielded} products extracted (lastId: ${lastId})`,
+        );
+      }
     }
 
-    this.logger.log(
-      `${store.name} query "${query.substring(0, 60)}...": ${totalYielded} products extracted`,
+    this.logger.warn(
+      `${store.name}: finished ID-based extraction — ${totalYielded} products in ${pageNumber} pages`,
     );
   }
 
