@@ -15,6 +15,7 @@ import {
   ProductUrl,
   MtgSinglesCollection,
   CardName,
+  CacheService,
   PlatformAdapterFactory,
 } from '@scoutlgs/core';
 import type { StorefrontExtractionAdapter } from '@scoutlgs/core';
@@ -27,10 +28,6 @@ const MAX_SPLIT_DEPTH = 3;
 export class StorefrontProcessor {
   private readonly logger = new Logger(StorefrontProcessor.name);
 
-  /** Cached prefix list from card_names — computed once, reused across plan jobs */
-  private cachedPrefixes: { alpha: string[]; hasNonAlpha: boolean } | null =
-    null;
-
   constructor(
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
@@ -42,6 +39,7 @@ export class StorefrontProcessor {
     private readonly cardNameRepository: Repository<CardName>,
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
     private readonly storefrontQueue: Queue,
+    private readonly cacheService: CacheService,
     private readonly platformAdapterFactory: PlatformAdapterFactory,
     private readonly extractionService: ExtractionService,
   ) {
@@ -49,16 +47,18 @@ export class StorefrontProcessor {
   }
 
   /**
-   * Get the prefix list from card_names, computing and caching on first call.
-   * The card_names table changes at most once per day (Scryfall sync),
-   * so caching for the lifetime of the process is fine.
+   * Get the prefix list from card_names, backed by Redis cache (24h TTL).
+   * Falls back to DB query if cache is empty, then stores the result.
    */
   private async getPrefixes(): Promise<{
     alpha: string[];
     hasNonAlpha: boolean;
   }> {
-    if (this.cachedPrefixes) return this.cachedPrefixes;
+    // Try Redis cache first
+    const cached = await this.cacheService.getStorefrontPrefixes();
+    if (cached) return cached;
 
+    // Compute from DB
     const rows: { prefix: string }[] = await this.cardNameRepository.query(
       `SELECT DISTINCT LOWER(LEFT(name, 1)) AS prefix
        FROM card_names
@@ -76,11 +76,15 @@ export class StorefrontProcessor {
       }
     }
 
-    this.cachedPrefixes = { alpha, hasNonAlpha };
+    const result = { alpha, hasNonAlpha };
+
+    // Store in Redis (24h TTL)
+    await this.cacheService.setStorefrontPrefixes(result);
     this.logger.log(
-      `Prefix cache built: ${alpha.length} alpha prefixes, hasNonAlpha=${hasNonAlpha}`,
+      `Prefix cache built and stored in Redis: ${alpha.length} alpha prefixes, hasNonAlpha=${hasNonAlpha}`,
     );
-    return this.cachedPrefixes;
+
+    return result;
   }
 
   // ---------------------------------------------------------------------------
