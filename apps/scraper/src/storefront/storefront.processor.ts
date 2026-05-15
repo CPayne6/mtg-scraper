@@ -27,6 +27,10 @@ const MAX_SPLIT_DEPTH = 3;
 export class StorefrontProcessor {
   private readonly logger = new Logger(StorefrontProcessor.name);
 
+  /** Cached prefix list from card_names — computed once, reused across plan jobs */
+  private cachedPrefixes: { alpha: string[]; hasNonAlpha: boolean } | null =
+    null;
+
   constructor(
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
@@ -44,8 +48,43 @@ export class StorefrontProcessor {
     this.logger.log('StorefrontProcessor instantiated');
   }
 
+  /**
+   * Get the prefix list from card_names, computing and caching on first call.
+   * The card_names table changes at most once per day (Scryfall sync),
+   * so caching for the lifetime of the process is fine.
+   */
+  private async getPrefixes(): Promise<{
+    alpha: string[];
+    hasNonAlpha: boolean;
+  }> {
+    if (this.cachedPrefixes) return this.cachedPrefixes;
+
+    const rows: { prefix: string }[] = await this.cardNameRepository.query(
+      `SELECT DISTINCT LOWER(LEFT(name, 1)) AS prefix
+       FROM card_names
+       WHERE name IS NOT NULL AND name != ''
+       ORDER BY prefix`,
+    );
+
+    const alpha: string[] = [];
+    let hasNonAlpha = false;
+    for (const { prefix } of rows) {
+      if (/^[a-z]$/.test(prefix)) {
+        alpha.push(prefix);
+      } else {
+        hasNonAlpha = true;
+      }
+    }
+
+    this.cachedPrefixes = { alpha, hasNonAlpha };
+    this.logger.log(
+      `Prefix cache built: ${alpha.length} alpha prefixes, hasNonAlpha=${hasNonAlpha}`,
+    );
+    return this.cachedPrefixes;
+  }
+
   // ---------------------------------------------------------------------------
-  // Phase 1: Plan — query prefixes, enqueue one job per prefix
+  // Phase 1: Plan — read cached prefixes, enqueue one job per prefix per store
   // ---------------------------------------------------------------------------
 
   @Process({ name: JOB_NAMES.STOREFRONT_PLAN, concurrency: 1 })
@@ -70,33 +109,24 @@ export class StorefrontProcessor {
       `Planning storefront extraction for ${store.name} (scope: "${scope}")`,
     );
 
-    // Get distinct first-character prefixes from card_names
-    const rows: { prefix: string }[] = await this.cardNameRepository.query(
-      `SELECT DISTINCT LOWER(LEFT(name, 1)) AS prefix
-       FROM card_names
-       WHERE name IS NOT NULL AND name != ''
-       ORDER BY prefix`,
-    );
-
-    const alphaPrefixes: string[] = [];
-    const nonAlphaPrefixes: string[] = [];
-    for (const { prefix } of rows) {
-      if (/^[a-z]$/.test(prefix)) {
-        alphaPrefixes.push(prefix);
-      } else {
-        nonAlphaPrefixes.push(prefix);
-      }
-    }
+    const { alpha: alphaPrefixes, hasNonAlpha } = await this.getPrefixes();
 
     // Enqueue one STOREFRONT_PREFIX job per alpha prefix
     const jobs: { name: string; data: StorefrontPrefixJobData }[] =
       alphaPrefixes.map((prefix) => ({
         name: JOB_NAMES.STOREFRONT_PREFIX,
-        data: { storeId, prefix, scope, depth: 1, discoveryRunId, maxCardsAdded },
+        data: {
+          storeId,
+          prefix,
+          scope,
+          depth: 1,
+          discoveryRunId,
+          maxCardsAdded,
+        },
       }));
 
-    // Enqueue a single job for all non-alpha card names (numbers, special chars, accented)
-    if (nonAlphaPrefixes.length > 0) {
+    // Enqueue a single job for all non-alpha card names
+    if (hasNonAlpha) {
       jobs.push({
         name: JOB_NAMES.STOREFRONT_PREFIX,
         data: {
@@ -116,9 +146,7 @@ export class StorefrontProcessor {
 
     this.logger.warn(
       `${store.name}: enqueued ${alphaPrefixes.length} alpha prefix jobs` +
-        (nonAlphaPrefixes.length > 0
-          ? ` + 1 non-alpha job (${nonAlphaPrefixes.length} prefixes)`
-          : ''),
+        (hasNonAlpha ? ' + 1 non-alpha job' : ''),
     );
   }
 
