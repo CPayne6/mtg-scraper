@@ -74,31 +74,31 @@ export interface ExtractProductJobResult {
 }
 
 /**
- * Job data for extracting products from a Shopify Storefront API collection
+ * Job data for extracting one page of products from Shopify Storefront API.
+ * Each job fetches 250 products, processes them, then enqueues the next page.
+ * With concurrency 3, pages from all stores interleave naturally.
  */
 export interface StorefrontExtractionJobData {
   storeId: number;
+  /** Shopify product ID to start from (id:>lastId). Null for first page. */
+  lastId?: string | null;
+  /** Scope query for this store (e.g. 'product_type:"MTG Single"') */
+  scope?: string;
   priority?: number;
-  /** ID of the discovery_runs row tracking this run. */
   discoveryRunId?: number;
-  /** Stop after this many cards have been upserted. */
   maxCardsAdded?: number;
 }
 
 /**
- * Result from extracting products via Shopify Storefront API
+ * Result from extracting one page of products
  */
 export interface StorefrontExtractionJobResult {
   storeId: number;
-  collectionHandle: string;
-  productsAttempted: number;
   productsProcessed: number;
-  productsSkipped: number;
+  cardsAdded: number;
   errors: number;
-  variantsExtracted: number;
-  cardsAdded?: number;
-  maxCardsAdded?: number;
-  limitReached: boolean;
+  /** True if this was the last page (< 250 products returned) */
+  isLastPage: boolean;
   success: boolean;
   error?: string;
 }
