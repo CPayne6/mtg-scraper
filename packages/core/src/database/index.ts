@@ -20,6 +20,9 @@ export { TokenPrinting } from './token-printing.entity';
 export { TokenListing } from './token-listing.entity';
 export { TokenVariant } from './token-variant.entity';
 
+export { ShopifyProduct } from './shopify-product.entity';
+export type { ShopifyProductMatchStatus } from './shopify-product.entity';
+
 export { DiscoveryRun } from './discovery-run.entity';
 export type { DiscoveryRunStatus, DiscoveryRunTrigger } from './discovery-run.entity';
 

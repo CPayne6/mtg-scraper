@@ -148,6 +148,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     scope: string,
   ): AsyncGenerator<{
+    shopifyProductId: string;
     handle: string;
     updatedAt: Date;
     variants: ExtractedCardVariant[];
@@ -174,6 +175,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
         totalYielded++;
 
         yield {
+          shopifyProductId: product.id.split('/').pop()!,
           handle: product.handle,
           updatedAt: new Date(product.updatedAt),
           variants,
