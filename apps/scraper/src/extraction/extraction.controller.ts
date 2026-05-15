@@ -1,9 +1,23 @@
-import { Controller, Put, Get, Query, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Put,
+  Get,
+  Body,
+  Query,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { Queue } from 'bullmq';
+import { QUEUE_NAMES, JOB_NAMES } from '@scoutlgs/shared';
+import type { StorefrontExtractionJobData } from '@scoutlgs/shared';
 import { Store, UnmatchedCard } from '@scoutlgs/core';
 import { PrintingMatcherService } from './printing-matcher.service';
 import { BatchAccumulatorService } from './batch-accumulator.service';
+import { TriggerExtractionDto, RetryUnmatchedDto } from './dto/trigger-extraction.dto';
 import type { ListingRow, VariantRow } from './listing-upsert.service';
 
 @Controller('extraction')
@@ -15,40 +29,140 @@ export class ExtractionController {
     private readonly storeRepository: Repository<Store>,
     @InjectRepository(UnmatchedCard)
     private readonly unmatchedCardRepository: Repository<UnmatchedCard>,
+    @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
+    private readonly storefrontQueue: Queue,
     private readonly dataSource: DataSource,
     private readonly printingMatcher: PrintingMatcherService,
     private readonly batchAccumulator: BatchAccumulatorService,
   ) {}
 
   /**
+   * Trigger extraction for a store.
+   * Routes to the appropriate extraction strategy based on the store's platform type.
+   */
+  @Put('trigger')
+  async triggerExtraction(@Body() dto: TriggerExtractionDto) {
+    const store = await this.storeRepository.findOne({
+      where: { id: dto.storeId },
+    });
+    if (!store) {
+      throw new NotFoundException(`Store ${dto.storeId} not found`);
+    }
+
+    switch (store.platformType) {
+      case 'shopify_storefront': {
+        const scope = store.scraperConfig?.storefrontScope;
+        if (!scope) {
+          throw new BadRequestException(
+            `Store ${store.name} is missing scraperConfig.storefrontScope`,
+          );
+        }
+
+        const job = await this.storefrontQueue.add(
+          JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
+          {
+            storeId: store.id,
+            scope,
+            maxCardsAdded: dto.maxCardsAdded,
+          } as StorefrontExtractionJobData,
+          { removeOnComplete: 100, removeOnFail: 500 },
+        );
+
+        this.logger.warn(
+          `Triggered storefront extraction for ${store.name} (job ${job.id})`,
+        );
+
+        return {
+          message: `Extraction triggered for ${store.name}`,
+          jobId: job.id,
+          platformType: store.platformType,
+          scope,
+        };
+      }
+
+      // Future: case 'shopify': { ... old pipeline ... }
+      // Future: case 'conduct_commerce': { ... }
+
+      default:
+        throw new BadRequestException(
+          `Extraction not supported for platform type: ${store.platformType}`,
+        );
+    }
+  }
+
+  /**
+   * Trigger extraction for all stores that support it.
+   */
+  @Put('trigger-all')
+  async triggerAllExtractions(
+    @Body() dto: Omit<TriggerExtractionDto, 'storeId'>,
+  ) {
+    const stores = await this.storeRepository.find({
+      where: { isActive: true },
+    });
+
+    const results: { store: string; jobId?: string; error?: string }[] = [];
+
+    for (const store of stores) {
+      try {
+        if (store.platformType === 'shopify_storefront') {
+          const scope = store.scraperConfig?.storefrontScope;
+          if (!scope) {
+            results.push({ store: store.name, error: 'Missing storefrontScope' });
+            continue;
+          }
+
+          const job = await this.storefrontQueue.add(
+            JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
+            {
+              storeId: store.id,
+              scope,
+            } as StorefrontExtractionJobData,
+            { removeOnComplete: 100, removeOnFail: 500 },
+          );
+          results.push({ store: store.name, jobId: String(job.id) });
+        } else {
+          results.push({
+            store: store.name,
+            error: `Unsupported platform: ${store.platformType}`,
+          });
+        }
+      } catch (error) {
+        results.push({
+          store: store.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.logger.warn(
+      `Triggered extraction for ${results.filter((r) => r.jobId).length}/${stores.length} stores`,
+    );
+
+    return {
+      triggered: results.filter((r) => r.jobId).length,
+      total: stores.length,
+      results,
+    };
+  }
+
+  /**
    * Retry matching on unmatched cards.
-   * Re-runs the printing matcher on cards that previously failed to match.
-   * Cards that now match are moved to card_listings and removed from unmatched_cards.
-   *
-   * Platform-agnostic: works for any extraction strategy (Shopify, ConductCommerce, etc.)
-   *
-   * Query params:
-   *   storeId - optional, retry only for a specific store
-   *   limit   - max products to retry (default 1000)
+   * Platform-agnostic: works for any extraction strategy.
    */
   @Put('retry-unmatched')
-  async retryUnmatched(
-    @Query('storeId') storeIdParam?: string,
-    @Query('limit') limitParam?: string,
-  ) {
-    const storeId = storeIdParam ? parseInt(storeIdParam, 10) : undefined;
-    const limit = parseInt(limitParam ?? '1000', 10);
+  async retryUnmatched(@Body() dto: RetryUnmatchedDto) {
+    const limit = dto.limit ?? 1000;
 
     this.logger.warn(
       `Retrying unmatched cards` +
-        (storeId ? ` for store ${storeId}` : ' for all stores') +
+        (dto.storeId ? ` for store ${dto.storeId}` : ' for all stores') +
         ` (limit: ${limit})`,
     );
 
-    // Fetch one representative unmatched row per product
     const params: unknown[] = [limit];
-    const storeFilter = storeId ? 'AND uc.store_id = $2' : '';
-    if (storeId) params.push(storeId);
+    const storeFilter = dto.storeId ? 'AND uc.store_id = $2' : '';
+    if (dto.storeId) params.push(dto.storeId);
 
     const unmatchedProducts: {
       product_url_id: number;
@@ -100,7 +214,12 @@ export class ExtractionController {
       }
     }
 
-    const result = { attempted: unmatchedProducts.length, matched, stillUnmatched, errors };
+    const result = {
+      attempted: unmatchedProducts.length,
+      matched,
+      stillUnmatched,
+      errors,
+    };
     this.logger.warn(`Retry complete: ${JSON.stringify(result)}`);
     return result;
   }
@@ -125,11 +244,30 @@ export class ExtractionController {
     `);
   }
 
+  /**
+   * Get extraction progress for active stores.
+   */
+  @Get('status')
+  async extractionStatus() {
+    return this.dataSource.query(`
+      SELECT s.name, s.platform_type,
+        (SELECT COUNT(*) FROM product_urls pu WHERE pu.store_id = s.id) as product_urls,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id) as shopify_products,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id AND sp.match_status = 'matched') as matched,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id AND sp.match_status = 'unmatched') as unmatched,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id AND sp.match_status = 'token') as tokens,
+        (SELECT COUNT(*) FROM card_listings cl WHERE cl.store_id = s.id) as listings,
+        (SELECT COUNT(*) FROM unmatched_cards uc WHERE uc.store_id = s.id) as unmatched_cards
+      FROM stores s
+      WHERE s.is_active = true
+      ORDER BY s.id
+    `);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
   // ---------------------------------------------------------------------------
 
-  /**
-   * Move a previously unmatched product to card_listings.
-   */
   private async promoteToListing(
     product: {
       product_url_id: number;
@@ -141,7 +279,6 @@ export class ExtractionController {
       cardPrintingId: number | null;
     },
   ): Promise<void> {
-    // Get all unmatched variants for this product
     const variants: {
       condition: string;
       foil: boolean;
@@ -195,13 +332,11 @@ export class ExtractionController {
       }]);
     }
 
-    // Remove from unmatched_cards
     await this.dataSource.query(
       `DELETE FROM unmatched_cards WHERE product_url_id = $1 AND store_id = $2`,
       [product.product_url_id, product.store_id],
     );
 
-    // Update shopify_products cache if it exists
     await this.dataSource.query(
       `UPDATE shopify_products SET match_status = 'matched', updated_at = NOW()
        WHERE product_url_id = $1`,

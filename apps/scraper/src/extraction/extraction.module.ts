@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
+import { QUEUE_NAMES } from '@scoutlgs/shared';
 import {
   QueueModule,
   PlatformModule,
@@ -28,6 +30,7 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
   imports: [
     TypeOrmModule.forFeature([Store, ProductUrl, ScryfallSet, CardPrinting, UnmatchedCard, CardCondition, TokenName, TokenPrinting]),
     QueueModule,
+    BullModule.registerQueue({ name: QUEUE_NAMES.STOREFRONT_EXTRACTION }),
     PlatformModule,
     CacheModule,
   ],
