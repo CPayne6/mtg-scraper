@@ -15,6 +15,7 @@ import {
 } from '@scoutlgs/core';
 import { ExtractionService } from './extraction.service';
 import { ExtractionProcessor } from './extraction.processor';
+import { ExtractionController } from './extraction.controller';
 import { PrintingMatcherService } from './printing-matcher.service';
 import { BatchAccumulatorService } from './batch-accumulator.service';
 import { ListingUpsertService } from './listing-upsert.service';
@@ -30,6 +31,7 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
     PlatformModule,
     CacheModule,
   ],
+  controllers: [ExtractionController],
   providers: [
     ExtractionService,
     ExtractionProcessor,
