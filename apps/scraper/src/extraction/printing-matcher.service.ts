@@ -289,4 +289,35 @@ export class PrintingMatcherService {
     stripped = stripped.replace(/\s+-\s+(?:promo pack|french|german|italian|chinese|japanese|limited edition.*|unlimited.*|artist signed.*)$/i, '').trim();
     return stripped;
   }
+
+  /**
+   * Pre-warm the name and set caches by loading all card_names and sets.
+   * This avoids per-product DB queries for the first encounter of each name.
+   */
+  async warmCaches(): Promise<void> {
+    this.logger.log('Warming printing matcher caches...');
+
+    // Load all card names into the name cache
+    const names: { id: number; normalized_name: string }[] =
+      await this.dataSource.query(
+        `SELECT id, normalized_name FROM card_names`,
+      );
+    for (const row of names) {
+      this.nameCache.set(row.normalized_name, {
+        cardNameId: row.id,
+        confidence: 'exact',
+      });
+    }
+
+    // Load all set names → codes into the set name cache
+    const sets: { name: string; code: string }[] =
+      await this.dataSource.query(`SELECT name, code FROM sets`);
+    for (const row of sets) {
+      this.setNameCache.set(row.name.toLowerCase(), row.code);
+    }
+
+    this.logger.log(
+      `Caches warmed: ${names.length} card names, ${sets.length} sets`,
+    );
+  }
 }
