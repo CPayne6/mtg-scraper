@@ -9,6 +9,8 @@ import type {
 import type { ICardDetailExtractor } from './card-detail-extractor.interface';
 import { DefaultCardDetailExtractor } from './extractors/default-card-detail.extractor';
 import { ProxyService } from '../../../proxy/proxy.service';
+import { CacheService } from '../../../cache/cache.service';
+import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
 
 /**
  * Error thrown during extraction with HTTP context
@@ -80,6 +82,8 @@ export class ShopifyExtractionAdapter implements IExtractionAdapter {
     extractors: Record<string, ICardDetailExtractor>,
     private readonly defaultExtractor: DefaultCardDetailExtractor,
     private readonly proxyService: ProxyService,
+    private readonly cacheService: CacheService,
+    private readonly rateLimiter: RateLimiterService,
   ) {
     this.extractorMap = extractors;
   }
@@ -94,7 +98,14 @@ export class ShopifyExtractionAdapter implements IExtractionAdapter {
     const productUrl = `${store.baseUrl}/products/${handle}.js`;
 
     try {
-      const proxyAgent = await this.proxyService.getRotatingProxyAgent('extraction');
+      // Acquire rate limit permit with IP rotation (per-store proxy counter)
+      const ipCount = this.proxyService.getIpCount();
+      const { proxyNumber } = await this.rateLimiter.acquireWithRotation(
+        store.name,
+        store.rateLimitPerSecond,
+        () => this.cacheService.getNextProxyNumber(store.name, ipCount),
+      );
+      const proxyAgent = this.proxyService.getProxyAgentForNumber(proxyNumber);
 
       const response = await fetch(productUrl, {
         dispatcher: proxyAgent as ProxyAgent | undefined,
@@ -166,6 +177,7 @@ export class ShopifyExtractionAdapter implements IExtractionAdapter {
           platformVariantId: String(variant.id),
           setCode,
           collectorNumber,
+          isToken: skuInfo.isToken,
         });
       }
 

@@ -8,6 +8,15 @@ import type {
   SitemapEntry,
   GetProxyAgentFn,
 } from '../../platform.interfaces';
+import type { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
+import type { CacheService } from '../../../cache/cache.service';
+import type { ProxyService } from '../../../proxy/proxy.service';
+
+interface RateLimitConfig {
+  storeName: string;
+  maxPerSecond: number;
+  ipCount: number;
+}
 
 /**
  * Shopify-specific discovery adapter
@@ -17,12 +26,36 @@ import type {
 export class ShopifyDiscoveryAdapter implements IDiscoveryAdapter {
   private readonly logger = new Logger(ShopifyDiscoveryAdapter.name);
   private getProxyAgent?: GetProxyAgentFn;
+  private rateLimiter?: RateLimiterService;
+  private cacheService?: CacheService;
+  private proxyService?: ProxyService;
+  private rateLimitConfig?: RateLimitConfig;
 
   /**
    * Set the proxy agent factory function
    */
   setProxyAgentFactory(factory: GetProxyAgentFn): void {
     this.getProxyAgent = factory;
+  }
+
+  /**
+   * Set rate limiter and related services for proactive throttling
+   */
+  setRateLimiter(
+    rateLimiter: RateLimiterService,
+    cacheService: CacheService,
+    proxyService: ProxyService,
+  ): void {
+    this.rateLimiter = rateLimiter;
+    this.cacheService = cacheService;
+    this.proxyService = proxyService;
+  }
+
+  /**
+   * Set per-store rate limit configuration
+   */
+  setRateLimitConfig(storeName: string, maxPerSecond: number, ipCount: number): void {
+    this.rateLimitConfig = { storeName, maxPerSecond, ipCount };
   }
 
   /**
@@ -65,6 +98,25 @@ export class ShopifyDiscoveryAdapter implements IDiscoveryAdapter {
   }
 
   /**
+   * Get a rate-limited proxy agent. If rate limiter is configured, acquires a permit
+   * before returning the agent. Falls back to the legacy getProxyAgent factory.
+   */
+  private async getRateLimitedProxyAgent(): Promise<import('undici').ProxyAgent | undefined> {
+    if (this.rateLimiter && this.cacheService && this.proxyService && this.rateLimitConfig) {
+      const { storeName, maxPerSecond, ipCount } = this.rateLimitConfig;
+      const { proxyNumber } = await this.rateLimiter.acquireWithRotation(
+        storeName,
+        maxPerSecond,
+        () => this.cacheService!.getNextProxyNumber(storeName, ipCount),
+      );
+      return this.proxyService.getProxyAgentForNumber(proxyNumber);
+    }
+
+    // Fallback to legacy factory
+    return this.getProxyAgent ? this.getProxyAgent() : undefined;
+  }
+
+  /**
    * Validate if a product belongs to the MTG singles collection via HEAD request
    */
   async validateProduct(
@@ -75,9 +127,7 @@ export class ShopifyDiscoveryAdapter implements IDiscoveryAdapter {
     const collectionUrl = `${store.baseUrl}/collections/${collection.slug}/products/${handle}`;
 
     try {
-      const proxyAgent = this.getProxyAgent
-        ? await this.getProxyAgent()
-        : undefined;
+      const proxyAgent = await this.getRateLimitedProxyAgent();
 
       const response = await fetch(collectionUrl, {
         method: 'HEAD',
@@ -109,9 +159,7 @@ export class ShopifyDiscoveryAdapter implements IDiscoveryAdapter {
     const sitemapUrl = `${baseUrl}/sitemap.xml`;
 
     try {
-      const proxyAgent = this.getProxyAgent
-        ? await this.getProxyAgent()
-        : undefined;
+      const proxyAgent = await this.getRateLimitedProxyAgent();
 
       const response = await fetch(sitemapUrl, {
         dispatcher: proxyAgent as ProxyAgent | undefined,
@@ -163,9 +211,7 @@ export class ShopifyDiscoveryAdapter implements IDiscoveryAdapter {
    */
   private async parseSitemap(sitemapUrl: string): Promise<SitemapEntry[]> {
     try {
-      const proxyAgent = this.getProxyAgent
-        ? await this.getProxyAgent()
-        : undefined;
+      const proxyAgent = await this.getRateLimitedProxyAgent();
 
       const response = await fetch(sitemapUrl, {
         dispatcher: proxyAgent as ProxyAgent | undefined,
