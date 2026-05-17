@@ -1,128 +1,125 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CacheService, CardWithStore, QueueService, StoreService } from '@scoutlgs/core';
-import { CardSearchResponse, StoreInfo, PriceStats } from '@scoutlgs/shared';
-import { randomUUID } from 'crypto';
-
-const MAX_STORE_RETRIES = 2;
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { CacheService, CardWithStore, StoreService, Card, CardName, Store } from '@scoutlgs/core';
+import { CardSearchResponse, StoreInfo, PriceStats, Condition } from '@scoutlgs/shared';
 
 @Injectable()
 export class CardService {
   private readonly logger = new Logger(CardService.name);
 
   constructor(
+    @InjectRepository(Card)
+    private readonly cardRepository: Repository<Card>,
+    @InjectRepository(CardName)
+    private readonly cardNameRepository: Repository<CardName>,
+    @InjectRepository(Store)
+    private readonly storeRepository: Repository<Store>,
     private readonly cacheService: CacheService,
-    private readonly queueService: QueueService,
     private readonly storeService: StoreService,
+    private readonly configService: ConfigService,
   ) {}
 
   async getCardByName(cardName: string): Promise<CardSearchResponse> {
-    const requestId = randomUUID();
+    return this.getCardFromDatabase(cardName);
+  }
 
-    // 1. Get all active stores
+  /**
+   * Database-first approach - query cards table directly.
+   * Results are pre-scraped via storefront extraction pipeline.
+   */
+  private async getCardFromDatabase(cardName: string): Promise<CardSearchResponse> {
+    this.logger.debug(`Querying database for: ${cardName}`);
+
+    // Normalize card name for lookup
+    const normalizedName = this.normalizeCardName(cardName);
+
+    // Find card name record
+    const cardNameRecord = await this.cardNameRepository.findOne({
+      where: { normalizedName },
+    });
+
+    if (!cardNameRecord) {
+      this.logger.debug(`Card name not found: ${cardName}`);
+      return this.buildEmptyResponse(cardName);
+    }
+
+    // Query all listings for this card name, join with store, product_url, variants, printing
+    const listings = await this.cardRepository
+      .createQueryBuilder('listing')
+      .leftJoinAndSelect('listing.store', 'store')
+      .leftJoinAndSelect('listing.productUrl', 'productUrl')
+      .leftJoinAndSelect('listing.variants', 'variant')
+      .leftJoinAndSelect('variant.condition', 'condition')
+      .leftJoinAndSelect('listing.cardPrinting', 'printing')
+      .leftJoinAndSelect('printing.set', 'printingSet')
+      .where('listing.card_name_id = :cardNameId', { cardNameId: cardNameRecord.id })
+      .orderBy('variant.price', 'ASC')
+      .getMany();
+
+    this.logger.log(`Found ${listings.length} listings for: ${cardName}`);
+
+    // Convert to CardWithStore format — one entry per variant
+    const cardResults: CardWithStore[] = [];
+
+    for (const listing of listings) {
+      const setName = listing.cardPrinting?.set?.name ?? '';
+      const collectorNumber = listing.cardPrinting?.collectorNumber ?? '';
+      const scryfallId = listing.cardPrinting?.scryfallId;
+      const title = `${cardNameRecord.name}${setName ? ` [${setName}]` : ''}`;
+      const productLink = listing.productUrl
+        ? `${listing.store.baseUrl}/products/${listing.productUrl.handle}`
+        : listing.store.baseUrl;
+
+      for (const variant of listing.variants ?? []) {
+        cardResults.push({
+          price: Number(variant.price),
+          condition: (variant.condition?.code ?? 'unknown') as Condition,
+          foil: variant.foil,
+          image: listing.imageUrl || '',
+          title,
+          currency: listing.currency,
+          link: productLink,
+          set: setName,
+          card_number: collectorNumber,
+          scryfall_id: scryfallId,
+          store: listing.store.displayName,
+        });
+      }
+    }
+
+    // Get all stores that have results
+    const storesWithCards = new Set(listings.map((l) => l.store.id));
     const allStores = await this.storeService.findAllActive();
-    const storeNames = allStores.map(s => s.name); // Use slug for cache keys
+    const storesInfo = allStores.filter((s) => storesWithCards.has(s.id));
 
-    // 2. Batch check cache for all stores
-    const cachedResults = await this.cacheService.getMultipleStoreCards(cardName, storeNames);
+    return this.buildResponse(cardName, cardResults, [], storesInfo);
+  }
 
-    // 3. Determine which stores need scraping and collect existing results
-    const storesToScrape: string[] = [];
-    const existingResults: CardWithStore[] = [];
-    const storeErrors: Array<{ storeName: string; error: string }> = [];
+  /**
+   * Normalize card name for consistent database lookups.
+   */
+  private normalizeCardName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/['']/g, "'")
+      .replace(/[""]/g, '"');
+  }
 
-    for (const store of allStores) {
-      const cached = cachedResults.get(store.name);
-
-      if (cached) {
-        // Add results from this store
-        existingResults.push(...cached.results);
-
-        // Check if there's an error that needs retrying
-        if (cached.error && (cached.retryCount ?? 0) < MAX_STORE_RETRIES) {
-          storesToScrape.push(store.name);
-          this.logger.debug(`Store ${store.name} has retryable error (retry ${cached.retryCount ?? 0}/${MAX_STORE_RETRIES})`);
-        } else if (cached.error) {
-          // Max retries exceeded - include in storeErrors response
-          storeErrors.push({ storeName: store.displayName, error: cached.error });
-        }
-      } else {
-        // Cache miss - needs scraping
-        storesToScrape.push(store.name);
-      }
-    }
-
-    // 4. If nothing to scrape, return cached results
-    if (storesToScrape.length === 0) {
-      this.logger.debug(`Serving ${cardName} from cache (all ${storeNames.length} stores cached)`);
-      return this.buildResponse(cardName, existingResults, storeErrors, allStores);
-    }
-
-    this.logger.log(`${cardName}: ${storeNames.length - storesToScrape.length}/${storeNames.length} stores cached, scraping ${storesToScrape.length} store(s)`);
-
-    // 5. Check which stores are already being scraped and mark the rest
-    const storesToEnqueue: string[] = [];
-    const storesToWait: string[] = [];
-
-    for (const storeName of storesToScrape) {
-      // Try to mark this store as being scraped
-      const marked = await this.cacheService.markStoreAsBeingScraped(cardName, storeName, requestId);
-
-      if (marked) {
-        storesToEnqueue.push(storeName);
-      } else {
-        // Already being scraped by another request
-        storesToWait.push(storeName);
-      }
-    }
-
-    // 6. Enqueue jobs for stores we successfully marked
-    if (storesToEnqueue.length > 0) {
-      // Get retry counts from cached results for retrying stores
-      const jobs = storesToEnqueue.map(storeName => {
-        const cached = cachedResults.get(storeName);
-        return {
-          cardName,
-          storeName,
-          priority: 10, // High priority for user requests
-          requestId,
-          retryCount: cached?.retryCount,
-        };
-      });
-
-      await this.queueService.enqueueScrapeJobsBulk(jobs);
-      this.logger.log(`Enqueued ${storesToEnqueue.length} scrape job(s) for ${cardName} (Request ID: ${requestId})`);
-    }
-
-    // 7. Wait for all stores that need scraping (both enqueued and already-in-progress)
-    const allStoresToWait = [...storesToEnqueue, ...storesToWait];
-
-    if (allStoresToWait.length > 0) {
-      this.logger.debug(`Waiting for ${allStoresToWait.length} store(s) to complete for ${cardName}`);
-
-      const newResults = await this.cacheService.waitForStoresScrapeCompletion(
-        cardName,
-        allStoresToWait,
-        60000, // 60 second timeout
-      );
-
-      // 8. Merge new results with existing cached results
-      for (const [storeName, entry] of newResults) {
-        if (entry) {
-          existingResults.push(...entry.results);
-
-          // Track store errors for response
-          if (entry.error) {
-            const store = allStores.find(s => s.name === storeName);
-            storeErrors.push({
-              storeName: store?.displayName ?? storeName,
-              error: entry.error,
-            });
-          }
-        }
-      }
-    }
-
-    return this.buildResponse(cardName, existingResults, storeErrors, allStores);
+  /**
+   * Build an empty response when no cards are found.
+   */
+  private buildEmptyResponse(cardName: string): CardSearchResponse {
+    return {
+      cardName,
+      stores: [],
+      priceStats: { min: 0, max: 0, avg: 0, count: 0 },
+      results: [],
+      timestamp: Date.now(),
+    };
   }
 
   private buildResponse(
