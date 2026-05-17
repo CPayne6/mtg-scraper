@@ -401,24 +401,24 @@ export class StorefrontProcessor {
     collectionId: number,
     updatedAt: Date,
   ): Promise<ProductUrl> {
-    let productUrl = await this.productUrlRepository.findOne({
-      where: { storeId, handle },
-    });
-
-    if (productUrl) {
-      productUrl.sitemapLastmod = updatedAt;
-      await this.productUrlRepository.save(productUrl);
-    } else {
-      productUrl = this.productUrlRepository.create({
+    // Use ON CONFLICT upsert to avoid race conditions
+    // when multiple prefix jobs process the same store in parallel
+    await this.productUrlRepository
+      .createQueryBuilder()
+      .insert()
+      .into(ProductUrl)
+      .values({
         storeId,
         handle,
         mtgSinglesCollectionId: collectionId,
         sitemapLastmod: updatedAt,
         extractionStatus: 'pending',
-      });
-      productUrl = await this.productUrlRepository.save(productUrl);
-    }
+      })
+      .orUpdate(['sitemap_lastmod'], ['store_id', 'handle'])
+      .execute();
 
-    return productUrl;
+    return this.productUrlRepository.findOneOrFail({
+      where: { storeId, handle },
+    });
   }
 }
