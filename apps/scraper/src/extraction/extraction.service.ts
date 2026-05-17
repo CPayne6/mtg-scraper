@@ -119,8 +119,20 @@ export class ExtractionService {
       // All variants in a product share the same card — resolve once
       const firstVariant = variants[0];
 
-      // Check if this is a token product — route to token pipeline
-      if (this.detectToken(firstVariant)) {
+      // Try the regular card matcher first. Tokens make up ~3% of products
+      // and real cards 95%+, so card-first avoids misrouting cards with
+      // ambiguous signals (e.g. cards named "Leering Emblem" or with
+      // T-prefixed set codes like TSR/THS/TMP) into the token pipeline.
+      const matchResult = await this.printingMatcher.match(
+        firstVariant.cardName,
+        firstVariant.setCode,
+        firstVariant.collectorNumber,
+        firstVariant.setName,
+      );
+
+      // No card match — fall through to token matcher. handleTokenProduct
+      // handles both successful token matches and final unmatched fallback.
+      if (matchResult.confidence === 'none') {
         return this.handleTokenProduct(
           firstVariant,
           variants,
@@ -129,61 +141,6 @@ export class ExtractionService {
           result,
           discoveryRunId,
         );
-      }
-
-      const matchResult = await this.printingMatcher.match(
-        firstVariant.cardName,
-        firstVariant.setCode,
-        firstVariant.collectorNumber,
-        firstVariant.setName,
-      );
-
-      // Unmatched card name — store in unmatched_cards, skip listing creation
-      if (matchResult.confidence === 'none') {
-        result.unmatchedPrintings = 1;
-
-        const normalizedName = firstVariant.cardName
-          .toLowerCase()
-          .trim()
-          .replace(/\s+/g, ' ')
-          .replace(/['']/g, "'")
-          .replace(/[""]/g, '"');
-
-        const unmatchedRows: UnmatchedCardRow[] = [];
-        for (const variant of variants) {
-          unmatchedRows.push({
-            storeId: store.id,
-            productUrlId,
-            rawName: variant.cardName,
-            normalizedName,
-            setName: variant.setName || null,
-            setCode: variant.setCode || null,
-            collectorNumber: variant.collectorNumber || null,
-            condition: variant.condition,
-            foil: variant.foil,
-            price: variant.price,
-            currency: variant.currency,
-            inStock: variant.inStock ?? false,
-            quantity: variant.quantity ?? null,
-            imageUrl: variant.imageUrl || null,
-            productLink: variant.productUrl,
-            sku: variant.sku || null,
-            platformVariantId: variant.platformVariantId || null,
-          });
-        }
-
-        await this.unmatchedCardService.upsertBatch(unmatchedRows);
-        result.unmatchedCards = unmatchedRows.length;
-        result.success = true;
-
-        await this.updateProductUrlStatus(productUrlId, 'success', undefined, variants.length);
-
-        this.logger.log(
-          `Extracted ${variants.length} variants (unmatched card name) ` +
-            `for ${handle} @ ${store.name} → unmatched_cards`,
-        );
-
-        return result;
       }
 
       // Matched card — build listing + variant rows (in-stock only)
@@ -271,47 +228,6 @@ export class ExtractionService {
       await this.updateProductUrlStatus(productUrlId, 'error', result.error);
       return result;
     }
-  }
-
-  /**
-   * Detect whether an extracted variant represents a token product.
-   * Checks multiple signals in priority order.
-   */
-  private detectToken(variant: ExtractedCardVariant): boolean {
-    // 1. Explicit isToken from SKU parsing (e.g., 401 MTGTN/MTGTF)
-    if (variant.isToken) return true;
-
-    // 2. SKU prefix check
-    if (variant.sku) {
-      const skuUpper = variant.sku.toUpperCase();
-      if (skuUpper.startsWith('MTGTN') || skuUpper.startsWith('MTGTF')) return true;
-    }
-
-    // 3. Set name contains token/emblem/art series keywords
-    if (variant.setName) {
-      const setNameLower = variant.setName.toLowerCase();
-      if (
-        setNameLower.includes('token') ||
-        setNameLower.includes('emblem') ||
-        setNameLower.includes('art series')
-      ) {
-        return true;
-      }
-    }
-
-    // 4. Card name contains "Emblem" or "Art Card"
-    if (variant.cardName) {
-      const nameLower = variant.cardName.toLowerCase();
-      if (nameLower.includes('emblem') || nameLower.includes('art card')) return true;
-    }
-
-    // 5. T-prefixed set code (e.g., TIKO, TM21) — token sets
-    if (variant.setCode) {
-      const codeUpper = variant.setCode.toUpperCase();
-      if (/^T[A-Z0-9]{2,4}$/.test(codeUpper)) return true;
-    }
-
-    return false;
   }
 
   /**
