@@ -41,6 +41,6 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
     TokenBatchAccumulatorService,
     TokenListingUpsertService,
   ],
-  exports: [ExtractionService],
+  exports: [ExtractionService, PrintingMatcherService],
 })
 export class ExtractionModule {}
