@@ -1,43 +1,7 @@
 export { PlatformModule, PLATFORM_PROXY_FACTORY } from './platform.module';
 export { PlatformAdapterFactory } from './platform-adapter.factory';
-export {
-  ExtractionHttpError,
-  F2fCardDetailExtractor,
-  BinderposCardDetailExtractor,
-  DefaultCardDetailExtractor,
-  _401CardDetailExtractor,
-  CgRealmCardDetailExtractor,
-  CardDetailExtractor,
-  CardDetailExtractorRegistry,
-} from './adapters/shopify';
-export type {
-  ICardDetailExtractor,
-  TitleInfo,
-  SkuInfo,
-  TagsInfo,
-  ImageInfo,
-  ProductMetaInfo,
-} from './adapters/shopify';
-export {
-  StorefrontClient,
-  StorefrontExtractionAdapter,
-  DEFAULT_STOREFRONT_API_VERSION,
-  STOREFRONT_API_VERSION,
-  getStorefrontApiVersion,
-  COLLECTION_PRODUCTS_QUERY,
-  PRODUCT_BY_HANDLE_QUERY,
-  PRODUCTS_QUERY,
-} from './adapters/shopify-storefront';
-export type {
-  StorefrontGraphQLResponse,
-  StorefrontGraphQLError,
-  StorefrontProduct,
-  StorefrontVariant,
-  CollectionProductsData,
-  ProductByHandleData,
-  ProductsQueryData,
-  PageInfo,
-} from './adapters/shopify-storefront';
+export * from './adapters/shopify';
+export * from './adapters/shopify-storefront';
 export type {
   IExtractionAdapter,
   ExtractedCardVariant,
