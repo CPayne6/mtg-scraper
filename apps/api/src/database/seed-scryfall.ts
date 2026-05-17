@@ -29,6 +29,47 @@ const PLAYABLE_LAYOUTS = new Set([
   'host',
 ]);
 
+const TOKEN_LAYOUTS = new Set([
+  'token',
+  'double_faced_token',
+  'emblem',
+  'art_series',
+]);
+
+/**
+ * Parse a Scryfall type_line into supertype, card_type, and subtypes.
+ * e.g. "Token Creature — Soldier" → { supertype: "Token", cardType: "Creature", subtypes: "Soldier" }
+ * e.g. "Token Legendary Creature — Angel" → { supertype: "Token Legendary", cardType: "Creature", subtypes: "Angel" }
+ * e.g. "Token Artifact — Food" → { supertype: "Token", cardType: "Artifact", subtypes: "Food" }
+ */
+function parseTypeLine(typeLine: string): { supertype: string; cardType: string; subtypes: string } {
+  // Split on em-dash (—) to separate type from subtypes
+  const [typesPart, subtypesPart] = typeLine.split(/\s*—\s*/);
+  const subtypes = subtypesPart?.trim() ?? '';
+
+  // Known card types
+  const CARD_TYPES = ['Creature', 'Artifact', 'Enchantment', 'Land', 'Planeswalker', 'Instant', 'Sorcery', 'Emblem'];
+  const words = (typesPart || '').split(/\s+/);
+
+  // Find the first known card type word
+  let cardTypeIdx = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (CARD_TYPES.includes(words[i])) {
+      cardTypeIdx = i;
+      break;
+    }
+  }
+
+  if (cardTypeIdx >= 0) {
+    const supertype = words.slice(0, cardTypeIdx).join(' ');
+    const cardType = words.slice(cardTypeIdx).join(' ');
+    return { supertype, cardType, subtypes };
+  }
+
+  // No recognized card type — put everything in cardType
+  return { supertype: '', cardType: typesPart?.trim() ?? '', subtypes };
+}
+
 function normalizeCardName(name: string): string {
   return name
     .toLowerCase()
@@ -100,16 +141,36 @@ async function seedScryfall() {
       streamArray(),
     ]);
 
+    const oracleTokens: any[] = [];
+
     for await (const { value: card } of oracleStream) {
-      if (!PLAYABLE_LAYOUTS.has(card.layout)) continue;
-      oracleCards.push({
-        oracle_id: card.oracle_id,
-        name: card.name,
-        normalized_name: normalizeCardName(card.name),
-      });
+      if (PLAYABLE_LAYOUTS.has(card.layout)) {
+        oracleCards.push({
+          oracle_id: card.oracle_id,
+          name: card.name,
+          normalized_name: normalizeCardName(card.name),
+        });
+      } else if (TOKEN_LAYOUTS.has(card.layout)) {
+        const parsed = parseTypeLine(card.type_line || '');
+        oracleTokens.push({
+          oracle_id: card.oracle_id,
+          name: card.name,
+          normalized_name: normalizeCardName(card.name),
+          layout: card.layout,
+          type_line: card.type_line || null,
+          supertype: parsed.supertype || null,
+          card_type: parsed.cardType || null,
+          subtypes: parsed.subtypes || null,
+          power: card.power || null,
+          toughness: card.toughness || null,
+          colors: card.colors ? card.colors.join(',') : null,
+          oracle_text: card.oracle_text || null,
+          keywords: card.keywords ? card.keywords.join(',') : null,
+        });
+      }
     }
 
-    console.log(`Collected ${oracleCards.length} oracle cards`);
+    console.log(`Collected ${oracleCards.length} oracle cards, ${oracleTokens.length} oracle tokens`);
 
     // COPY into staging table
     console.log('COPY oracle cards into staging table...');
@@ -146,6 +207,80 @@ async function seedScryfall() {
 
     await client.query('DROP TABLE IF EXISTS staging_cards');
 
+    // ===== Phase 1b: Oracle Tokens -> token_names table =====
+    if (oracleTokens.length > 0) {
+      console.log('\nSeeding token_names table...');
+      await client.query(`
+        CREATE TEMP TABLE staging_tokens (
+          oracle_id uuid,
+          name text,
+          normalized_name text,
+          layout text,
+          type_line text,
+          supertype text,
+          card_type text,
+          subtypes text,
+          power text,
+          toughness text,
+          colors text,
+          oracle_text text,
+          keywords text
+        )
+      `);
+
+      const tokenCopyStream = client.query(
+        copyFrom(
+          `COPY staging_tokens (oracle_id, name, normalized_name, layout, type_line, supertype, card_type, subtypes, power, toughness, colors, oracle_text, keywords) FROM STDIN`,
+        ),
+      );
+
+      const tokenReadable = Readable.from(
+        oracleTokens.map((t) =>
+          [
+            copyEscape(t.oracle_id),
+            copyEscape(t.name),
+            copyEscape(t.normalized_name),
+            copyEscape(t.layout),
+            copyEscape(t.type_line),
+            copyEscape(t.supertype),
+            copyEscape(t.card_type),
+            copyEscape(t.subtypes),
+            copyEscape(t.power),
+            copyEscape(t.toughness),
+            copyEscape(t.colors),
+            copyEscape(t.oracle_text),
+            copyEscape(t.keywords),
+          ].join('\t') + '\n',
+        ),
+      );
+
+      await pipeline(tokenReadable, tokenCopyStream);
+      console.log(`  COPY complete: ${oracleTokens.length} token rows`);
+
+      const tokenResult = await client.query(`
+        INSERT INTO token_names (oracle_id, name, normalized_name, layout, type_line, supertype, card_type, subtypes, power, toughness, colors, oracle_text, keywords)
+        SELECT oracle_id, name, normalized_name, layout, type_line, supertype, card_type, subtypes, power, toughness, colors, oracle_text, keywords
+        FROM staging_tokens
+        ON CONFLICT (oracle_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          normalized_name = EXCLUDED.normalized_name,
+          layout = EXCLUDED.layout,
+          type_line = EXCLUDED.type_line,
+          supertype = EXCLUDED.supertype,
+          card_type = EXCLUDED.card_type,
+          subtypes = EXCLUDED.subtypes,
+          power = EXCLUDED.power,
+          toughness = EXCLUDED.toughness,
+          colors = EXCLUDED.colors,
+          oracle_text = EXCLUDED.oracle_text,
+          keywords = EXCLUDED.keywords,
+          updated_at = NOW()
+      `);
+      console.log(`Upserted ${tokenResult.rowCount} token names`);
+
+      await client.query('DROP TABLE IF EXISTS staging_tokens');
+    }
+
     // ===== Phase 2: Default Cards -> sets + card_printings tables =====
     console.log('\nFetching Default Cards bulk data URL...');
     const defaultUrl = await getDownloadUrl('default-cards');
@@ -154,6 +289,7 @@ async function seedScryfall() {
     // Collect sets and printings (filtering out digital)
     const setsMap = new Map<string, string>(); // code → name
     const printings: any[] = [];
+    const tokenPrintings: any[] = [];
 
     const defaultRes = await fetch(defaultUrl);
     if (!defaultRes.ok || !defaultRes.body)
@@ -166,30 +302,43 @@ async function seedScryfall() {
     ]);
 
     for await (const { value: card } of defaultStream) {
-      if (!PLAYABLE_LAYOUTS.has(card.layout)) continue;
       if (!card.oracle_id) continue;
       if (card.digital) continue; // Skip digital-only printings
 
-      // Collect unique sets
-      if (!setsMap.has(card.set)) {
-        setsMap.set(card.set, card.set_name);
+      // Collect unique sets (from both cards and tokens)
+      if (PLAYABLE_LAYOUTS.has(card.layout) || TOKEN_LAYOUTS.has(card.layout)) {
+        if (!setsMap.has(card.set)) {
+          setsMap.set(card.set, card.set_name);
+        }
       }
 
       const imageUri =
         card.image_uris?.normal || card.image_uris?.small || null;
 
-      printings.push({
-        scryfall_id: card.id,
-        oracle_id: card.oracle_id,
-        set_code: card.set,
-        collector_number: card.collector_number,
-        rarity: card.rarity || null,
-        image_uri: imageUri,
-        layout: card.layout,
-      });
+      if (PLAYABLE_LAYOUTS.has(card.layout)) {
+        printings.push({
+          scryfall_id: card.id,
+          oracle_id: card.oracle_id,
+          set_code: card.set,
+          collector_number: card.collector_number,
+          rarity: card.rarity || null,
+          image_uri: imageUri,
+          layout: card.layout,
+        });
+      } else if (TOKEN_LAYOUTS.has(card.layout)) {
+        tokenPrintings.push({
+          scryfall_id: card.id,
+          oracle_id: card.oracle_id,
+          set_code: card.set,
+          collector_number: card.collector_number,
+          rarity: card.rarity || null,
+          image_uri: imageUri,
+          layout: card.layout,
+        });
+      }
     }
 
-    console.log(`Collected ${setsMap.size} sets, ${printings.length} printings (digital filtered out)`);
+    console.log(`Collected ${setsMap.size} sets, ${printings.length} printings, ${tokenPrintings.length} token printings (digital filtered out)`);
 
     // ===== Phase 2a: Seed sets table =====
     console.log('Seeding sets table...');
@@ -280,16 +429,78 @@ async function seedScryfall() {
 
     await client.query('DROP TABLE IF EXISTS staging_printings');
 
+    // ===== Phase 2c: Seed token_printings table =====
+    if (tokenPrintings.length > 0) {
+      console.log('\nSeeding token_printings table...');
+      await client.query(`
+        CREATE TEMP TABLE staging_token_printings (
+          scryfall_id uuid,
+          oracle_id uuid,
+          set_code text,
+          collector_number text,
+          rarity text,
+          image_uri text,
+          layout text
+        )
+      `);
+
+      console.log('COPY token printings into staging table...');
+      const tokenPrintingCopyStream = client.query(
+        copyFrom(
+          `COPY staging_token_printings (scryfall_id, oracle_id, set_code, collector_number, rarity, image_uri, layout) FROM STDIN`,
+        ),
+      );
+
+      const tokenPrintingReadable = Readable.from(
+        tokenPrintings.map((p) =>
+          [
+            copyEscape(p.scryfall_id),
+            copyEscape(p.oracle_id),
+            copyEscape(p.set_code),
+            copyEscape(p.collector_number),
+            copyEscape(p.rarity),
+            copyEscape(p.image_uri),
+            copyEscape(p.layout),
+          ].join('\t') + '\n',
+        ),
+      );
+
+      await pipeline(tokenPrintingReadable, tokenPrintingCopyStream);
+      console.log(`  COPY complete: ${tokenPrintings.length} token printing rows`);
+
+      const tokenPrintingResult = await client.query(`
+        INSERT INTO token_printings (token_name_id, scryfall_id, set_id, collector_number, rarity, image_uri, layout)
+        SELECT tn.id, sp.scryfall_id, s.id, sp.collector_number, sp.rarity, sp.image_uri, sp.layout
+        FROM staging_token_printings sp
+        JOIN token_names tn ON tn.oracle_id = sp.oracle_id
+        JOIN sets s ON s.code = sp.set_code
+        ON CONFLICT (scryfall_id) DO UPDATE SET
+          set_id = EXCLUDED.set_id,
+          collector_number = EXCLUDED.collector_number,
+          rarity = EXCLUDED.rarity,
+          image_uri = EXCLUDED.image_uri,
+          layout = EXCLUDED.layout,
+          updated_at = NOW()
+      `);
+      console.log(`Upserted ${tokenPrintingResult.rowCount} token printings`);
+
+      await client.query('DROP TABLE IF EXISTS staging_token_printings');
+    }
+
     // Summary
     const cardNameCount = await client.query('SELECT COUNT(*) FROM card_names');
     const setCount = await client.query('SELECT COUNT(*) FROM sets');
     const printingCount = await client.query(
       'SELECT COUNT(*) FROM card_printings',
     );
+    const tokenNameCount = await client.query('SELECT COUNT(*) FROM token_names');
+    const tokenPrintingCount = await client.query('SELECT COUNT(*) FROM token_printings');
     console.log(`\nSeed complete!`);
     console.log(`  Card Names: ${cardNameCount.rows[0].count}`);
     console.log(`  Sets: ${setCount.rows[0].count}`);
     console.log(`  Printings: ${printingCount.rows[0].count}`);
+    console.log(`  Token Names: ${tokenNameCount.rows[0].count}`);
+    console.log(`  Token Printings: ${tokenPrintingCount.rows[0].count}`);
   } finally {
     await client.end();
   }
