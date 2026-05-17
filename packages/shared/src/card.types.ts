@@ -1,5 +1,11 @@
 
-export type Condition = 'nm' | 'pl' | 'mp' | 'hp' | 'unknown'
+export enum Condition {
+  NM = 'nm',
+  LP = 'lp',
+  MP = 'mp',
+  HP = 'hp',
+  UNKNOWN = 'unknown',
+}
 
 export interface Card {
   price: number;
