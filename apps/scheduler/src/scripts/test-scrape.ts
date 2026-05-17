@@ -32,8 +32,8 @@ function createTestConfig(startPage: number, pageCount: number) {
       edhrecPages: pageCount,
       edhrecStartPage: startPage,
       limit: parseInt(process.env.POPULAR_CARDS_LIMIT ?? '1000', 10),
-      batchSize: parseInt(process.env.POPULAR_CARDS_BATCH_SIZE ?? '50', 10),
-      batchDelayMs: parseInt(process.env.BATCH_DELAY_MS ?? '1000', 10),
+      maxQueueDepth: parseInt(process.env.MAX_QUEUE_DEPTH ?? '1000', 10),
+      refillBatchSize: parseInt(process.env.REFILL_BATCH_SIZE ?? '100', 10),
     },
     schedule: {
       enabled: true,
@@ -90,9 +90,8 @@ async function main() {
   const cards = await popularCardsScheduler.scrapePopularCards({
     enabled: true,
     limit: 1000,
-    batchSize: 50,
-    batchDelayMs: 1000,
-    waitForCompletion: true,
+    maxQueueDepth: 1000,
+    refillBatchSize: 100,
   });
   logger.log(`Scraped ${cards.length} cards`);
 

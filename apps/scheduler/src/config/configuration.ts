@@ -13,10 +13,12 @@ export default () => ({
     edhrecStartPage: parseInt(process.env.EDHREC_START_PAGE ?? '1', 10),
     // Fallback: Number of cards to scrape (used if API fails)
     limit: parseInt(process.env.POPULAR_CARDS_LIMIT ?? '1000', 10),
-    // Batch size for enqueueing cards
+    // Legacy batch mode settings
     batchSize: parseInt(process.env.POPULAR_CARDS_BATCH_SIZE ?? '50', 10),
-    // Delay between batches in milliseconds (default: 1000ms = 1 second)
     batchDelayMs: parseInt(process.env.BATCH_DELAY_MS ?? '1000', 10),
+    // Streaming mode settings (backpressure-based)
+    maxQueueDepth: parseInt(process.env.MAX_QUEUE_DEPTH ?? '1000', 10),
+    refillBatchSize: parseInt(process.env.REFILL_BATCH_SIZE ?? '100', 10),
   },
   schedule: {
     // Enable/disable all scheduled tasks

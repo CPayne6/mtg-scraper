@@ -6,7 +6,9 @@ export class ManualController {
   constructor(private readonly manualService: ManualService) {}
 
   @Put('trigger')
-  putManualTrigger(@Query('limit', new ParseIntPipe({ optional: true })) limit?: number) {
+  putManualTrigger(
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
     return this.manualService.triggerScrape(limit)
   }
 
