@@ -207,7 +207,8 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 )`);
-    await queryRunner.query(`CREATE TABLE public.stores (
+    // stores: tolerate pre-existing table from an early synchronize:true bootstrap.
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS public.stores (
     id integer NOT NULL,
     uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name character varying NOT NULL,
@@ -223,7 +224,10 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     rate_limit_per_second integer DEFAULT 15 NOT NULL
 )`);
-    await queryRunner.query(`CREATE SEQUENCE public.stores_id_seq
+    await queryRunner.query(`ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS platform_type character varying(50)`);
+    await queryRunner.query(`ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS discovery_config jsonb`);
+    await queryRunner.query(`ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS rate_limit_per_second integer NOT NULL DEFAULT 15`);
+    await queryRunner.query(`CREATE SEQUENCE IF NOT EXISTS public.stores_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -377,8 +381,14 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT "PK_sets" PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.shopify_products
     ADD CONSTRAINT "PK_shopify_products" PRIMARY KEY (shopify_product_id)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.stores
-    ADD CONSTRAINT "PK_stores" PRIMARY KEY (id)`);
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_schema = 'public' AND table_name = 'stores' AND constraint_type = 'PRIMARY KEY'
+      ) THEN
+        ALTER TABLE public.stores ADD CONSTRAINT "PK_stores" PRIMARY KEY (id);
+      END IF;
+    END $$`);
     await queryRunner.query(`ALTER TABLE ONLY public.unmatched_cards
     ADD CONSTRAINT "PK_unmatched_cards" PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_names
@@ -387,8 +397,16 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT "UQ_card_names_oracle_id" UNIQUE (oracle_id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.sets
     ADD CONSTRAINT "UQ_sets_code" UNIQUE (code)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.stores
-    ADD CONSTRAINT "UQ_stores_name" UNIQUE (name)`);
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints tc
+        JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+        WHERE tc.table_schema = 'public' AND tc.table_name = 'stores'
+          AND tc.constraint_type = 'UNIQUE' AND ccu.column_name = 'name'
+      ) THEN
+        ALTER TABLE public.stores ADD CONSTRAINT "UQ_stores_name" UNIQUE (name);
+      END IF;
+    END $$`);
     await queryRunner.query(`ALTER TABLE ONLY public.unmatched_cards
     ADD CONSTRAINT "UQ_unmatched_cards_store_product_raw" UNIQUE (store_id, product_url_id, raw_name)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_conditions
