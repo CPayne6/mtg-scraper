@@ -14,8 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "test:ui": "vitest --ui",
-    "scrape-test": "npx ts-node src/scripts/test-scrape.ts"
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.11",

@@ -1,112 +1,129 @@
 import { DataSource } from 'typeorm';
 import { Store, Platform, MtgSinglesCollection, CardCondition } from '@scoutlgs/core';
 
+// Storefront API extraction is per-store: each store gets a Shopify search
+// query that scopes the catalog to MTG singles. The discovery cron in the
+// scheduler enqueues a `storefront-extraction` job for every active store
+// where `discoveryConfig.discoveryEnabled === true`.
+//
+// `scraperType` is a legacy column that's still NOT NULL on the schema —
+// we keep it set so upserts don't fail. The new pipeline doesn't read it.
 const stores: Partial<Store>[] = [
   {
     name: 'face-to-face-games',
     displayName: 'Face to Face Games',
     baseUrl: 'https://facetofacegames.com',
     scraperType: 'f2f' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 12,
     isActive: true,
+    scraperConfig: {
+      storefrontScope: 'product_type:Singles vendor:Magic',
+    },
   },
   {
     name: '401-games',
     displayName: '401 Games',
     baseUrl: 'https://store.401games.ca',
     scraperType: '401' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 25,
     isActive: true,
+    scraperConfig: {
+      storefrontScope: 'product_type:"Magic: The Gathering Singles"',
+    },
   },
   {
     name: 'hobbiesville',
     displayName: 'Hobbiesville',
     baseUrl: 'https://hobbiesville.com',
     scraperType: 'hobbies' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 15,
     isActive: true,
+    scraperConfig: {
+      storefrontScope: 'product_type:Single tag:Brands_Magicthegathering',
+    },
   },
   {
     name: 'house-of-cards',
     displayName: 'House of Cards',
     baseUrl: 'https://houseofcards.ca',
     scraperType: 'binderpos' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 20,
-    scraperConfig: {
-      searchPath: 'mtg-advanced-search',
-      shopifyUrl: 'house-of-cards-mtg.myshopify.com',
-    },
     isActive: true,
+    scraperConfig: {
+      shopifyUrl: 'house-of-cards-mtg.myshopify.com',
+      storefrontScope: 'product_type:"MTG Single"',
+    },
   },
   {
     name: 'black-knight-games',
     displayName: 'Black Knight Games',
     baseUrl: 'https://blackknightgames.ca',
     scraperType: 'binderpos' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 20,
-    scraperConfig: {
-      searchPath: 'magic-the-gathering-search',
-      shopifyUrl: 'black-knight-games.myshopify.com',
-    },
     isActive: true,
+    scraperConfig: {
+      shopifyUrl: 'black-knight-games.myshopify.com',
+      storefrontScope: 'product_type:"MTG Single"',
+    },
   },
   {
     name: 'exor-games',
     displayName: 'Exor Games',
     baseUrl: 'https://exorgames.com',
     scraperType: 'binderpos' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 20,
-    scraperConfig: {
-      searchPath: 'advanced-search',
-      shopifyUrl: 'most-wanted-ca.myshopify.com',
-    },
     isActive: true,
+    scraperConfig: {
+      shopifyUrl: 'most-wanted-ca.myshopify.com',
+      storefrontScope: 'product_type:"MTG Single"',
+    },
   },
   {
     name: 'game-knight',
     displayName: 'Game Knight',
     baseUrl: 'https://gameknight.ca',
     scraperType: 'binderpos' as const,
-    platformType: 'shopify',
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 20,
-    scraperConfig: {
-      searchPath: 'magic-the-gathering-singles',
-      shopifyUrl: 'gameknight-games.myshopify.com',
-    },
     isActive: true,
+    scraperConfig: {
+      shopifyUrl: 'gameknight-games.myshopify.com',
+      storefrontScope: 'product_type:"MTG Single"',
+    },
   },
   {
     name: 'the-cg-realm',
     displayName: 'The CG Realm',
     baseUrl: 'https://www.thecgrealm.com',
-    scraperType: 'binderpos' as const,
-    platformType: 'shopify',
+    scraperType: 'cgrealm' as const,
+    platformType: 'shopify_storefront',
     rateLimitPerSecond: 15,
-    scraperConfig: {
-      searchPath: 'search',
-      shopifyUrl: 'the-cg-realm.myshopify.com',
-    },
     isActive: true,
+    scraperConfig: {
+      shopifyUrl: 'the-cg-realm.myshopify.com',
+      storefrontScope: 'product_type:"MTG Single"',
+    },
   },
 ];
 
-// MTG Singles collection slugs — verified via Shopify collections.json
-// face-to-face-games, 401-games, exor-games → magic-the-gathering-singles (107K-158K products)
-// house-of-cards, black-knight-games, game-knight, the-cg-realm → mtg-singles-all-products (~107K products)
-// hobbiesville → magic-singles (6K products)
+// Collections are legacy cruft: product_urls.mtg_singles_collection_id is
+// still NOT NULL with an FK to mtg_singles_collections, even though the new
+// Storefront API pipeline scopes queries via scraperConfig.storefrontScope
+// instead. Until that column is dropped via migration, every store needs a
+// non-null collection id, so we seed a placeholder row per scope and link
+// stores to it.
 const mtgSinglesCollections: Partial<MtgSinglesCollection>[] = [
   { slug: 'magic-the-gathering-singles', displayName: 'MTG Singles' },
   { slug: 'mtg-singles-all-products', displayName: 'MTG Singles - All Products' },
   { slug: 'magic-singles', displayName: 'Magic Singles' },
 ];
 
-// Card conditions for the card_variants lookup table
 const cardConditions: Partial<CardCondition>[] = [
   { code: 'nm', displayName: 'Near Mint', sortOrder: 1 },
   { code: 'lp', displayName: 'Lightly Played', sortOrder: 2 },
@@ -116,7 +133,6 @@ const cardConditions: Partial<CardCondition>[] = [
   { code: 'unknown', displayName: 'Unknown', sortOrder: 6 },
 ];
 
-// Map store name → collection slug for discovery config
 const storeCollectionMap: Record<string, string> = {
   'face-to-face-games': 'magic-the-gathering-singles',
   '401-games': 'magic-the-gathering-singles',
@@ -137,7 +153,7 @@ async function seed() {
     password: process.env.DATABASE_PASSWORD || 'postgres',
     database: process.env.DATABASE_NAME || 'scoutlgs',
     entities: [Store, Platform, MtgSinglesCollection, CardCondition],
-    synchronize: false, // Don't sync - use migrations
+    synchronize: false,
   });
 
   try {
@@ -148,51 +164,45 @@ async function seed() {
     const collectionRepository = AppDataSource.getRepository(MtgSinglesCollection);
     const conditionRepository = AppDataSource.getRepository(CardCondition);
 
-    // Seed card conditions
     await conditionRepository.upsert(cardConditions, {
       conflictPaths: ['code'],
       skipUpdateIfNoValuesChanged: true,
     });
     console.log(`Upserted ${cardConditions.length} card conditions!`);
 
-    // Seed MTG singles collections
     await collectionRepository.upsert(mtgSinglesCollections, {
       conflictPaths: ['slug'],
       skipUpdateIfNoValuesChanged: true,
     });
     console.log(`Upserted ${mtgSinglesCollections.length} MTG singles collections!`);
 
-    // Look up collection IDs by slug
     const collections = await collectionRepository.find();
-    const collectionBySlug = new Map(
-      collections.map((c) => [c.slug, c]),
-    );
+    const collectionBySlug = new Map(collections.map((c) => [c.slug, c]));
 
-    // Use upsert to insert or update stores
     await storeRepository.upsert(stores, {
-      conflictPaths: ['name'], // Use 'name' as the unique constraint
+      conflictPaths: ['name'],
       skipUpdateIfNoValuesChanged: true,
     });
     console.log(`Upserted ${stores.length} stores successfully!`);
 
-    // Link each store to its MTG singles collection via discoveryConfig
+    // Set discoveryConfig per store. Done as a separate UPDATE so we can
+    // include the collection id that wasn't available at upsert time.
     for (const store of stores) {
       const collectionSlug = storeCollectionMap[store.name!];
       const collection = collectionSlug ? collectionBySlug.get(collectionSlug) : undefined;
+      if (!collection) continue;
 
-      if (collection) {
-        await storeRepository.update(
-          { name: store.name },
-          {
-            discoveryConfig: {
-              mtgSinglesCollectionId: collection.id,
-              discoveryEnabled: false,
-            },
+      await storeRepository.update(
+        { name: store.name },
+        {
+          discoveryConfig: {
+            mtgSinglesCollectionId: collection.id,
+            discoveryEnabled: true,
           },
-        );
-      }
+        },
+      );
     }
-    console.log('Linked stores to MTG singles collections!');
+    console.log('Set discoveryConfig (discoveryEnabled=true) on all stores');
 
     await AppDataSource.destroy();
   } catch (error) {

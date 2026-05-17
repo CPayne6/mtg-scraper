@@ -141,7 +141,9 @@ services:
       - DATABASE_USER=postgres
       - PORT=5001
       - USE_DOCKER_SECRETS=true
-      - EDHREC_PAGES=100
+      - DISCOVERY_ENABLED=true
+      - DISCOVERY_CRON_TIME=0 1 * * *
+      - SCHEDULE_TIMEZONE=America/Toronto
       - LOG_LEVEL=log,warn,error,fatal
     ports:
       - "5001:5001"

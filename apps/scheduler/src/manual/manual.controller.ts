@@ -42,20 +42,6 @@ export class ManualController {
     return this.manualService.getUnmatchedStats()
   }
 
-  // Popular cards scrape (V1)
-
-  @Put('trigger')
-  putManualTrigger(
-    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
-  ) {
-    return this.manualService.triggerScrape(limit)
-  }
-
-  @Get('status')
-  getStatus() {
-    return this.manualService.getStatus()
-  }
-
   // Product discovery
 
   @Put('discovery/trigger')

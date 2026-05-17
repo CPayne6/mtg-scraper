@@ -4,7 +4,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
-import { PopularCardsModule } from './popular-cards/popular-cards.module';
 import { ManualModule } from './manual/manual.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { getDatabaseConfig } from '@scoutlgs/core';
@@ -27,9 +26,6 @@ import { getDatabaseConfig } from '@scoutlgs/core';
 
     // Enable cron jobs
     ScheduleModule.forRoot(),
-
-    // Feature modules
-    PopularCardsModule,
 
     // Product discovery (V2 scraping)
     DiscoveryModule,
