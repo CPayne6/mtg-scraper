@@ -12,6 +12,8 @@ export const JOB_NAMES = {
   DISCOVER_STORE: 'discover-store',
   EXTRACT_PRODUCT: 'extract-product',
   EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
+  STOREFRONT_PLAN: 'storefront-plan',
+  STOREFRONT_PREFIX: 'storefront-prefix',
 } as const;
 
 /**
@@ -99,6 +101,43 @@ export interface StorefrontExtractionJobResult {
   cardsAdded?: number;
   maxCardsAdded?: number;
   limitReached: boolean;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Job data for planning storefront extraction (Phase 1).
+ * Queries card_names for prefixes and enqueues prefix jobs.
+ */
+export interface StorefrontPlanJobData {
+  storeId: number;
+  discoveryRunId?: number;
+  maxCardsAdded?: number;
+}
+
+/**
+ * Job data for extracting products matching a title prefix (Phase 2).
+ * Paginates products(query: "scope title:prefix*").
+ * If 25K limit is hit, splits into sub-prefix jobs.
+ */
+export interface StorefrontPrefixJobData {
+  storeId: number;
+  prefix: string;
+  scope: string;
+  discoveryRunId?: number;
+  maxCardsAdded?: number;
+  /** Recursion depth: 1=single letter, 2=two letters, 3=three letters */
+  depth: number;
+}
+
+export interface StorefrontPrefixJobResult {
+  storeId: number;
+  prefix: string;
+  productsProcessed: number;
+  cardsAdded: number;
+  errors: number;
+  /** True if this prefix hit 25K and was split into sub-prefixes */
+  wasSplit: boolean;
   success: boolean;
   error?: string;
 }

@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { getQueueToken } from '@nestjs/bull';
 import { Job } from 'bullmq';
 import { StorefrontProcessor } from './storefront.processor';
 import { ExtractionService } from '../extraction/extraction.service';
-import { Store, ProductUrl, MtgSinglesCollection, PlatformAdapterFactory } from '@scoutlgs/core';
-import type { StorefrontExtractionJobData } from '@scoutlgs/shared';
+import {
+  Store,
+  ProductUrl,
+  MtgSinglesCollection,
+  CardName,
+  PlatformAdapterFactory,
+} from '@scoutlgs/core';
+import {
+  QUEUE_NAMES,
+  JOB_NAMES,
+  type StorefrontPlanJobData,
+  type StorefrontPrefixJobData,
+} from '@scoutlgs/shared';
 import type { ExtractedCardVariant } from '@scoutlgs/core';
 
 // --- Mock helpers ---
@@ -17,11 +29,14 @@ function createMockStore(overrides: Partial<Record<string, unknown>> = {}) {
     platformType: 'shopify_storefront',
     baseUrl: 'https://test-store.com',
     discoveryConfig: { mtgSinglesCollectionId: 10 },
+    scraperConfig: { storefrontScope: 'product_type:"MTG Single"' },
     ...overrides,
   };
 }
 
-function createMockCollection(overrides: Partial<Record<string, unknown>> = {}) {
+function createMockCollection(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   return {
     id: 10,
     slug: 'mtg-singles',
@@ -29,7 +44,9 @@ function createMockCollection(overrides: Partial<Record<string, unknown>> = {}) 
   };
 }
 
-function createMockVariant(overrides: Partial<ExtractedCardVariant> = {}): ExtractedCardVariant {
+function createMockVariant(
+  overrides: Partial<ExtractedCardVariant> = {},
+): ExtractedCardVariant {
   return {
     cardName: 'Lightning Bolt',
     setName: 'Magic 2010',
@@ -51,11 +68,17 @@ function createMockProduct(handle: string, variants?: ExtractedCardVariant[]) {
   return {
     handle,
     updatedAt: new Date('2025-01-01'),
-    variants: variants ?? [createMockVariant({ productUrl: `https://test-store.com/products/${handle}` })],
+    variants: variants ?? [
+      createMockVariant({
+        productUrl: `https://test-store.com/products/${handle}`,
+      }),
+    ],
   };
 }
 
-function createMockProductUrl(overrides: Partial<Record<string, unknown>> = {}) {
+function createMockProductUrl(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   return {
     id: 100,
     storeId: 1,
@@ -67,26 +90,61 @@ function createMockProductUrl(overrides: Partial<Record<string, unknown>> = {}) 
   };
 }
 
-function createMockJob(data: StorefrontExtractionJobData): Job<StorefrontExtractionJobData> {
+function createPlanJob(data: StorefrontPlanJobData): Job<StorefrontPlanJobData> {
   return {
-    id: 'job-1',
+    id: 'plan-1',
     data,
     updateProgress: vi.fn().mockResolvedValue(undefined),
-  } as unknown as Job<StorefrontExtractionJobData>;
+  } as unknown as Job<StorefrontPlanJobData>;
+}
+
+function createPrefixJob(
+  data: StorefrontPrefixJobData,
+): Job<StorefrontPrefixJobData> {
+  return {
+    id: 'prefix-1',
+    data,
+    updateProgress: vi.fn().mockResolvedValue(undefined),
+  } as unknown as Job<StorefrontPrefixJobData>;
 }
 
 /**
- * Create a mock StorefrontExtractionAdapter with an extractCollection
+ * Create a mock StorefrontExtractionAdapter with an extractByProductsQuery
  * async generator that yields the given products.
  */
 function createMockAdapter(
-  products: Array<{ handle: string; updatedAt: Date; variants: ExtractedCardVariant[] }>,
+  products: Array<{
+    handle: string;
+    updatedAt: Date;
+    variants: ExtractedCardVariant[];
+  }>,
 ) {
   return {
-    extractCollection: vi.fn().mockImplementation(async function* () {
+    extractByProductsQuery: vi.fn().mockImplementation(async function* () {
       for (const product of products) {
         yield product;
       }
+    }),
+  };
+}
+
+/**
+ * Create a mock adapter whose generator throws after yielding some products.
+ */
+function createMockAdapterWithError(
+  productsBefore: Array<{
+    handle: string;
+    updatedAt: Date;
+    variants: ExtractedCardVariant[];
+  }>,
+  error: Error,
+) {
+  return {
+    extractByProductsQuery: vi.fn().mockImplementation(async function* () {
+      for (const product of productsBefore) {
+        yield product;
+      }
+      throw error;
     }),
   };
 }
@@ -95,24 +153,44 @@ function createMockAdapter(
 
 describe('StorefrontProcessor', () => {
   let processor: StorefrontProcessor;
-  let storeRepository: { findOne: ReturnType<typeof vi.fn> };
+  let storeRepository: {
+    findOne: ReturnType<typeof vi.fn>;
+  };
   let productUrlRepository: {
     findOne: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
   };
   let collectionRepository: { findOne: ReturnType<typeof vi.fn> };
-  let platformAdapterFactory: { getExtractionAdapter: ReturnType<typeof vi.fn> };
-  let extractionService: { processExtractedVariants: ReturnType<typeof vi.fn> };
+  let cardNameRepository: {
+    find: ReturnType<typeof vi.fn>;
+    query: ReturnType<typeof vi.fn>;
+  };
+  let storefrontQueue: { addBulk: ReturnType<typeof vi.fn> };
+  let platformAdapterFactory: {
+    getExtractionAdapter: ReturnType<typeof vi.fn>;
+  };
+  let extractionService: {
+    processExtractedVariants: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     storeRepository = { findOne: vi.fn() };
     productUrlRepository = {
       findOne: vi.fn(),
       create: vi.fn((data: unknown) => data),
-      save: vi.fn().mockImplementation((entity: unknown) => Promise.resolve({ id: 100, ...entity as object })),
+      save: vi
+        .fn()
+        .mockImplementation((entity: unknown) =>
+          Promise.resolve({ id: 100, ...(entity as object) }),
+        ),
     };
     collectionRepository = { findOne: vi.fn() };
+    cardNameRepository = {
+      find: vi.fn(),
+      query: vi.fn(),
+    };
+    storefrontQueue = { addBulk: vi.fn().mockResolvedValue(undefined) };
     platformAdapterFactory = { getExtractionAdapter: vi.fn() };
     extractionService = { processExtractedVariants: vi.fn() };
 
@@ -120,9 +198,26 @@ describe('StorefrontProcessor', () => {
       providers: [
         StorefrontProcessor,
         { provide: getRepositoryToken(Store), useValue: storeRepository },
-        { provide: getRepositoryToken(ProductUrl), useValue: productUrlRepository },
-        { provide: getRepositoryToken(MtgSinglesCollection), useValue: collectionRepository },
-        { provide: PlatformAdapterFactory, useValue: platformAdapterFactory },
+        {
+          provide: getRepositoryToken(ProductUrl),
+          useValue: productUrlRepository,
+        },
+        {
+          provide: getRepositoryToken(MtgSinglesCollection),
+          useValue: collectionRepository,
+        },
+        {
+          provide: getRepositoryToken(CardName),
+          useValue: cardNameRepository,
+        },
+        {
+          provide: getQueueToken(QUEUE_NAMES.STOREFRONT_EXTRACTION),
+          useValue: storefrontQueue,
+        },
+        {
+          provide: PlatformAdapterFactory,
+          useValue: platformAdapterFactory,
+        },
         { provide: ExtractionService, useValue: extractionService },
       ],
     }).compile();
@@ -134,257 +229,305 @@ describe('StorefrontProcessor', () => {
     expect(processor).toBeDefined();
   });
 
-  describe('process', () => {
-    const defaultJobData: StorefrontExtractionJobData = {
+  // -------------------------------------------------------------------------
+  // processPlan
+  // -------------------------------------------------------------------------
+  describe('processPlan', () => {
+    it('should throw when store is not found', async () => {
+      storeRepository.findOne.mockResolvedValue(null);
+      const job = createPlanJob({ storeId: 999 });
+      await expect(processor.processPlan(job)).rejects.toThrow(
+        'Store 999 not found',
+      );
+    });
+
+    it('should throw when storefrontScope is missing', async () => {
+      storeRepository.findOne.mockResolvedValue(
+        createMockStore({ scraperConfig: {} }),
+      );
+      const job = createPlanJob({ storeId: 1 });
+      await expect(processor.processPlan(job)).rejects.toThrow(
+        'missing scraperConfig.storefrontScope',
+      );
+    });
+
+    it('should enqueue one prefix job per alpha letter', async () => {
+      storeRepository.findOne.mockResolvedValue(createMockStore());
+      cardNameRepository.query.mockResolvedValue([
+        { prefix: 'a' },
+        { prefix: 'b' },
+        { prefix: 'c' },
+      ]);
+
+      const job = createPlanJob({
+        storeId: 1,
+        discoveryRunId: 42,
+        maxCardsAdded: 500,
+      });
+      await processor.processPlan(job);
+
+      expect(storefrontQueue.addBulk).toHaveBeenCalledTimes(1);
+      const bulkJobs = storefrontQueue.addBulk.mock.calls[0][0];
+      expect(bulkJobs).toHaveLength(3);
+
+      for (let i = 0; i < 3; i++) {
+        expect(bulkJobs[i].name).toBe(JOB_NAMES.STOREFRONT_PREFIX);
+        expect(bulkJobs[i].data.storeId).toBe(1);
+        expect(bulkJobs[i].data.scope).toBe('product_type:"MTG Single"');
+        expect(bulkJobs[i].data.depth).toBe(1);
+        expect(bulkJobs[i].data.discoveryRunId).toBe(42);
+        expect(bulkJobs[i].data.maxCardsAdded).toBe(500);
+      }
+      expect(bulkJobs[0].data.prefix).toBe('a');
+      expect(bulkJobs[1].data.prefix).toBe('b');
+      expect(bulkJobs[2].data.prefix).toBe('c');
+    });
+
+    it('should enqueue a single non-alpha job when non-alpha prefixes exist', async () => {
+      storeRepository.findOne.mockResolvedValue(createMockStore());
+      cardNameRepository.query.mockResolvedValue([
+        { prefix: '1' },
+        { prefix: 'a' },
+        { prefix: 'b' },
+      ]);
+
+      const job = createPlanJob({ storeId: 1 });
+      await processor.processPlan(job);
+
+      const bulkJobs = storefrontQueue.addBulk.mock.calls[0][0];
+      // 2 alpha + 1 non-alpha
+      expect(bulkJobs).toHaveLength(3);
+      expect(bulkJobs[0].data.prefix).toBe('a');
+      expect(bulkJobs[1].data.prefix).toBe('b');
+      expect(bulkJobs[2].data.prefix).toBe('__nonalpha__');
+    });
+
+    it('should not call addBulk when no prefixes exist', async () => {
+      storeRepository.findOne.mockResolvedValue(createMockStore());
+      cardNameRepository.query.mockResolvedValue([]);
+
+      const job = createPlanJob({ storeId: 1 });
+      await processor.processPlan(job);
+
+      expect(storefrontQueue.addBulk).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // processPrefix
+  // -------------------------------------------------------------------------
+  describe('processPrefix', () => {
+    const defaultPrefixData: StorefrontPrefixJobData = {
       storeId: 1,
+      prefix: 'a',
+      scope: 'product_type:"MTG Single"',
+      depth: 1,
       discoveryRunId: 42,
     };
 
-    describe('full iteration', () => {
-      it('should process all products yielded by the adapter', async () => {
+    it('should throw when store is not found', async () => {
+      storeRepository.findOne.mockResolvedValue(null);
+      const job = createPrefixJob({ ...defaultPrefixData, storeId: 999 });
+      await expect(processor.processPrefix(job)).rejects.toThrow(
+        'Store 999 not found',
+      );
+    });
+
+    it('should process all products yielded by the adapter', async () => {
+      const store = createMockStore();
+      const collection = createMockCollection();
+      const products = [
+        createMockProduct('product-a'),
+        createMockProduct('product-b'),
+        createMockProduct('product-c'),
+      ];
+      const adapter = createMockAdapter(products);
+
+      storeRepository.findOne.mockResolvedValue(store);
+      collectionRepository.findOne.mockResolvedValue(collection);
+      platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
+      productUrlRepository.findOne.mockResolvedValue(null);
+      extractionService.processExtractedVariants.mockResolvedValue({
+        variantsExtracted: 1,
+        cardsUpserted: 1,
+        success: true,
+      });
+
+      const job = createPrefixJob(defaultPrefixData);
+      const result = await processor.processPrefix(job);
+
+      expect(result.success).toBe(true);
+      expect(result.prefix).toBe('a');
+      expect(result.productsProcessed).toBe(3);
+      expect(result.cardsAdded).toBe(3);
+      expect(result.errors).toBe(0);
+      expect(result.wasSplit).toBe(false);
+      expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(
+        3,
+      );
+
+      // Verify query passed to adapter
+      expect(adapter.extractByProductsQuery).toHaveBeenCalledWith(
+        store,
+        'product_type:"MTG Single" title:a*',
+      );
+    });
+
+    it('should build correct query for non-alpha prefix', async () => {
+      const store = createMockStore();
+      const collection = createMockCollection();
+      const adapter = createMockAdapter([]);
+
+      storeRepository.findOne.mockResolvedValue(store);
+      collectionRepository.findOne.mockResolvedValue(collection);
+      platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
+
+      // Mock the buildQuery DB call for non-alpha names
+      cardNameRepository.query.mockResolvedValue([
+        { name: '1996 World Champion' },
+        { name: '+2 Mace' },
+      ]);
+
+      const job = createPrefixJob({
+        ...defaultPrefixData,
+        prefix: '__nonalpha__',
+      });
+      const result = await processor.processPrefix(job);
+
+      expect(adapter.extractByProductsQuery).toHaveBeenCalledWith(
+        store,
+        'product_type:"MTG Single" title:"1996 World Champion" OR title:"+2 Mace"',
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('should continue processing when individual products fail', async () => {
+      const store = createMockStore();
+      const collection = createMockCollection();
+      const products = [
+        createMockProduct('product-1'),
+        createMockProduct('product-2-fails'),
+        createMockProduct('product-3'),
+      ];
+      const adapter = createMockAdapter(products);
+
+      storeRepository.findOne.mockResolvedValue(store);
+      collectionRepository.findOne.mockResolvedValue(collection);
+      platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
+      productUrlRepository.findOne.mockResolvedValue(null);
+
+      extractionService.processExtractedVariants
+        .mockResolvedValueOnce({
+          variantsExtracted: 1,
+          cardsUpserted: 1,
+          success: true,
+        })
+        .mockRejectedValueOnce(new Error('Extraction failed'))
+        .mockResolvedValueOnce({
+          variantsExtracted: 1,
+          cardsUpserted: 1,
+          success: true,
+        });
+
+      const job = createPrefixJob(defaultPrefixData);
+      const result = await processor.processPrefix(job);
+
+      expect(result.success).toBe(true);
+      expect(result.productsProcessed).toBe(2);
+      expect(result.errors).toBe(1);
+      expect(result.cardsAdded).toBe(2);
+    });
+
+    describe('25K pagination limit splitting', () => {
+      it('should split into sub-prefix jobs when 25K limit is hit', async () => {
         const store = createMockStore();
         const collection = createMockCollection();
-        const products = [
-          createMockProduct('product-a'),
-          createMockProduct('product-b'),
-          createMockProduct('product-c'),
+        const productsBeforeError = [
+          createMockProduct('product-before-error'),
         ];
-        const adapter = createMockAdapter(products);
+        const adapter = createMockAdapterWithError(
+          productsBeforeError,
+          new Error(
+            'GraphQL errors from test-store: Platform limit for pagination reached',
+          ),
+        );
 
         storeRepository.findOne.mockResolvedValue(store);
         collectionRepository.findOne.mockResolvedValue(collection);
         platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
-        // Each product is a new product URL (not found in DB)
         productUrlRepository.findOne.mockResolvedValue(null);
         extractionService.processExtractedVariants.mockResolvedValue({
           variantsExtracted: 1,
+          cardsUpserted: 1,
           success: true,
         });
 
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
+        // Mock sub-prefix query
+        cardNameRepository.query.mockResolvedValue([
+          { prefix: 'ab' },
+          { prefix: 'ac' },
+          { prefix: 'ad' },
+        ]);
 
-        expect(result.success).toBe(true);
-        expect(result.productsAttempted).toBe(3);
-        expect(result.productsProcessed).toBe(3);
-        expect(result.productsSkipped).toBe(0);
-        expect(result.errors).toBe(0);
-        expect(result.variantsExtracted).toBe(3); // 1 variant per product
-        expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(3);
+        const job = createPrefixJob(defaultPrefixData);
+        const result = await processor.processPrefix(job);
 
-        // Verify each call receives correct arguments
-        for (let i = 0; i < 3; i++) {
-          const call = extractionService.processExtractedVariants.mock.calls[i];
-          expect(call[1]).toBe(1); // storeId
-          expect(call[2]).toBe(products[i].handle); // handle
-          expect(call[3]).toEqual(products[i].variants); // variants
-          expect(call[4]).toBe(42); // discoveryRunId
-        }
+        expect(result.wasSplit).toBe(true);
+        expect(result.productsProcessed).toBe(1); // partial results before error
+
+        // Should have enqueued sub-prefix jobs
+        expect(storefrontQueue.addBulk).toHaveBeenCalledTimes(1);
+        const bulkJobs = storefrontQueue.addBulk.mock.calls[0][0];
+        expect(bulkJobs).toHaveLength(3);
+        expect(bulkJobs[0].data.prefix).toBe('ab');
+        expect(bulkJobs[0].data.depth).toBe(2);
+        expect(bulkJobs[1].data.prefix).toBe('ac');
+        expect(bulkJobs[2].data.prefix).toBe('ad');
       });
-    });
 
-    describe('staleness skipping', () => {
-      it('should skip products whose last extraction is current with Shopify updatedAt', async () => {
+      it('should stop splitting at max depth 3', async () => {
         const store = createMockStore();
         const collection = createMockCollection();
-        const products = [
-          createMockProduct('fresh-product'),
-          createMockProduct('stale-product'),
-          createMockProduct('another-fresh-product'),
-        ];
-        const adapter = createMockAdapter(products);
+        const adapter = createMockAdapterWithError(
+          [],
+          new Error(
+            'GraphQL errors from test-store: Platform limit for pagination reached',
+          ),
+        );
 
         storeRepository.findOne.mockResolvedValue(store);
         collectionRepository.findOne.mockResolvedValue(collection);
         platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
 
-        const currentDate = new Date('2025-01-02');
-        productUrlRepository.findOne
-          .mockResolvedValueOnce(createMockProductUrl({
-            handle: 'fresh-product',
-            lastExtractedAt: currentDate,
-            extractionStatus: 'success',
-          }))
-          .mockResolvedValueOnce(createMockProductUrl({
-            handle: 'stale-product',
-            lastExtractedAt: new Date('2024-12-31'),
-            extractionStatus: 'success',
-          }))
-          .mockResolvedValueOnce(createMockProductUrl({
-            handle: 'another-fresh-product',
-            lastExtractedAt: currentDate,
-            extractionStatus: 'success',
-          }));
-
-        extractionService.processExtractedVariants.mockResolvedValue({
-          variantsExtracted: 1,
-          success: true,
+        const job = createPrefixJob({
+          ...defaultPrefixData,
+          prefix: 'abc',
+          depth: 3,
         });
+        const result = await processor.processPrefix(job);
 
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
-
-        expect(result.success).toBe(true);
-        expect(result.productsAttempted).toBe(3);
-        expect(result.productsProcessed).toBe(1);
-        expect(result.productsSkipped).toBe(2);
-        // Only the stale product should have processExtractedVariants called
-        expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(1);
-        expect(extractionService.processExtractedVariants.mock.calls[0][2]).toBe('stale-product');
+        // Should NOT have enqueued sub-prefix jobs
+        expect(storefrontQueue.addBulk).not.toHaveBeenCalled();
+        expect(result.wasSplit).toBe(false);
+        expect(result.error).toContain('25K pagination limit at max depth 3');
       });
 
-      it('should not skip products with error extraction status even if recently extracted', async () => {
+      it('should rethrow non-pagination errors', async () => {
         const store = createMockStore();
         const collection = createMockCollection();
-        const products = [createMockProduct('error-product')];
-        const adapter = createMockAdapter(products);
+        const adapter = createMockAdapterWithError(
+          [],
+          new Error('Network timeout'),
+        );
 
         storeRepository.findOne.mockResolvedValue(store);
         collectionRepository.findOne.mockResolvedValue(collection);
         platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
 
-        const recentDate = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours ago
-        productUrlRepository.findOne.mockResolvedValue(
-          createMockProductUrl({
-            handle: 'error-product',
-            lastExtractedAt: recentDate,
-            extractionStatus: 'error',
-          }),
-        );
+        const job = createPrefixJob(defaultPrefixData);
 
-        extractionService.processExtractedVariants.mockResolvedValue({
-          variantsExtracted: 2,
-          success: true,
-        });
-
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
-
-        expect(result.success).toBe(true);
-        expect(result.productsProcessed).toBe(1);
-        expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(1);
-      });
-    });
-
-    describe('per-product error handling', () => {
-      it('should continue processing remaining products when one fails', async () => {
-        const store = createMockStore();
-        const collection = createMockCollection();
-        const products = [
-          createMockProduct('product-1'),
-          createMockProduct('product-2-fails'),
-          createMockProduct('product-3'),
-        ];
-        const adapter = createMockAdapter(products);
-
-        storeRepository.findOne.mockResolvedValue(store);
-        collectionRepository.findOne.mockResolvedValue(collection);
-        platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
-        productUrlRepository.findOne.mockResolvedValue(null); // all new
-
-        extractionService.processExtractedVariants
-          .mockResolvedValueOnce({ variantsExtracted: 1, success: true })
-          .mockRejectedValueOnce(new Error('Extraction failed for product-2'))
-          .mockResolvedValueOnce({ variantsExtracted: 1, success: true });
-
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
-
-        expect(result.success).toBe(true);
-        expect(result.productsAttempted).toBe(3);
-        expect(result.productsProcessed).toBe(2); // 1st and 3rd succeeded
-        expect(result.errors).toBe(1);
-        expect(result.variantsExtracted).toBe(2); // 1 + 0 (error) + 1
-        expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(3);
-      });
-
-      it('should report the number of errors in the result', async () => {
-        const store = createMockStore();
-        const collection = createMockCollection();
-        const products = [
-          createMockProduct('ok-product'),
-          createMockProduct('bad-product'),
-        ];
-        const adapter = createMockAdapter(products);
-
-        storeRepository.findOne.mockResolvedValue(store);
-        collectionRepository.findOne.mockResolvedValue(collection);
-        platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
-        productUrlRepository.findOne.mockResolvedValue(null);
-
-        extractionService.processExtractedVariants
-          .mockResolvedValueOnce({ variantsExtracted: 3, success: true })
-          .mockRejectedValueOnce(new Error('Bad product'));
-
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
-
-        // The result still reports success for the overall job
-        expect(result.success).toBe(true);
-        expect(result.productsAttempted).toBe(2);
-        expect(result.productsProcessed).toBe(1);
-        expect(result.errors).toBe(1);
-        expect(result.variantsExtracted).toBe(3);
-      });
-
-      it('should fail the job when every attempted product fails', async () => {
-        const store = createMockStore();
-        const collection = createMockCollection();
-        const products = [
-          createMockProduct('bad-product-a'),
-          createMockProduct('bad-product-b'),
-        ];
-        const adapter = createMockAdapter(products);
-
-        storeRepository.findOne.mockResolvedValue(store);
-        collectionRepository.findOne.mockResolvedValue(collection);
-        platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
-        productUrlRepository.findOne.mockResolvedValue(null);
-        extractionService.processExtractedVariants.mockRejectedValue(
-          new Error('Bad product'),
-        );
-
-        const job = createMockJob(defaultJobData);
-
-        await expect(processor.process(job)).rejects.toThrow(
-          'all 2 attempted products failed',
-        );
-      });
-    });
-
-    describe('store not found', () => {
-      it('should throw when storeId does not exist', async () => {
-        storeRepository.findOne.mockResolvedValue(null);
-
-        const job = createMockJob({ storeId: 999 });
-
-        await expect(processor.process(job)).rejects.toThrow('Store 999 not found');
-        expect(collectionRepository.findOne).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('collection not found', () => {
-      it('should throw when collection is not configured for the store', async () => {
-        const store = createMockStore({ discoveryConfig: null });
-        storeRepository.findOne.mockResolvedValue(store);
-
-        const job = createMockJob({ storeId: 1 });
-
-        await expect(processor.process(job)).rejects.toThrow(
-          'No MTG singles collection configured for test-store',
-        );
-        expect(collectionRepository.findOne).not.toHaveBeenCalled();
-      });
-
-      it('should throw when configured collection does not exist', async () => {
-        const store = createMockStore();
-        storeRepository.findOne.mockResolvedValue(store);
-        collectionRepository.findOne.mockResolvedValue(null);
-
-        const job = createMockJob({ storeId: 1 });
-
-        await expect(processor.process(job)).rejects.toThrow(
-          'No MTG singles collection configured for test-store',
+        await expect(processor.processPrefix(job)).rejects.toThrow(
+          'Network timeout',
         );
       });
     });
@@ -402,11 +545,12 @@ describe('StorefrontProcessor', () => {
         productUrlRepository.findOne.mockResolvedValue(null);
         extractionService.processExtractedVariants.mockResolvedValue({
           variantsExtracted: 1,
+          cardsUpserted: 1,
           success: true,
         });
 
-        const job = createMockJob(defaultJobData);
-        await processor.process(job);
+        const job = createPrefixJob(defaultPrefixData);
+        await processor.processPrefix(job);
 
         expect(productUrlRepository.create).toHaveBeenCalledWith({
           storeId: 1,
@@ -435,52 +579,20 @@ describe('StorefrontProcessor', () => {
         productUrlRepository.findOne.mockResolvedValue(existingProductUrl);
         extractionService.processExtractedVariants.mockResolvedValue({
           variantsExtracted: 1,
+          cardsUpserted: 1,
           success: true,
         });
 
-        const job = createMockJob(defaultJobData);
-        await processor.process(job);
+        const job = createPrefixJob(defaultPrefixData);
+        await processor.processPrefix(job);
 
-        // Should have updated the sitemapLastmod
-        expect(existingProductUrl.sitemapLastmod).toEqual(new Date('2025-01-01'));
-        expect(productUrlRepository.save).toHaveBeenCalledWith(existingProductUrl);
-        // Should NOT have called create for existing product
-        expect(productUrlRepository.create).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('progress reporting', () => {
-      it('should call updateProgress every 100 products', async () => {
-        const store = createMockStore();
-        const collection = createMockCollection();
-
-        // Create 150 products to trigger progress at product 100
-        const products = Array.from({ length: 150 }, (_, i) =>
-          createMockProduct(`product-${i}`),
+        expect(existingProductUrl.sitemapLastmod).toEqual(
+          new Date('2025-01-01'),
         );
-        const adapter = createMockAdapter(products);
-
-        storeRepository.findOne.mockResolvedValue(store);
-        collectionRepository.findOne.mockResolvedValue(collection);
-        platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
-        productUrlRepository.findOne.mockResolvedValue(null);
-        extractionService.processExtractedVariants.mockResolvedValue({
-          variantsExtracted: 1,
-          success: true,
-        });
-
-        const job = createMockJob(defaultJobData);
-        await processor.process(job);
-
-        // updateProgress should have been called at product 100
-        expect(job.updateProgress).toHaveBeenCalledTimes(1);
-        expect(job.updateProgress).toHaveBeenCalledWith({
-          productsAttempted: 100,
-          productsProcessed: 100,
-          productsSkipped: 0,
-          errors: 0,
-          variantsExtracted: 100,
-        });
+        expect(productUrlRepository.save).toHaveBeenCalledWith(
+          existingProductUrl,
+        );
+        expect(productUrlRepository.create).not.toHaveBeenCalled();
       });
     });
 
@@ -497,25 +609,25 @@ describe('StorefrontProcessor', () => {
         productUrlRepository.findOne.mockResolvedValue(null);
         extractionService.processExtractedVariants.mockResolvedValue({
           variantsExtracted: 5,
+          cardsUpserted: 2,
           success: true,
         });
 
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
+        const job = createPrefixJob(defaultPrefixData);
+        const result = await processor.processPrefix(job);
 
         expect(result).toEqual({
           storeId: 1,
-          collectionHandle: 'mtg-singles',
-          productsAttempted: 1,
+          prefix: 'a',
           productsProcessed: 1,
-          productsSkipped: 0,
+          cardsAdded: 2,
           errors: 0,
-          variantsExtracted: 5,
+          wasSplit: false,
           success: true,
         });
       });
 
-      it('should return zero counts when collection has no products', async () => {
+      it('should return zero counts when no products match the prefix', async () => {
         const store = createMockStore();
         const collection = createMockCollection();
         const adapter = createMockAdapter([]);
@@ -524,20 +636,21 @@ describe('StorefrontProcessor', () => {
         collectionRepository.findOne.mockResolvedValue(collection);
         platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
 
-        const job = createMockJob(defaultJobData);
-        const result = await processor.process(job);
+        const job = createPrefixJob(defaultPrefixData);
+        const result = await processor.processPrefix(job);
 
         expect(result).toEqual({
           storeId: 1,
-          collectionHandle: 'mtg-singles',
-          productsAttempted: 0,
+          prefix: 'a',
           productsProcessed: 0,
-          productsSkipped: 0,
+          cardsAdded: 0,
           errors: 0,
-          variantsExtracted: 0,
+          wasSplit: false,
           success: true,
         });
-        expect(extractionService.processExtractedVariants).not.toHaveBeenCalled();
+        expect(
+          extractionService.processExtractedVariants,
+        ).not.toHaveBeenCalled();
       });
     });
   });

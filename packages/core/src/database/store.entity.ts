@@ -43,6 +43,11 @@ export class Store {
     searchPath?: string;
     shopifyUrl?: string;
     storefrontApiVersion?: string;
+    storefrontAccessToken?: string;
+    /** Product type used to scope Storefront API searches to MTG singles */
+    mtgProductType?: string;
+    /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
+    storefrontScope?: string;
   };
 
   @ManyToOne(() => Platform, { nullable: true })

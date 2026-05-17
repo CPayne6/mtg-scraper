@@ -81,6 +81,21 @@ export interface CollectionProductsData {
   } | null;
 }
 
+export interface SearchProductsData {
+  search: {
+    totalCount: number;
+    edges: Array<{ node: StorefrontProduct }>;
+    pageInfo: PageInfo;
+  };
+}
+
 export interface ProductByHandleData {
   product: StorefrontProduct | null;
+}
+
+export interface ProductsQueryData {
+  products: {
+    edges: Array<{ node: StorefrontProduct }>;
+    pageInfo: PageInfo;
+  };
 }

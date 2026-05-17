@@ -6,6 +6,7 @@ import {
   Store,
   ProductUrl,
   MtgSinglesCollection,
+  CardName,
   PlatformModule,
   CacheModule,
   QueueModule,
@@ -15,7 +16,7 @@ import { StorefrontProcessor } from './storefront.processor';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store, ProductUrl, MtgSinglesCollection]),
+    TypeOrmModule.forFeature([Store, ProductUrl, MtgSinglesCollection, CardName]),
     QueueModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.STOREFRONT_EXTRACTION }),
     PlatformModule,
