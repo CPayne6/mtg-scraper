@@ -6,7 +6,7 @@ import {
   JOB_NAMES,
   StorefrontExtractionJobData,
   StorefrontBootstrapJobData,
-  RetryUnmatchedJobData,
+  ReextractUnmatchedJobData,
 } from '@scoutlgs/shared';
 
 @Injectable()
@@ -21,7 +21,7 @@ export class QueueService {
     private readonly storefrontExtractionQueue: Queue<
       | StorefrontExtractionJobData
       | StorefrontBootstrapJobData
-      | RetryUnmatchedJobData
+      | ReextractUnmatchedJobData
     >,
   ) {
     this.queues = new Map<string, Queue>([
@@ -132,17 +132,20 @@ export class QueueService {
   }
 
   /**
-   * Enqueue a retry-unmatched job. The worker loads unmatched_cards for the
-   * given store (or all stores), re-runs the matcher, and promotes any that
-   * now match to card_listings.
+   * Enqueue a re-extract-unmatched job. The worker pulls the store's
+   * unmatched products' Shopify IDs, re-fetches them from the Storefront
+   * API, and runs them through the current extraction pipeline.
+   *
+   * Use this to apply extractor fixes to previously-failed products
+   * without re-fetching the entire catalog.
    */
-  async enqueueRetryUnmatchedJob(
-    opts: { storeId?: number; limit?: number } = {},
+  async enqueueReextractUnmatchedJob(
+    opts: { storeId: number; limit?: number },
   ): Promise<void> {
     try {
       await this.storefrontExtractionQueue.add(
-        JOB_NAMES.RETRY_UNMATCHED,
-        opts satisfies RetryUnmatchedJobData,
+        JOB_NAMES.REEXTRACT_UNMATCHED,
+        opts satisfies ReextractUnmatchedJobData,
         {
           priority: 1,
           removeOnComplete: 50,
@@ -152,10 +155,10 @@ export class QueueService {
         },
       );
       this.logger.log(
-        `Enqueued retry-unmatched job (storeId=${opts.storeId ?? 'all'}, limit=${opts.limit ?? 'default'})`,
+        `Enqueued reextract-unmatched job (storeId=${opts.storeId}, limit=${opts.limit ?? 'default'})`,
       );
     } catch (error) {
-      this.logger.error('Failed to enqueue retry-unmatched job:', error);
+      this.logger.error('Failed to enqueue reextract-unmatched job:', error);
       throw error;
     }
   }

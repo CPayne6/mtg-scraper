@@ -9,7 +9,7 @@ export type {
   StorefrontPlanJobData,
   StorefrontPrefixJobData,
   StorefrontPrefixJobResult,
-  RetryUnmatchedJobData,
-  RetryUnmatchedJobResult,
+  ReextractUnmatchedJobData,
+  ReextractUnmatchedJobResult,
 } from './queue.types.js';
 export { QUEUE_NAMES, JOB_NAMES } from './queue.types.js';

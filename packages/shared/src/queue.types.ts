@@ -11,11 +11,13 @@ export const JOB_NAMES = {
    */
   BOOTSTRAP_STOREFRONT_EXTRACTION: 'bootstrap-storefront-extraction',
   /**
-   * Re-runs the matcher against unmatched_cards rows and promotes any that
-   * now match (with the warm cache populated, with better extractors, etc.).
-   * Platform-agnostic — works for any extraction backend.
+   * Re-fetches unmatched products from the upstream Shopify Storefront API
+   * and runs them through the current extraction pipeline. Use this to
+   * apply extractor fixes (better title parsing, new SKU formats, etc.)
+   * to products that previously failed to match — works even when the
+   * stored `raw_name` is wrong because we pull fresh data from Shopify.
    */
-  RETRY_UNMATCHED: 'retry-unmatched',
+  REEXTRACT_UNMATCHED: 'reextract-unmatched',
 } as const;
 
 /**
@@ -69,20 +71,22 @@ export interface StorefrontBootstrapJobData {
 }
 
 /**
- * Job data for retrying matches on unmatched_cards rows.
- * Scoped per-store; the worker loads the store's unmatched_cards in batches
- * and re-runs the matcher (which has the warm cache populated by now).
+ * Job data for re-extracting unmatched products from Shopify.
+ * Scoped per-store; the worker pulls the store's unmatched product IDs
+ * in batches, fetches them via Storefront API, and runs them through
+ * the current extraction pipeline (which uses the latest extractor logic).
  */
-export interface RetryUnmatchedJobData {
-  /** Optional — if omitted, retries all stores in one job. */
-  storeId?: number;
-  /** Max products to retry in this job. Default 5000. */
+export interface ReextractUnmatchedJobData {
+  /** Required — re-extraction queries Shopify per-store. */
+  storeId: number;
+  /** Max products to re-fetch in this job. Default 5000. */
   limit?: number;
 }
 
-export interface RetryUnmatchedJobResult {
-  storeId: number | null;
+export interface ReextractUnmatchedJobResult {
+  storeId: number;
   attempted: number;
+  refetched: number;
   matched: number;
   stillUnmatched: number;
   errors: number;

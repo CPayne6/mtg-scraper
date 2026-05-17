@@ -218,26 +218,31 @@ export class ManualService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Enqueue a retry-unmatched job. The scraper processes it using the
-   * warm matcher cache, promoting any newly-matchable products to
-   * card_listings.
+   * Enqueue a re-extract-unmatched job. The scraper re-fetches each
+   * unmatched product from Shopify and runs the latest extraction
+   * pipeline against it. Use this to apply extractor fixes without
+   * re-fetching the full catalog.
    */
-  async retryUnmatched(opts: { storeId?: number; limit?: number }) {
-    if (opts.storeId) {
-      const store = await this.storeRepository.findOne({ where: { id: opts.storeId } });
-      if (!store) {
-        throw new NotFoundException(`Store ${opts.storeId} not found`);
-      }
+  async reextractUnmatched(opts: { storeId: number; limit?: number }) {
+    const store = await this.storeRepository.findOne({ where: { id: opts.storeId } });
+    if (!store) {
+      throw new NotFoundException(`Store ${opts.storeId} not found`);
+    }
+    if (store.platformType !== 'shopify_storefront') {
+      throw new BadRequestException(
+        `Re-extract requires shopify_storefront platform (got '${store.platformType}')`,
+      );
     }
 
-    await this.queueService.enqueueRetryUnmatchedJob({
+    await this.queueService.enqueueReextractUnmatchedJob({
       storeId: opts.storeId,
       limit: opts.limit,
     });
 
     return {
-      message: 'Retry-unmatched job enqueued',
-      storeId: opts.storeId ?? 'all',
+      message: 'Reextract-unmatched job enqueued',
+      storeId: opts.storeId,
+      storeName: store.name,
       limit: opts.limit ?? 5000,
     };
   }

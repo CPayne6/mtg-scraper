@@ -29,12 +29,12 @@ export class ManualController {
 
   // Generic extraction operations (platform-agnostic)
 
-  @Put('extraction/retry-unmatched')
-  putRetryUnmatched(
-    @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
+  @Put('extraction/reextract-unmatched')
+  putReextractUnmatched(
+    @Query('storeId', ParseIntPipe) storeId: number,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.manualService.retryUnmatched({ storeId, limit })
+    return this.manualService.reextractUnmatched({ storeId, limit })
   }
 
   @Get('extraction/unmatched-stats')
