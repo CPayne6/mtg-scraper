@@ -10,7 +10,7 @@ import {
   Store,
 } from '@scoutlgs/core';
 
-export interface V1TokenListingResult {
+export interface TokenListingResult {
   id: number;
   printingId: number | null;
   scryfallId: string | null;
@@ -37,20 +37,20 @@ export interface V1TokenListingResult {
   imageUrl?: string;
 }
 
-export interface V1TokenStoreCount {
+export interface TokenStoreCount {
   storeSlug: string;
   storeName: string;
   count: number;
 }
 
-export interface V1TokenConditionCount {
+export interface TokenConditionCount {
   code: string;
   displayName: string;
   count: number;
   sortOrder: number;
 }
 
-export interface V1TokenSearchResponse {
+export interface TokenSearchResponse {
   query: Record<string, string | undefined>;
   totalListings: number;
   priceStats: {
@@ -65,9 +65,9 @@ export interface V1TokenSearchResponse {
     hasNextPage: boolean;
     hasPrevPage: boolean;
   };
-  storeCounts: V1TokenStoreCount[];
-  conditionCounts: V1TokenConditionCount[];
-  results: V1TokenListingResult[];
+  storeCounts: TokenStoreCount[];
+  conditionCounts: TokenConditionCount[];
+  results: TokenListingResult[];
 }
 
 interface TokenSearchFilters {
@@ -78,8 +78,8 @@ interface TokenSearchFilters {
 }
 
 @Injectable()
-export class V1TokensService {
-  private readonly logger = new Logger(V1TokensService.name);
+export class TokensService {
+  private readonly logger = new Logger(TokensService.name);
 
   constructor(
     @InjectRepository(TokenName)
@@ -108,7 +108,7 @@ export class V1TokensService {
     conditions?: string[];
     limit: number;
     page: number;
-  }): Promise<V1TokenSearchResponse> {
+  }): Promise<TokenSearchResponse> {
     const { name, type, subtype, power, toughness, colors, setCode, stores, conditions, limit, page } = params;
 
     // Step 1: Find matching token names based on attribute filters
@@ -289,7 +289,7 @@ export class V1TokensService {
    */
   private async getStoreCounts(
     filters: TokenSearchFilters,
-  ): Promise<V1TokenStoreCount[]> {
+  ): Promise<TokenStoreCount[]> {
     const qb = this.buildCountQueryBuilder(filters);
 
     if (filters.conditions && filters.conditions.length > 0) {
@@ -317,7 +317,7 @@ export class V1TokensService {
    */
   private async getConditionCounts(
     filters: TokenSearchFilters,
-  ): Promise<V1TokenConditionCount[]> {
+  ): Promise<TokenConditionCount[]> {
     const qb = this.buildCountQueryBuilder(filters);
 
     if (filters.stores && filters.stores.length > 0) {
@@ -386,7 +386,7 @@ export class V1TokensService {
   /**
    * Map hydrated token variants to flat listing results.
    */
-  private mapVariantsToResults(variants: TokenVariant[]): V1TokenListingResult[] {
+  private mapVariantsToResults(variants: TokenVariant[]): TokenListingResult[] {
     return variants.map((variant) => {
       const listing = variant.tokenListing;
       const tokenName = listing.tokenName;
@@ -457,7 +457,7 @@ export class V1TokensService {
     params: Record<string, any>,
     page: number,
     limit: number,
-  ): V1TokenSearchResponse {
+  ): TokenSearchResponse {
     return {
       query: {
         name: params.name,

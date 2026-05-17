@@ -12,7 +12,7 @@ import {
 } from '@scoutlgs/core';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
 
-export interface V1ListingResult {
+export interface ListingResult {
   id: number;
   // Printing info
   printingId: number | null;
@@ -35,20 +35,20 @@ export interface V1ListingResult {
   imageUrl?: string;
 }
 
-export interface V1StoreCount {
+export interface StoreCount {
   storeSlug: string;
   storeName: string;
   count: number;
 }
 
-export interface V1ConditionCount {
+export interface ConditionCount {
   code: string;
   displayName: string;
   count: number;
   sortOrder: number;
 }
 
-export interface V1SearchResponse {
+export interface SearchResponse {
   query: string;
   totalListings: number;
   priceStats: {
@@ -63,9 +63,9 @@ export interface V1SearchResponse {
     hasNextPage: boolean;
     hasPrevPage: boolean;
   };
-  storeCounts: V1StoreCount[];
-  conditionCounts: V1ConditionCount[];
-  results: V1ListingResult[];
+  storeCounts: StoreCount[];
+  conditionCounts: ConditionCount[];
+  results: ListingResult[];
 }
 
 interface SearchFilters {
@@ -76,8 +76,8 @@ interface SearchFilters {
 }
 
 @Injectable()
-export class V1CardsService {
-  private readonly logger = new Logger(V1CardsService.name);
+export class CardsService {
+  private readonly logger = new Logger(CardsService.name);
 
   constructor(
     @InjectRepository(CardName)
@@ -103,7 +103,7 @@ export class V1CardsService {
     setCode?: string,
     stores?: string[],
     conditions?: string[],
-  ): Promise<V1SearchResponse> {
+  ): Promise<SearchResponse> {
     const normalizedName = this.cardNameResolver.normalizeCardName(name);
 
     // Step 1: Find matching CardName (exact, then fuzzy)
@@ -238,7 +238,7 @@ export class V1CardsService {
    */
   private async getStoreCounts(
     filters: SearchFilters,
-  ): Promise<V1StoreCount[]> {
+  ): Promise<StoreCount[]> {
     const qb = this.buildCountQueryBuilder(filters);
 
     // Apply condition filter but NOT store filter
@@ -269,7 +269,7 @@ export class V1CardsService {
    */
   private async getConditionCounts(
     filters: SearchFilters,
-  ): Promise<V1ConditionCount[]> {
+  ): Promise<ConditionCount[]> {
     const qb = this.buildCountQueryBuilder(filters);
 
     // Apply store filter but NOT condition filter
@@ -346,7 +346,7 @@ export class V1CardsService {
   private mapVariantsToResults(
     variants: CardVariant[],
     cardName: string,
-  ): V1ListingResult[] {
+  ): ListingResult[] {
     return variants.map((variant) => {
       const listing = variant.cardListing;
       const printing = listing.cardPrinting;
@@ -408,7 +408,7 @@ export class V1CardsService {
     query: string,
     page: number,
     limit: number,
-  ): V1SearchResponse {
+  ): SearchResponse {
     return {
       query,
       totalListings: 0,

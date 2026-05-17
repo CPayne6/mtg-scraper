@@ -1,16 +1,16 @@
 import { Controller, Get, Query, UsePipes, ValidationPipe } from '@nestjs/common';
-import { V1TokensService, V1TokenSearchResponse } from './v1-tokens.service';
+import { TokensService, TokenSearchResponse } from './tokens.service';
 import { SearchTokensQueryDto } from './dto/search-tokens-query.dto';
 
-@Controller('v1/tokens')
-export class V1TokensController {
-  constructor(private readonly v1TokensService: V1TokensService) {}
+@Controller('tokens')
+export class TokensController {
+  constructor(private readonly tokensService: TokensService) {}
 
   @Get('search')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async searchTokens(
     @Query() query: SearchTokensQueryDto,
-  ): Promise<V1TokenSearchResponse> {
+  ): Promise<TokenSearchResponse> {
     const stores = query.stores
       ? query.stores.split(',').map((s) => s.trim()).filter(Boolean)
       : undefined;
@@ -18,7 +18,7 @@ export class V1TokensController {
       ? query.conditions.split(',').map((c) => c.trim()).filter(Boolean)
       : undefined;
 
-    return this.v1TokensService.searchTokens({
+    return this.tokensService.searchTokens({
       name: query.name,
       type: query.type,
       subtype: query.subtype,

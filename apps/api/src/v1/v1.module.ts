@@ -15,12 +15,12 @@ import {
   CardList,
   CardListEntry,
 } from '@scoutlgs/core';
-import { V1CardsController } from './cards/v1-cards.controller';
-import { V1CardsService } from './cards/v1-cards.service';
-import { V1TokensController } from './tokens/v1-tokens.controller';
-import { V1TokensService } from './tokens/v1-tokens.service';
-import { V1ListsController } from './lists/v1-lists.controller';
-import { V1ListsService } from './lists/v1-lists.service';
+import { CardsController } from './cards/cards.controller';
+import { CardsService } from './cards/cards.service';
+import { TokensController } from './tokens/tokens.controller';
+import { TokensService } from './tokens/tokens.service';
+import { ListsController } from './lists/lists.controller';
+import { ListsService } from './lists/lists.service';
 import { CardNameResolverService } from './shared/card-name-resolver.service';
 
 @Module({
@@ -33,7 +33,7 @@ import { CardNameResolverService } from './shared/card-name-resolver.service';
     ]),
     StoreModule,
   ],
-  controllers: [V1CardsController, V1TokensController, V1ListsController],
-  providers: [V1CardsService, V1TokensService, V1ListsService, CardNameResolverService],
+  controllers: [CardsController, TokensController, ListsController],
+  providers: [CardsService, TokensService, ListsService, CardNameResolverService],
 })
 export class V1Module {}

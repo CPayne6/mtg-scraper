@@ -15,16 +15,16 @@ import {
 import type { Response } from 'express';
 import { randomUUID } from 'crypto';
 import { OwnerCookie, COOKIE_NAME } from './decorators/owner-cookie.decorator';
-import { V1ListsService } from './v1-lists.service';
+import { ListsService } from './lists.service';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
 
 const COOKIE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
-@Controller('v1/lists')
-export class V1ListsController {
-  constructor(private readonly v1ListsService: V1ListsService) {}
+@Controller('lists')
+export class ListsController {
+  constructor(private readonly listsService: ListsService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -45,7 +45,7 @@ export class V1ListsController {
       });
     }
 
-    return this.v1ListsService.createList(dto, ownerCookie);
+    return this.listsService.createList(dto, ownerCookie);
   }
 
   @Get()
@@ -53,13 +53,13 @@ export class V1ListsController {
     if (!cookie) {
       return { lists: [] };
     }
-    const lists = await this.v1ListsService.getListsForOwner(cookie);
+    const lists = await this.listsService.getListsForOwner(cookie);
     return { lists };
   }
 
   @Get(':listId')
   async getListWithPrices(@Param('listId') listId: string) {
-    return this.v1ListsService.getListWithPrices(listId);
+    return this.listsService.getListWithPrices(listId);
   }
 
   @Put(':listId/filters')
@@ -72,7 +72,7 @@ export class V1ListsController {
     if (!cookie) {
       return { message: 'No owner cookie' };
     }
-    await this.v1ListsService.updateFilters(listId, cookie, dto);
+    await this.listsService.updateFilters(listId, cookie, dto);
     return { message: 'Filters updated' };
   }
 
@@ -86,7 +86,7 @@ export class V1ListsController {
     if (!cookie) {
       return { message: 'No owner cookie' };
     }
-    return this.v1ListsService.replaceCards(listId, cookie, dto.cards);
+    return this.listsService.replaceCards(listId, cookie, dto.cards);
   }
 
   @Delete(':listId')
@@ -98,6 +98,6 @@ export class V1ListsController {
     if (!cookie) {
       return;
     }
-    await this.v1ListsService.deleteList(listId, cookie);
+    await this.listsService.deleteList(listId, cookie);
   }
 }

@@ -4,7 +4,7 @@ import { EntityManager } from 'typeorm';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CardList, CardListEntry } from '@scoutlgs/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { V1ListsService } from './v1-lists.service';
+import { ListsService } from './lists.service';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
 
 const OWNER_COOKIE = '11111111-1111-1111-1111-111111111111';
@@ -25,8 +25,8 @@ const makeList = (overrides: Partial<CardList> = {}): CardList => ({
   ...overrides,
 } as CardList);
 
-describe('V1ListsService', () => {
-  let service: V1ListsService;
+describe('ListsService', () => {
+  let service: ListsService;
   let cardListRepo: Record<string, ReturnType<typeof vi.fn>>;
   let cardListEntryRepo: Record<string, ReturnType<typeof vi.fn>>;
   let cardNameResolver: Record<string, ReturnType<typeof vi.fn>>;
@@ -74,7 +74,7 @@ describe('V1ListsService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        V1ListsService,
+        ListsService,
         { provide: getRepositoryToken(CardList), useValue: cardListRepo },
         { provide: getRepositoryToken(CardListEntry), useValue: cardListEntryRepo },
         { provide: CardNameResolverService, useValue: cardNameResolver },
@@ -82,7 +82,7 @@ describe('V1ListsService', () => {
       ],
     }).compile();
 
-    service = module.get<V1ListsService>(V1ListsService);
+    service = module.get<ListsService>(ListsService);
   });
 
   describe('createList', () => {

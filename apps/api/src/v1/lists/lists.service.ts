@@ -74,8 +74,8 @@ export interface CreateListResponse {
 }
 
 @Injectable()
-export class V1ListsService {
-  private readonly logger = new Logger(V1ListsService.name);
+export class ListsService {
+  private readonly logger = new Logger(ListsService.name);
 
   constructor(
     @InjectRepository(CardList)

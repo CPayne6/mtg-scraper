@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { V1ListsController } from './v1-lists.controller';
-import { V1ListsService, CreateListResponse, ListWithPricesResponse } from './v1-lists.service';
+import { ListsController } from './lists.controller';
+import { ListsService, CreateListResponse, ListWithPricesResponse } from './lists.service';
 
 const LIST_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const OWNER_COOKIE = '11111111-1111-1111-1111-111111111111';
@@ -28,8 +28,8 @@ const mockListWithPrices: ListWithPricesResponse = {
   unresolved: [],
 };
 
-describe('V1ListsController', () => {
-  let controller: V1ListsController;
+describe('ListsController', () => {
+  let controller: ListsController;
   let listsService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
@@ -43,12 +43,12 @@ describe('V1ListsController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [V1ListsController],
-      providers: [{ provide: V1ListsService, useValue: mockListsService }],
+      controllers: [ListsController],
+      providers: [{ provide: ListsService, useValue: mockListsService }],
     }).compile();
 
-    controller = module.get<V1ListsController>(V1ListsController);
-    listsService = module.get(V1ListsService);
+    controller = module.get<ListsController>(ListsController);
+    listsService = module.get(ListsService);
   });
 
   describe('POST /v1/lists', () => {
