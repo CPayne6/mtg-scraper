@@ -59,6 +59,25 @@ export class CardListing {
   @Column({ length: 3, default: 'CAD' })
   currency: string;
 
+  @Column({ name: 'name_match', length: 20, default: 'unknown' })
+  nameMatch: 'exact' | 'fuzzy' | 'frontface' | 'none' | 'unknown';
+
+  @Column({ name: 'set_match', length: 20, default: 'unknown' })
+  setMatch:
+    | 'code_provided'
+    | 'name_exact'
+    | 'name_fuzzy'
+    | 'none'
+    | 'unknown';
+
+  @Column({ name: 'printing_match', length: 20, default: 'unknown' })
+  printingMatch:
+    | 'set_and_number'
+    | 'set_only'
+    | 'any'
+    | 'none'
+    | 'unknown';
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

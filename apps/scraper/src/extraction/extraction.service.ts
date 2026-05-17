@@ -207,6 +207,9 @@ export class ExtractionService {
         rawTitle: firstVariant.cardName,
         imageUrl: firstVariant.imageUrl || null,
         currency: firstVariant.currency,
+        nameMatch: matchResult.nameMatch,
+        setMatch: matchResult.setMatch,
+        printingMatch: matchResult.printingMatch,
       };
 
       const variantRows: VariantRow[] = [];

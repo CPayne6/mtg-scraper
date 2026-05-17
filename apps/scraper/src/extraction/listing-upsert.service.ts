@@ -9,6 +9,12 @@ export interface ListingRow {
   rawTitle: string;
   imageUrl: string | null;
   currency: string;
+  /** How the card name was resolved by the matcher. */
+  nameMatch: 'exact' | 'fuzzy' | 'frontface' | 'none';
+  /** How the set was resolved from extractor input. */
+  setMatch: 'code_provided' | 'name_exact' | 'name_fuzzy' | 'none';
+  /** How the printing was selected for the resolved card. */
+  printingMatch: 'set_and_number' | 'set_only' | 'any' | 'none';
 }
 
 export interface VariantRow {
@@ -96,6 +102,9 @@ export class ListingUpsertService implements OnModuleInit {
     const rawTitles: string[] = [];
     const imageUrls: (string | null)[] = [];
     const currencies: string[] = [];
+    const nameMatches: string[] = [];
+    const setMatches: string[] = [];
+    const printingMatches: string[] = [];
 
     for (const item of deduped) {
       cardNameIds.push(item.listing.cardNameId);
@@ -105,6 +114,9 @@ export class ListingUpsertService implements OnModuleInit {
       rawTitles.push(item.listing.rawTitle);
       imageUrls.push(item.listing.imageUrl);
       currencies.push(item.listing.currency);
+      nameMatches.push(item.listing.nameMatch);
+      setMatches.push(item.listing.setMatch);
+      printingMatches.push(item.listing.printingMatch);
     }
 
     // Upsert listings and get their IDs back
@@ -112,7 +124,9 @@ export class ListingUpsertService implements OnModuleInit {
       `
       INSERT INTO card_listings (
         card_name_id, card_printing_id, store_id, product_url_id,
-        raw_title, image_url, currency, price_updated_at
+        raw_title, image_url, currency,
+        name_match, set_match, printing_match,
+        price_updated_at
       )
       SELECT
         unnest($1::int[]),
@@ -122,6 +136,9 @@ export class ListingUpsertService implements OnModuleInit {
         unnest($5::varchar[]),
         unnest($6::text[]),
         unnest($7::varchar[]),
+        unnest($8::varchar[]),
+        unnest($9::varchar[]),
+        unnest($10::varchar[]),
         NOW()
       ON CONFLICT (store_id, product_url_id) DO UPDATE SET
         card_name_id = EXCLUDED.card_name_id,
@@ -129,6 +146,9 @@ export class ListingUpsertService implements OnModuleInit {
         raw_title = EXCLUDED.raw_title,
         image_url = EXCLUDED.image_url,
         currency = EXCLUDED.currency,
+        name_match = EXCLUDED.name_match,
+        set_match = EXCLUDED.set_match,
+        printing_match = EXCLUDED.printing_match,
         price_updated_at = NOW()
       RETURNING id
       `,
@@ -140,6 +160,9 @@ export class ListingUpsertService implements OnModuleInit {
         rawTitles,
         imageUrls,
         currencies,
+        nameMatches,
+        setMatches,
+        printingMatches,
       ],
     );
 

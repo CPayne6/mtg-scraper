@@ -5,10 +5,28 @@ import { DataSource } from 'typeorm';
 import { CardPrinting, ScryfallSet } from '@scoutlgs/core';
 import { LRUCache } from 'lru-cache';
 
+export type NameMatchType = 'exact' | 'fuzzy' | 'frontface' | 'none';
+export type PrintingMatchType = 'set_and_number' | 'set_only' | 'any' | 'none';
+/**
+ * How we arrived at the set code used during matching.
+ *   code_provided — extractor gave us a setCode directly (highest confidence)
+ *   name_exact    — extractor gave a setName that exact-matched a set
+ *   name_fuzzy    — extractor gave a setName resolved via ILIKE (lowest)
+ *   none          — no set info, or set name didn't resolve
+ */
+export type SetMatchType = 'code_provided' | 'name_exact' | 'name_fuzzy' | 'none';
+
 export interface MatchResult {
   cardPrintingId: number | null;
   cardNameId: number | null;
+  /** Kept for backward compatibility — same as nameMatch. */
   confidence: 'exact' | 'fuzzy' | 'none';
+  /** How the card_name was resolved. */
+  nameMatch: NameMatchType;
+  /** How the set was resolved from extractor input. */
+  setMatch: SetMatchType;
+  /** How the printing was selected once the card_name was known. */
+  printingMatch: PrintingMatchType;
 }
 
 interface PrintingCacheEntry {
@@ -18,7 +36,7 @@ interface PrintingCacheEntry {
 
 interface NameCacheEntry {
   cardNameId: number | null;
-  confidence: 'exact' | 'fuzzy' | 'none';
+  nameMatch: NameMatchType;
 }
 
 @Injectable()
@@ -63,25 +81,43 @@ export class PrintingMatcherService {
       collectorNumber = collectorNumber.replace(/^0+/, '') || '0';
     }
 
+    // Track how we obtained the set code — populated below.
+    let setMatch: SetMatchType = setCode ? 'code_provided' : 'none';
+
     // Try exact match by set_code + collector_number
     if (setCode && collectorNumber) {
       const entry = await this.findBySetAndNumber(setCode, collectorNumber);
       if (entry) {
-        return { cardPrintingId: entry.cardPrintingId, cardNameId: entry.cardNameId, confidence: 'exact' };
+        return {
+          cardPrintingId: entry.cardPrintingId,
+          cardNameId: entry.cardNameId,
+          confidence: 'exact',
+          nameMatch: 'exact',
+          setMatch,
+          printingMatch: 'set_and_number',
+        };
       }
     }
 
     // If no set_code but we have a set name, resolve it
     if (!setCode && setName) {
       const resolved = await this.resolveSetCode(setName);
-      if (resolved) {
-        setCode = resolved;
+      if (resolved.code) {
+        setCode = resolved.code;
+        setMatch = resolved.matchType;
 
         // Try exact match again with resolved set code
         if (collectorNumber) {
-          const entry = await this.findBySetAndNumber(resolved, collectorNumber);
+          const entry = await this.findBySetAndNumber(resolved.code, collectorNumber);
           if (entry) {
-            return { cardPrintingId: entry.cardPrintingId, cardNameId: entry.cardNameId, confidence: 'exact' };
+            return {
+              cardPrintingId: entry.cardPrintingId,
+              cardNameId: entry.cardNameId,
+              confidence: 'exact',
+              nameMatch: 'exact',
+              setMatch,
+              printingMatch: 'set_and_number',
+            };
           }
         }
       }
@@ -93,16 +129,26 @@ export class PrintingMatcherService {
     const nameResult = await this.resolveCardName(normalizedName);
 
     if (nameResult.cardNameId === null) {
-      return { cardPrintingId: null, cardNameId: null, confidence: 'none' };
+      return {
+        cardPrintingId: null,
+        cardNameId: null,
+        confidence: 'none',
+        nameMatch: 'none',
+        setMatch,
+        printingMatch: 'none',
+      };
     }
 
     // Stage 2: Find best printing for the resolved card name
-    const printingId = await this.resolvePrinting(nameResult.cardNameId, setCode, collectorNumber);
+    const printingResult = await this.resolvePrinting(nameResult.cardNameId, setCode, collectorNumber);
 
     return {
-      cardPrintingId: printingId,
+      cardPrintingId: printingResult.printingId,
       cardNameId: nameResult.cardNameId,
-      confidence: nameResult.confidence,
+      confidence: nameResult.nameMatch === 'frontface' ? 'exact' : (nameResult.nameMatch as 'exact' | 'fuzzy'),
+      nameMatch: nameResult.nameMatch,
+      setMatch,
+      printingMatch: printingResult.matchType,
     };
   }
 
@@ -121,7 +167,7 @@ export class PrintingMatcherService {
     );
 
     if (exact.length > 0) {
-      const result: NameCacheEntry = { cardNameId: Number(exact[0].id), confidence: 'exact' };
+      const result: NameCacheEntry = { cardNameId: Number(exact[0].id), nameMatch: 'exact' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
@@ -137,7 +183,7 @@ export class PrintingMatcherService {
     );
 
     if (frontFace.length > 0) {
-      const result: NameCacheEntry = { cardNameId: Number(frontFace[0].id), confidence: 'exact' };
+      const result: NameCacheEntry = { cardNameId: Number(frontFace[0].id), nameMatch: 'frontface' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
@@ -152,13 +198,13 @@ export class PrintingMatcherService {
     );
 
     if (fuzzy.length > 0) {
-      const result: NameCacheEntry = { cardNameId: Number(fuzzy[0].id), confidence: 'fuzzy' };
+      const result: NameCacheEntry = { cardNameId: Number(fuzzy[0].id), nameMatch: 'fuzzy' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
 
     // No match
-    const result: NameCacheEntry = { cardNameId: null, confidence: 'none' };
+    const result: NameCacheEntry = { cardNameId: null, nameMatch: 'none' };
     this.nameCache.set(normalizedName, result);
     return result;
   }
@@ -171,7 +217,7 @@ export class PrintingMatcherService {
     cardNameId: number,
     setCode?: string,
     collectorNumber?: string,
-  ): Promise<number | null> {
+  ): Promise<{ printingId: number | null; matchType: PrintingMatchType }> {
     const setCodeLower = setCode?.toLowerCase() ?? null;
 
     const rows = await this.dataSource.query(
@@ -190,8 +236,13 @@ export class PrintingMatcherService {
       [cardNameId, setCodeLower, collectorNumber],
     );
 
-    if (rows.length === 0) return null;
-    return Number(rows[0].printing_id);
+    if (rows.length === 0) return { printingId: null, matchType: 'none' };
+
+    const priority = Number(rows[0].priority);
+    const matchType: PrintingMatchType =
+      priority === 1 ? 'set_and_number' : priority === 2 ? 'set_only' : 'any';
+
+    return { printingId: Number(rows[0].printing_id), matchType };
   }
 
   /**
@@ -199,10 +250,17 @@ export class PrintingMatcherService {
    * Tries exact name match first, then ILIKE for partial/fuzzy names.
    * Shortest matching name wins (most specific match).
    */
-  private async resolveSetCode(setName: string): Promise<string | null> {
+  private async resolveSetCode(
+    setName: string,
+  ): Promise<{ code: string | null; matchType: 'name_exact' | 'name_fuzzy' | 'none' }> {
     const key = setName.toLowerCase();
     const cached = this.setNameCache.get(key);
-    if (cached !== undefined) return cached || null;
+    if (cached !== undefined) {
+      // Cache stores "code|matchType" or "" for not-found
+      if (!cached) return { code: null, matchType: 'none' };
+      const [code, matchType] = cached.split('|');
+      return { code, matchType: matchType as 'name_exact' | 'name_fuzzy' };
+    }
 
     // Try exact name match first (fast)
     const exact = await this.setRepository.findOne({
@@ -211,9 +269,9 @@ export class PrintingMatcherService {
     });
 
     if (exact) {
-      this.setNameCache.set(key, exact.code);
+      this.setNameCache.set(key, `${exact.code}|name_exact`);
       this.logger.debug(`Resolved set name "${setName}" → ${exact.code} (exact)`);
-      return exact.code;
+      return { code: exact.code, matchType: 'name_exact' };
     }
 
     // Fall back to ILIKE (handles partial names like "Neon Dynasty" → "Kamigawa: Neon Dynasty")
@@ -225,14 +283,14 @@ export class PrintingMatcherService {
       .limit(1)
       .getRawOne();
 
-    const setCode = fuzzy?.code ?? '';
-    this.setNameCache.set(key, setCode);
-
-    if (setCode) {
-      this.logger.debug(`Resolved set name "${setName}" → ${setCode} (ILIKE)`);
+    if (fuzzy?.code) {
+      this.setNameCache.set(key, `${fuzzy.code}|name_fuzzy`);
+      this.logger.debug(`Resolved set name "${setName}" → ${fuzzy.code} (ILIKE)`);
+      return { code: fuzzy.code, matchType: 'name_fuzzy' };
     }
 
-    return setCode || null;
+    this.setNameCache.set(key, '');
+    return { code: null, matchType: 'none' };
   }
 
   /**
@@ -305,15 +363,16 @@ export class PrintingMatcherService {
     for (const row of names) {
       this.nameCache.set(row.normalized_name, {
         cardNameId: row.id,
-        confidence: 'exact',
+        nameMatch: 'exact',
       });
     }
 
-    // Load all set names → codes into the set name cache
+    // Load all set names → codes into the set name cache.
+    // Cache format: "code|matchType" (see resolveSetCode).
     const sets: { name: string; code: string }[] =
       await this.dataSource.query(`SELECT name, code FROM sets`);
     for (const row of sets) {
-      this.setNameCache.set(row.name.toLowerCase(), row.code);
+      this.setNameCache.set(row.name.toLowerCase(), `${row.code}|name_exact`);
     }
 
     this.logger.log(
