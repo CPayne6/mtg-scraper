@@ -41,27 +41,35 @@ interface EdhrecResponse {
 export class EdhrecService {
   private readonly logger = new Logger(EdhrecService.name);
   private readonly baseUrl: string;
-  private readonly maxPages: number;
+  private readonly defaultMaxPages: number;
   private readonly startPage: number;
+  private readonly cardsPerPage = 100; // Approximate cards per EDHREC page
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl = this.configService.getOrThrow<string>('popularCards.edhrecBaseUrl');
-    this.maxPages = this.configService.getOrThrow<number>('popularCards.edhrecPages');
+    this.defaultMaxPages = this.configService.getOrThrow<number>('popularCards.edhrecPages');
     this.startPage = this.configService.get<number>('popularCards.edhrecStartPage') ?? 1;
   }
 
   /**
    * Fetches popular cards from EDHREC API
+   * @param limit Optional limit - if provided, fetches enough pages to satisfy the limit
    * @returns Array of unique card names
    */
-  async fetchPopularCards(): Promise<string[]> {
+  async fetchPopularCards(limit?: number): Promise<string[]> {
     const allCards: string[] = [];
     const seenCards = new Set<string>();
     const batchSize = 2;
     const delayBetweenBatches = 1000;
-    const endPage = this.startPage + this.maxPages - 1;
 
-    this.logger.log(`Fetching popular cards from EDHREC (pages ${this.startPage}-${endPage}, ${this.maxPages} total in batches of ${batchSize})...`);
+    // Calculate pages needed: use limit if provided, otherwise use default config
+    // Early termination will stop fetching once limit is reached
+    const pagesNeeded = limit
+      ? Math.ceil(limit / this.cardsPerPage)
+      : this.defaultMaxPages;
+    const endPage = this.startPage + pagesNeeded - 1;
+
+    this.logger.log(`Fetching popular cards from EDHREC (pages ${this.startPage}-${endPage}, ${pagesNeeded} total in batches of ${batchSize})${limit ? ` for limit of ${limit}` : ''}...`);
 
     for (let batchStart = this.startPage; batchStart <= endPage; batchStart += batchSize) {
       const batchEnd = Math.min(batchStart + batchSize - 1, endPage);
@@ -110,6 +118,12 @@ export class EdhrecService {
         `Batch ${batchStart}-${batchEnd} complete: ${batchSuccessCount} succeeded, ${batchFailCount} failed (total unique: ${allCards.length})`
       );
 
+      // Stop early if we have enough cards
+      if (limit && allCards.length >= limit) {
+        this.logger.log(`Reached target of ${limit} cards, stopping early`);
+        break;
+      }
+
       if (batchEnd < endPage) {
         this.logger.debug(`Waiting ${delayBetweenBatches}ms before next batch...`);
         await this.delay(delayBetweenBatches);
@@ -117,7 +131,7 @@ export class EdhrecService {
     }
 
     this.logger.log(`Successfully fetched ${allCards.length} unique cards from EDHREC`);
-    return allCards;
+    return limit ? allCards.slice(0, limit) : allCards;
   }
 
   /**
