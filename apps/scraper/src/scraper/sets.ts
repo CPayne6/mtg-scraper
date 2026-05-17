@@ -1,4 +1,7 @@
+import { Logger } from '@nestjs/common';
 import * as cron from 'cron';
+
+const logger = new Logger('ScryfallSets');
 
 export interface Set {
   object: string;
@@ -44,10 +47,10 @@ export const loadSets = async () => {
     const response = await fetch('https://api.scryfall.com/sets');
     const data: unknown = await response.json();
     sets = (data as { data: Set[] }).data;
-    console.log(`Loaded ${sets.length} sets from Scryfall`);
+    logger.log(`Loaded ${sets.length} sets from Scryfall`);
     return sets;
   } catch (err) {
-    console.error('Failed to load sets from Scryfall:', err);
+    logger.error('Failed to load sets from Scryfall:', err);
     // Don't crash - keep existing sets (or empty array on first load)
     return sets;
   }

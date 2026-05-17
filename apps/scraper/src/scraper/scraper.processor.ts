@@ -29,9 +29,7 @@ export class ScrapeCardProcessor {
     // Ensure stores are loaded before processing
     await this.scraperService.waitUntilReady();
 
-    this.logger.log(
-      `Processing scrape job for: ${cardName} at ${storeName} (Job ID: ${job.id}, Request ID: ${requestId || 'N/A'})`,
-    );
+    this.logger.log(`[START] ${cardName} @ ${storeName}`);
 
     try {
       // Scrape single store
@@ -56,13 +54,9 @@ export class ScrapeCardProcessor {
       await this.cacheService.markStoreScrapeComplete(cardName, storeName);
 
       if (error) {
-        this.logger.warn(
-          `Scraped ${cardName} at ${storeName} with error: ${error} (retry ${newRetryCount})`,
-        );
+        this.logger.warn(`[DONE] ${cardName} @ ${storeName}: error`);
       } else {
-        this.logger.log(
-          `Successfully scraped ${results.length} results for: ${cardName} at ${storeName}`,
-        );
+        this.logger.log(`[DONE] ${cardName} @ ${storeName}: ${results.length} results`);
       }
 
       return {
@@ -77,10 +71,7 @@ export class ScrapeCardProcessor {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      this.logger.error(
-        `Failed to scrape ${cardName} at ${storeName}:`,
-        error instanceof Error ? error.stack : error,
-      );
+      this.logger.error(`[FAIL] ${cardName} @ ${storeName}: ${errorMessage}`);
 
       // Cache the error state
       const newRetryCount = (retryCount ?? 0) + 1;
