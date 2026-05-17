@@ -1,8 +1,8 @@
-import { Process, Processor } from '@nestjs/bull';
+import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
@@ -21,7 +21,6 @@ import type { StorefrontExtractionAdapter } from '@scoutlgs/core';
 import { ExtractionService } from '../extraction/extraction.service';
 import { PrintingMatcherService } from '../extraction/printing-matcher.service';
 
-/** A single extracted product from the Shopify API */
 interface ExtractedProduct {
   shopifyProductId: string;
   handle: string;
@@ -29,10 +28,14 @@ interface ExtractedProduct {
   variants: ExtractedCardVariant[];
 }
 
+/**
+ * Processes one page (250 products) per job.
+ * After processing, enqueues the next page back into the queue.
+ * With concurrency 3, pages from all stores interleave naturally.
+ */
 @Processor(QUEUE_NAMES.STOREFRONT_EXTRACTION)
 export class StorefrontProcessor implements OnModuleInit {
   private readonly logger = new Logger(StorefrontProcessor.name);
-  private readonly PAGE_SIZE = 250;
 
   constructor(
     @InjectRepository(Store)
@@ -43,6 +46,8 @@ export class StorefrontProcessor implements OnModuleInit {
     private readonly collectionRepository: Repository<MtgSinglesCollection>,
     @InjectRepository(ShopifyProduct)
     private readonly shopifyProductRepository: Repository<ShopifyProduct>,
+    @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
+    private readonly storefrontQueue: Queue,
     private readonly dataSource: DataSource,
     private readonly platformAdapterFactory: PlatformAdapterFactory,
     private readonly extractionService: ExtractionService,
@@ -55,14 +60,19 @@ export class StorefrontProcessor implements OnModuleInit {
     await this.printingMatcher.warmCaches();
   }
 
+  /**
+   * Process one page of products from a store.
+   * Fetches 250 products starting from lastId, processes them,
+   * then enqueues the next page if there are more products.
+   */
   @Process({
     name: JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
-    concurrency: 1,
+    concurrency: 3,
   })
   async process(
     job: Job<StorefrontExtractionJobData>,
   ): Promise<StorefrontExtractionJobResult> {
-    const { storeId, discoveryRunId, maxCardsAdded } = job.data;
+    const { storeId, lastId, discoveryRunId } = job.data;
 
     const store = await this.storeRepository.findOne({
       where: { id: storeId },
@@ -71,17 +81,15 @@ export class StorefrontProcessor implements OnModuleInit {
       throw new Error(`Store ${storeId} not found`);
     }
 
-    const scope = store.scraperConfig?.storefrontScope;
+    // Resolve scope from job data or store config
+    const scope =
+      job.data.scope ??
+      store.scraperConfig?.storefrontScope;
     if (!scope) {
       throw new Error(
-        `Store ${store.name} (${storeId}) is missing scraperConfig.storefrontScope`,
+        `Store ${store.name} (${storeId}) is missing storefrontScope`,
       );
     }
-
-    this.logger.warn(
-      `Starting Storefront ID-based extraction for ${store.name}` +
-        (maxCardsAdded ? ` (limit: ${maxCardsAdded} cards)` : ''),
-    );
 
     const adapter = this.platformAdapterFactory.getExtractionAdapter(
       store.platformType!,
@@ -90,81 +98,63 @@ export class StorefrontProcessor implements OnModuleInit {
     const collection = await this.getCollection(store);
     const collectionId = collection?.id ?? 0;
 
-    let productsProcessed = 0;
-    let productsSkipped = 0;
-    let cardsAdded = 0;
-    let errors = 0;
-    let limitReached = false;
+    // Fetch one page
+    const { products, nextLastId } = await adapter.fetchPage(
+      store,
+      scope,
+      lastId,
+    );
 
-    let pageBatch: ExtractedProduct[] = [];
-
-    try {
-      for await (const product of adapter.extractByIdPagination(
-        store,
-        scope,
-      )) {
-        pageBatch.push(product);
-
-        if (pageBatch.length >= this.PAGE_SIZE) {
-          const pageResult = await this.processPage(
-            pageBatch, store.id, collectionId, discoveryRunId,
-          );
-          productsProcessed += pageResult.processed;
-          productsSkipped += pageResult.skipped;
-          cardsAdded += pageResult.cards;
-          errors += pageResult.errors;
-          pageBatch = [];
-
-          if (maxCardsAdded && cardsAdded >= maxCardsAdded) {
-            limitReached = true;
-            this.logger.warn(
-              `${store.name}: Card limit reached (${cardsAdded}/${maxCardsAdded}). Stopping.`,
-            );
-            break;
-          }
-
-          const total = productsProcessed + productsSkipped;
-          if (total % 500 === 0 && total > 0) {
-            this.logger.warn(
-              `${store.name}: ${productsProcessed} processed, ${productsSkipped} skipped, ${cardsAdded} cards, ${errors} errors`,
-            );
-          }
-        }
-      }
-
-      if (pageBatch.length > 0 && !limitReached) {
-        const pageResult = await this.processPage(
-          pageBatch, store.id, collectionId, discoveryRunId,
-        );
-        productsProcessed += pageResult.processed;
-        productsSkipped += pageResult.skipped;
-        cardsAdded += pageResult.cards;
-        errors += pageResult.errors;
-      }
-    } catch (error) {
-      this.logger.error(
-        `Storefront extraction failed for ${store.name}: ${error}`,
-      );
-      throw error;
+    if (products.length === 0) {
+      this.logger.warn(`${store.name}: no more products (done)`);
+      return {
+        storeId,
+        productsProcessed: 0,
+        cardsAdded: 0,
+        errors: 0,
+        isLastPage: true,
+        success: true,
+      };
     }
 
-    this.logger.warn(
-      `Completed Storefront extraction for ${store.name}: ` +
-        `${productsProcessed} processed, ${productsSkipped} skipped, ${cardsAdded} cards, ${errors} errors` +
-        (limitReached ? ` (limit ${maxCardsAdded} reached)` : ''),
+    // Process the page
+    const pageResult = await this.processPage(
+      products,
+      store.id,
+      collectionId,
+      discoveryRunId,
     );
+
+    const isLastPage = nextLastId === null;
+
+    this.logger.warn(
+      `${store.name}: ${products.length} products, ${pageResult.cards} cards, ${pageResult.errors} errors` +
+        (isLastPage ? ' (last page)' : ` (next: id:>${nextLastId})`),
+    );
+
+    // Enqueue next page if there are more products
+    if (!isLastPage) {
+      await this.storefrontQueue.add(
+        JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
+        {
+          storeId,
+          lastId: nextLastId,
+          scope,
+          discoveryRunId,
+        } as StorefrontExtractionJobData,
+        {
+          removeOnComplete: 100,
+          removeOnFail: 500,
+        },
+      );
+    }
 
     return {
       storeId,
-      collectionHandle: collection?.slug ?? '',
-      productsAttempted: productsProcessed + productsSkipped + errors,
-      productsProcessed,
-      productsSkipped,
-      errors,
-      variantsExtracted: 0,
-      cardsAdded,
-      maxCardsAdded,
-      limitReached,
+      productsProcessed: pageResult.processed,
+      cardsAdded: pageResult.cards,
+      errors: pageResult.errors,
+      isLastPage,
       success: true,
     };
   }
@@ -178,8 +168,8 @@ export class StorefrontProcessor implements OnModuleInit {
     storeId: number,
     collectionId: number,
     discoveryRunId?: number,
-  ): Promise<{ processed: number; skipped: number; cards: number; errors: number }> {
-    // Step 1: Bulk lookup shopify_products by PK (bigint, fastest possible)
+  ): Promise<{ processed: number; cards: number; errors: number }> {
+    // Step 1: Bulk lookup shopify_products by PK
     const shopifyIds = products.map((p) => p.shopifyProductId);
     const existingRows: {
       shopify_product_id: string;
@@ -197,13 +187,11 @@ export class StorefrontProcessor implements OnModuleInit {
       existingRows.map((r) => [r.shopify_product_id, r]),
     );
 
-    // Step 2: Separate into known (already matched) vs new products
+    // Step 2: Separate known (already matched) vs new
     const newProducts: ExtractedProduct[] = [];
     const knownProducts: {
       product: ExtractedProduct;
       productUrlId: number;
-      cardListingId: number | null;
-      matchStatus: string;
     }[] = [];
 
     for (const product of products) {
@@ -212,8 +200,6 @@ export class StorefrontProcessor implements OnModuleInit {
         knownProducts.push({
           product,
           productUrlId: existing.product_url_id,
-          cardListingId: existing.card_listing_id,
-          matchStatus: existing.match_status,
         });
       } else {
         newProducts.push(product);
@@ -221,42 +207,41 @@ export class StorefrontProcessor implements OnModuleInit {
     }
 
     let processed = 0;
-    let skipped = 0;
     let cards = 0;
     let errors = 0;
 
     // Step 3: Known products — skip matching, just update variants
-    if (knownProducts.length > 0) {
-      for (const { product, productUrlId } of knownProducts) {
-        try {
-          const result = await this.extractionService.processExtractedVariants(
-            productUrlId,
-            storeId,
-            product.handle,
-            product.variants,
-            discoveryRunId,
-          );
-          if (result.success) {
-            processed++;
-            cards += result.cardsUpserted ?? 0;
-          } else {
-            errors++;
-          }
-        } catch (error) {
+    for (const { product, productUrlId } of knownProducts) {
+      try {
+        const result = await this.extractionService.processExtractedVariants(
+          productUrlId,
+          storeId,
+          product.handle,
+          product.variants,
+          discoveryRunId,
+        );
+        if (result.success) {
+          processed++;
+          cards += result.cardsUpserted ?? 0;
+        } else {
           errors++;
         }
+      } catch {
+        errors++;
       }
     }
 
-    // Step 4: New products — full pipeline (upsert product_url + match + extract)
+    // Step 4: New products — full pipeline
     if (newProducts.length > 0) {
       const productUrlMap = await this.bulkUpsertProductUrls(
-        storeId, collectionId, newProducts,
+        storeId,
+        collectionId,
+        newProducts,
       );
 
       const successIds: number[] = [];
       const errorUpdates: { id: number; error: string }[] = [];
-      const shopifyProductInserts: {
+      const shopifyInserts: {
         shopifyProductId: string;
         productUrlId: number;
         matchStatus: string;
@@ -285,16 +270,17 @@ export class StorefrontProcessor implements OnModuleInit {
             cards += result.cardsUpserted ?? 0;
             successIds.push(productUrlId);
 
-            // Determine match status and card_listing_id for shopify_products
             let matchStatus = 'unmatched';
             let cardListingId: number | null = null;
-            const isToken = result.unmatchedCards === 0 && result.matchedPrintings === 0 && result.unmatchedPrintings === 0;
+            const isToken =
+              result.unmatchedCards === 0 &&
+              result.matchedPrintings === 0 &&
+              result.unmatchedPrintings === 0;
 
             if (isToken) {
               matchStatus = 'token';
             } else if (result.matchedPrintings > 0) {
               matchStatus = 'matched';
-              // Look up the card_listing we just created
               const listing = await this.dataSource.query(
                 `SELECT id FROM card_listings WHERE product_url_id = $1 LIMIT 1`,
                 [productUrlId],
@@ -302,7 +288,7 @@ export class StorefrontProcessor implements OnModuleInit {
               cardListingId = listing[0]?.id ?? null;
             }
 
-            shopifyProductInserts.push({
+            shopifyInserts.push({
               shopifyProductId: product.shopifyProductId,
               productUrlId,
               matchStatus,
@@ -315,8 +301,7 @@ export class StorefrontProcessor implements OnModuleInit {
               id: productUrlId,
               error: result.error ?? 'Processing failed',
             });
-
-            shopifyProductInserts.push({
+            shopifyInserts.push({
               shopifyProductId: product.shopifyProductId,
               productUrlId,
               matchStatus: 'unmatched',
@@ -333,16 +318,14 @@ export class StorefrontProcessor implements OnModuleInit {
         }
       }
 
-      // Step 5: Bulk update product_url statuses
       await this.bulkUpdateProductUrlStatus(successIds, errorUpdates);
 
-      // Step 6: Bulk insert shopify_products mappings
-      if (shopifyProductInserts.length > 0) {
-        await this.bulkUpsertShopifyProducts(storeId, shopifyProductInserts);
+      if (shopifyInserts.length > 0) {
+        await this.bulkUpsertShopifyProducts(storeId, shopifyInserts);
       }
     }
 
-    return { processed, skipped, cards, errors };
+    return { processed, cards, errors };
   }
 
   // ---------------------------------------------------------------------------

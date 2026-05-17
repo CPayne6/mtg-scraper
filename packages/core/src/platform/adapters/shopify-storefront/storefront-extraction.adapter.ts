@@ -133,6 +133,55 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   }
 
   /**
+   * Fetch a single page of products using ID-based stepping.
+   * Returns the extracted products and the last ID for the next page.
+   * Returns empty products array when the catalog is exhausted.
+   *
+   * @param store - Store to extract from
+   * @param scope - Query scope (e.g. 'product_type:"MTG Single"')
+   * @param lastId - Shopify product ID to start after (null for first page)
+   */
+  async fetchPage(
+    store: Store,
+    scope: string,
+    lastId?: string | null,
+  ): Promise<{
+    products: Array<{
+      shopifyProductId: string;
+      handle: string;
+      updatedAt: Date;
+      variants: ExtractedCardVariant[];
+    }>;
+    nextLastId: string | null;
+  }> {
+    const query = lastId ? `${scope} id:>${lastId}` : scope;
+
+    const data = await this.storefrontClient.query<ProductsQueryData>(
+      store,
+      PRODUCTS_QUERY,
+      { query, first: 250 },
+    );
+
+    const { edges } = data.products;
+    if (edges.length === 0) {
+      return { products: [], nextLastId: null };
+    }
+
+    const products = edges.map(({ node: product }) => ({
+      shopifyProductId: product.id.split('/').pop()!,
+      handle: product.handle,
+      updatedAt: new Date(product.updatedAt),
+      variants: this.extractVariantsFromProduct(store, product),
+    }));
+
+    const nextLastId = edges.length < 250
+      ? null  // last page
+      : edges[edges.length - 1].node.id.split('/').pop()!;
+
+    return { products, nextLastId };
+  }
+
+  /**
    * Paginate through all products matching a scope using ID-based stepping.
    *
    * Uses `products(query: "scope id:>lastId", sortKey: ID)` to step through
