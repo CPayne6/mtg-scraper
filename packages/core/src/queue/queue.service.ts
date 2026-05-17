@@ -20,9 +20,21 @@ export interface BulkScrapeJobInput {
   retryCount?: number;
 }
 
+export interface BackpressureOptions {
+  /** Maximum queue depth (waiting + active) before blocking. */
+  maxDepth: number;
+  /** Poll interval in ms while waiting for capacity. Default: 5000 */
+  pollMs?: number;
+}
+
+const DEFAULT_BACKPRESSURE_POLL_MS = 5_000;
+
 @Injectable()
 export class QueueService {
   private readonly logger = new Logger(QueueService.name);
+
+  /** Map of queue name -> Queue instance for generic access. */
+  private readonly queues: Map<string, Queue>;
 
   constructor(
     @InjectQueue(QUEUE_NAMES.CARD_SCRAPE)
@@ -31,7 +43,21 @@ export class QueueService {
     private readonly discoveryQueue: Queue<DiscoverStoreJobData>,
     @InjectQueue(QUEUE_NAMES.PRODUCT_EXTRACTION)
     private readonly extractionQueue: Queue<ExtractProductJobData>,
-  ) {}
+  ) {
+    this.queues = new Map<string, Queue>([
+      [QUEUE_NAMES.CARD_SCRAPE, this.scrapeQueue],
+      [QUEUE_NAMES.PRODUCT_DISCOVERY, this.discoveryQueue],
+      [QUEUE_NAMES.PRODUCT_EXTRACTION, this.extractionQueue],
+    ]);
+  }
+
+  private getQueueByName(queueName: string): Queue {
+    const queue = this.queues.get(queueName);
+    if (!queue) {
+      throw new Error(`Unknown queue: ${queueName}`);
+    }
+    return queue;
+  }
 
   /**
    * Enqueue a single scrape job for one card-store combination.
@@ -150,6 +176,18 @@ export class QueueService {
   }
 
   /**
+   * Get the current depth (waiting + active) for any queue by name.
+   */
+  async getDepthForQueue(queueName: string): Promise<number> {
+    const queue = this.getQueueByName(queueName);
+    const [waiting, active] = await Promise.all([
+      queue.getWaitingCount(),
+      queue.getActiveCount(),
+    ]);
+    return waiting + active;
+  }
+
+  /**
    * Get access to the underlying queue for event listening.
    */
   getQueue(): Queue<ScrapeCardJobData> {
@@ -163,13 +201,19 @@ export class QueueService {
    * @param storeId The store ID to discover products from
    * @param priority Job priority (default 1 for scheduled, 10 for manual trigger)
    */
-  async enqueueDiscoveryJob(storeId: number, priority: number = 1): Promise<void> {
+  async enqueueDiscoveryJob(
+    storeId: number,
+    priority: number = 1,
+    options?: { skipExtraction?: boolean; discoveryRunId?: number },
+  ): Promise<void> {
     try {
       await this.discoveryQueue.add(
         JOB_NAMES.DISCOVER_STORE,
         {
           storeId,
           priority,
+          skipExtraction: options?.skipExtraction,
+          discoveryRunId: options?.discoveryRunId,
         },
         {
           priority,
@@ -200,10 +244,11 @@ export class QueueService {
    * @param priority Job priority (default 1)
    */
   async enqueueExtractionJob(
-    productUrlId: string,
+    productUrlId: number,
     storeId: number,
     handle: string,
     priority: number = 1,
+    discoveryRunId?: number,
   ): Promise<void> {
     try {
       await this.extractionQueue.add(
@@ -213,6 +258,7 @@ export class QueueService {
           storeId,
           handle,
           priority,
+          discoveryRunId,
         },
         {
           priority,
@@ -242,7 +288,7 @@ export class QueueService {
    * @param jobs Array of extraction job inputs
    */
   async enqueueExtractionJobsBulk(
-    jobs: Array<{ productUrlId: string; storeId: number; handle: string; priority?: number }>,
+    jobs: Array<{ productUrlId: number; storeId: number; handle: string; priority?: number; discoveryRunId?: number }>,
   ): Promise<void> {
     if (jobs.length === 0) {
       return;
@@ -256,6 +302,7 @@ export class QueueService {
           storeId: job.storeId,
           handle: job.handle,
           priority: job.priority ?? 1,
+          discoveryRunId: job.discoveryRunId,
         } satisfies ExtractProductJobData,
         opts: {
           priority: job.priority ?? 1,
@@ -304,5 +351,113 @@ export class QueueService {
     ]);
 
     return { waiting, active, completed, failed };
+  }
+
+  // ============== Queue Backpressure ==============
+
+  private buildWaitlistKey(queueName: string): string {
+    return `backpressure:${queueName}:waitlist`;
+  }
+
+  /**
+   * Wait until a queue has capacity for `batchSize` more jobs.
+   * Uses a Redis ZSET as a FIFO waitlist so multiple callers
+   * across worker instances are served in order (longest-waiting first).
+   *
+   * @param queueName The queue name (from QUEUE_NAMES) to check capacity on
+   * @param batchSize Number of jobs the caller wants to enqueue
+   * @param callerId Identifier for the caller (e.g., store name) — used for logging and waitlist cleanup
+   * @param options Backpressure thresholds
+   */
+  async waitForCapacity(
+    queueName: string,
+    batchSize: number,
+    callerId: string,
+    options: BackpressureOptions,
+  ): Promise<void> {
+    const queue = this.getQueueByName(queueName);
+    const redis = await queue.client;
+    const waitlistKey = this.buildWaitlistKey(queueName);
+    const pollMs = options.pollMs ?? DEFAULT_BACKPRESSURE_POLL_MS;
+    const waiterId = `${callerId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
+    try {
+      const depth = await this.getDepthForQueue(queueName);
+
+      // Fast path: queue has room AND no one else is waiting ahead
+      const waitlistSize = await redis.zcard(waitlistKey);
+      if (depth + batchSize <= options.maxDepth && waitlistSize === 0) {
+        return;
+      }
+
+      // Register in waitlist (NX = only add if member not already present)
+      await redis.zadd(waitlistKey, 'NX', Date.now().toString(), waiterId);
+      this.logger.log(
+        `[Backpressure:${queueName}] ${callerId} queued in waitlist ` +
+        `(id=${waiterId}, queueDepth=${depth}, batchSize=${batchSize})`,
+      );
+
+      // Poll until we're first in line AND queue has capacity
+      while (true) {
+        await this.sleep(pollMs);
+
+        const rank = await redis.zrank(waitlistKey, waiterId);
+        if (rank === null) {
+          // We were removed (e.g., cleanup) — just proceed
+          return;
+        }
+
+        const currentDepth = await this.getDepthForQueue(queueName);
+
+        if (rank === 0 && currentDepth + batchSize <= options.maxDepth) {
+          await redis.zrem(waitlistKey, waiterId);
+          this.logger.log(
+            `[Backpressure:${queueName}] ${callerId} released from waitlist ` +
+            `(queueDepth=${currentDepth}, batchSize=${batchSize})`,
+          );
+          return;
+        }
+
+        this.logger.debug(
+          `[Backpressure:${queueName}] ${callerId} still waiting ` +
+          `(rank=${rank}, queueDepth=${currentDepth}, batchSize=${batchSize})`,
+        );
+      }
+    } catch (error) {
+      // On error, clean up and let the batch proceed rather than deadlock
+      this.logger.error(`[Backpressure:${queueName}] Error for ${callerId}: ${error}`);
+      await redis.zrem(waitlistKey, waiterId).catch(() => {});
+    }
+  }
+
+  /**
+   * Remove any stale waitlist entries for a caller on a specific queue.
+   * Call this when a job completes or fails to prevent leaked entries.
+   *
+   * @param queueName The queue name (from QUEUE_NAMES)
+   * @param callerId The caller identifier prefix to match (e.g., store name)
+   */
+  async cleanupBackpressureWaiters(queueName: string, callerId: string): Promise<void> {
+    try {
+      const queue = this.getQueueByName(queueName);
+      const redis = await queue.client;
+      const waitlistKey = this.buildWaitlistKey(queueName);
+      const members = await redis.zrange(waitlistKey, 0, -1);
+      const staleMembers = members.filter((m) => m.startsWith(`${callerId}:`));
+      if (staleMembers.length > 0) {
+        await redis.zrem(waitlistKey, ...staleMembers);
+        this.logger.log(
+          `[Backpressure:${queueName}] Cleaned up ${staleMembers.length} stale waitlist entries for ${callerId}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `[Backpressure:${queueName}] Error cleaning up waitlist for ${callerId}: ${error}`,
+      );
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

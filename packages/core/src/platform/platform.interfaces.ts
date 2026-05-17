@@ -50,6 +50,8 @@ export interface ExtractedCardVariant {
   setCode?: string;
   /** Collector number if extractable */
   collectorNumber?: string;
+  /** Whether this variant is a token (detected from SKU or other signals) */
+  isToken?: boolean;
 }
 
 /**

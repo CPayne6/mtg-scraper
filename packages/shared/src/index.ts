@@ -1,4 +1,4 @@
-export type { Card, CardWithStore, StoreInfo, PriceStats, CardSearchResponse, Set } from './card.types.js';
+export type { Card, CardWithStore, StoreInfo, PriceStats, PaginationMeta, CardSearchResponse, Set } from './card.types.js';
 export { Condition } from './card.types.js';
 export type {
   ScrapeCardJobData,

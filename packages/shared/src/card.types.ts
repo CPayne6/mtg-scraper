@@ -39,6 +39,14 @@ export interface PriceStats {
   count: number;
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
 export interface CardSearchResponse {
   cardName: string;
   stores: StoreInfo[];
