@@ -194,10 +194,13 @@ async function seedScryfall() {
     console.log(`  COPY complete: ${oracleCards.length} rows`);
 
     // Upsert from staging into card_names
+    // DISTINCT ON dedupes by normalized_name — Scryfall sometimes has multiple
+    // oracle_ids that normalize to the same name (e.g. art variants).
     const cardResult = await client.query(`
       INSERT INTO card_names (oracle_id, name, normalized_name)
-      SELECT oracle_id, name, normalized_name
+      SELECT DISTINCT ON (normalized_name) oracle_id, name, normalized_name
       FROM staging_cards
+      ORDER BY normalized_name, oracle_id
       ON CONFLICT (normalized_name) DO UPDATE SET
         oracle_id = EXCLUDED.oracle_id,
         name = EXCLUDED.name,
