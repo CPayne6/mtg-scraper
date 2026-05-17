@@ -89,7 +89,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       const data = await this.storefrontClient.query<CollectionProductsData>(
         store,
         COLLECTION_PRODUCTS_QUERY,
-        { handle: collectionSlug, first: 25, after: cursor ?? null },
+        { handle: collectionSlug, first: 100, after: cursor ?? null },
       );
 
       if (!data.collection) {
