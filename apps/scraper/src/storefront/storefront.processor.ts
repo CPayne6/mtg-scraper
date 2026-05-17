@@ -289,38 +289,54 @@ export class StorefrontProcessor implements OnModuleInit {
     let stillUnmatched = 0;
     let errors = 0;
 
-    for (const product of unmatchedProducts) {
-      try {
-        const result = await this.printingMatcher.match(
-          product.rawName,
-          product.setCode ?? undefined,
-          product.collectorNumber ?? undefined,
-          product.setName ?? undefined,
-        );
+    // Process in batches: run the matcher per product in-memory, then collapse
+    // every DB write into bulk operations. Reduces ~3 round-trips/product to
+    // ~3 round-trips per batch (regardless of size).
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < unmatchedProducts.length; i += BATCH_SIZE) {
+      const batch = unmatchedProducts.slice(i, i + BATCH_SIZE);
 
-        if (result.confidence !== 'none' && result.cardNameId) {
-          await this.promoteToListing(product, result);
-          matched++;
-        } else {
-          await this.unmatchedCardRepository
-            .createQueryBuilder()
-            .update()
-            .set({
-              retryCount: () => 'COALESCE(retry_count, 0) + 1',
-              lastRetryAt: () => 'NOW()',
-            })
-            .where('productUrlId = :pid AND storeId = :sid', {
+      const matchedProducts: Array<{
+        product: typeof batch[0];
+        result: Awaited<ReturnType<PrintingMatcherService['match']>>;
+      }> = [];
+      const stillUnmatchedKeys: Array<{ pid: number; sid: number }> = [];
+
+      for (const product of batch) {
+        try {
+          const result = await this.printingMatcher.match(
+            product.rawName,
+            product.setCode ?? undefined,
+            product.collectorNumber ?? undefined,
+            product.setName ?? undefined,
+          );
+
+          if (result.confidence !== 'none' && result.cardNameId) {
+            matchedProducts.push({ product, result });
+          } else {
+            stillUnmatchedKeys.push({
               pid: product.productUrlId,
               sid: product.storeId,
-            })
-            .execute();
-          stillUnmatched++;
+            });
+          }
+        } catch (error) {
+          errors++;
+          this.logger.error(
+            `retry-unmatched ${product.rawName}: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
-      } catch (error) {
-        errors++;
-        this.logger.error(
-          `retry-unmatched ${product.rawName}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      }
+
+      // Bulk-promote matched products in this batch
+      if (matchedProducts.length > 0) {
+        await this.bulkPromoteToListings(matchedProducts);
+        matched += matchedProducts.length;
+      }
+
+      // Bulk-bump retry_count for still-unmatched products
+      if (stillUnmatchedKeys.length > 0) {
+        await this.bulkBumpRetryCount(stillUnmatchedKeys);
+        stillUnmatched += stillUnmatchedKeys.length;
       }
     }
 
@@ -339,79 +355,134 @@ export class StorefrontProcessor implements OnModuleInit {
   }
 
   /**
-   * Move a single previously-unmatched product into card_listings via the
-   * batch accumulator. Updates shopify_products + deletes the unmatched
-   * row when done.
+   * Bulk-promote a batch of matched products to card_listings.
+   * Collapses what used to be 3N queries (find variants, delete unmatched,
+   * update shopify_products — once per product) into 3 queries per batch.
    */
-  private async promoteToListing(
-    product: Pick<UnmatchedCard, 'productUrlId' | 'storeId' | 'rawName'>,
-    matchResult: {
-      cardNameId: number | null;
-      cardPrintingId: number | null;
-      nameMatch: 'exact' | 'fuzzy' | 'frontface' | 'none';
-      setMatch: 'code_provided' | 'name_exact' | 'name_fuzzy' | 'none';
-      printingMatch: 'set_and_number' | 'set_only' | 'any' | 'none';
-    },
+  private async bulkPromoteToListings(
+    items: Array<{
+      product: Pick<UnmatchedCard, 'productUrlId' | 'storeId' | 'rawName'>;
+      result: {
+        cardNameId: number | null;
+        cardPrintingId: number | null;
+        nameMatch: 'exact' | 'fuzzy' | 'frontface' | 'none';
+        setMatch: 'code_provided' | 'name_exact' | 'name_fuzzy' | 'none';
+        printingMatch: 'set_and_number' | 'set_only' | 'any' | 'none';
+      };
+    }>,
   ): Promise<void> {
-    const variants = await this.unmatchedCardRepository.find({
-      where: {
-        productUrlId: product.productUrlId,
-        storeId: product.storeId,
-      },
+    if (items.length === 0) return;
+
+    const productUrlIds = items.map((i) => i.product.productUrlId);
+
+    // 1 query: fetch all variants for every product in the batch
+    const allVariants = await this.unmatchedCardRepository.find({
+      where: { productUrlId: In(productUrlIds) },
     });
 
-    const listing: ListingRow = {
-      cardNameId: matchResult.cardNameId,
-      cardPrintingId: matchResult.cardPrintingId,
-      storeId: product.storeId,
-      productUrlId: product.productUrlId,
-      rawTitle: product.rawName,
-      imageUrl: variants[0]?.imageUrl ?? null,
-      currency: variants[0]?.currency ?? 'CAD',
-      nameMatch: matchResult.nameMatch,
-      setMatch: matchResult.setMatch,
-      printingMatch: matchResult.printingMatch,
-    };
+    // Group variants by product_url_id for assembly
+    const variantsByProduct = new Map<number, UnmatchedCard[]>();
+    for (const v of allVariants) {
+      const list = variantsByProduct.get(v.productUrlId) ?? [];
+      list.push(v);
+      variantsByProduct.set(v.productUrlId, list);
+    }
 
-    const inStock = variants.filter(
-      (v) => v.inStock && (v.quantity == null || v.quantity > 0),
-    );
+    // Build listing rows for the batch accumulator (in-memory)
+    const accumulatorRows = items
+      .map(({ product, result }) => {
+        const variants = variantsByProduct.get(product.productUrlId) ?? [];
+        if (variants.length === 0) return null;
 
-    const variantRows: VariantRow[] = inStock.map((v) => ({
-      conditionCode: v.condition,
-      foil: v.foil,
-      price: Number(v.price),
-      quantity: v.quantity ?? null,
-      platformVariantId: v.platformVariantId ?? null,
-      sku: v.sku ?? null,
-    }));
+        const inStock = variants.filter(
+          (v) => v.inStock && (v.quantity == null || v.quantity > 0),
+        );
 
-    const inStockVariantIds = inStock
-      .map((v) => v.platformVariantId)
-      .filter((id): id is string => !!id);
+        const variantRows: VariantRow[] = inStock.map((v) => ({
+          conditionCode: v.condition,
+          foil: v.foil,
+          price: Number(v.price),
+          quantity: v.quantity ?? null,
+          platformVariantId: v.platformVariantId ?? null,
+          sku: v.sku ?? null,
+        }));
 
-    if (variantRows.length > 0) {
-      this.batchAccumulator.addMany([
-        {
+        if (variantRows.length === 0) return null;
+
+        const listing: ListingRow = {
+          cardNameId: result.cardNameId,
+          cardPrintingId: result.cardPrintingId,
+          storeId: product.storeId,
+          productUrlId: product.productUrlId,
+          rawTitle: product.rawName,
+          imageUrl: variants[0]?.imageUrl ?? null,
+          currency: variants[0]?.currency ?? 'CAD',
+          nameMatch: result.nameMatch,
+          setMatch: result.setMatch,
+          printingMatch: result.printingMatch,
+        };
+
+        return {
           listing,
           variants: variantRows,
           staleCleanup: {
             productUrlId: product.productUrlId,
-            inStockVariantIds,
+            inStockVariantIds: inStock
+              .map((v) => v.platformVariantId)
+              .filter((id): id is string => !!id),
           },
-        },
-      ]);
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    if (accumulatorRows.length > 0) {
+      this.batchAccumulator.addMany(accumulatorRows);
     }
 
+    // 1 query: bulk-delete unmatched rows for every promoted product
     await this.unmatchedCardRepository.delete({
-      productUrlId: product.productUrlId,
-      storeId: product.storeId,
+      productUrlId: In(productUrlIds),
     });
 
+    // 1 query: bulk-update shopify_products status for the batch
     await this.shopifyProductRepository.update(
-      { productUrlId: product.productUrlId },
+      { productUrlId: In(productUrlIds) },
       { matchStatus: 'matched', updatedAt: new Date() },
     );
+  }
+
+  /**
+   * Bulk-bump retry_count for products that still don't match after a retry
+   * pass. One UPDATE instead of N.
+   */
+  private async bulkBumpRetryCount(
+    keys: Array<{ pid: number; sid: number }>,
+  ): Promise<void> {
+    if (keys.length === 0) return;
+
+    // Group by store_id (typically all the same, but be safe) so a single
+    // UPDATE per group can use IN-list semantics cleanly.
+    const byStore = new Map<number, number[]>();
+    for (const { pid, sid } of keys) {
+      const list = byStore.get(sid) ?? [];
+      list.push(pid);
+      byStore.set(sid, list);
+    }
+
+    for (const [storeId, pids] of byStore.entries()) {
+      await this.unmatchedCardRepository
+        .createQueryBuilder()
+        .update()
+        .set({
+          retryCount: () => 'COALESCE(retry_count, 0) + 1',
+          lastRetryAt: () => 'NOW()',
+        })
+        .where('product_url_id IN (:...pids) AND store_id = :storeId', {
+          pids,
+          storeId,
+        })
+        .execute();
+    }
   }
 
   // ---------------------------------------------------------------------------

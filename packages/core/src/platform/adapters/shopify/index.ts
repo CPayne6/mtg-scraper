@@ -15,6 +15,7 @@ export {
   DefaultCardDetailExtractor,
   Four01CardDetailExtractor,
   CgRealmCardDetailExtractor,
+  HobbiesvilleCardDetailExtractor,
 } from './extractors';
 export {
   CardDetailExtractor,

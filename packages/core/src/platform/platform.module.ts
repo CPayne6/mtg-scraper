@@ -10,6 +10,7 @@ import { BinderposCardDetailExtractor } from './adapters/shopify/extractors/bind
 import { DefaultCardDetailExtractor } from './adapters/shopify/extractors/default-card-detail.extractor';
 import { Four01CardDetailExtractor } from './adapters/shopify/extractors/four01-card-detail.extractor';
 import { CgRealmCardDetailExtractor } from './adapters/shopify/extractors/cgrealm-card-detail.extractor';
+import { HobbiesvilleCardDetailExtractor } from './adapters/shopify/extractors/hobbiesville-card-detail.extractor';
 import { CardDetailExtractorRegistry } from './adapters/shopify/card-detail-extractor.registry';
 import { StorefrontClient } from './adapters/shopify-storefront/storefront-client';
 import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
@@ -30,6 +31,7 @@ export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
     DefaultCardDetailExtractor,
     Four01CardDetailExtractor,
     CgRealmCardDetailExtractor,
+    HobbiesvilleCardDetailExtractor,
     CardDetailExtractorRegistry,
     StorefrontClient,
     StorefrontExtractionAdapter,
