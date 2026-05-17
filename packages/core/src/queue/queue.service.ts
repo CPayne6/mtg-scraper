@@ -126,4 +126,23 @@ export class QueueService {
       total: waiting + active + completed + failed,
     };
   }
+
+  /**
+   * Get the current queue depth (waiting + active jobs).
+   * Useful for implementing backpressure.
+   */
+  async getQueueDepth(): Promise<number> {
+    const [waiting, active] = await Promise.all([
+      this.scrapeQueue.getWaitingCount(),
+      this.scrapeQueue.getActiveCount(),
+    ]);
+    return waiting + active;
+  }
+
+  /**
+   * Get access to the underlying queue for event listening.
+   */
+  getQueue(): Queue<ScrapeCardJobData> {
+    return this.scrapeQueue;
+  }
 }
