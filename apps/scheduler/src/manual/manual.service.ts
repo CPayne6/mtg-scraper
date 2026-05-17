@@ -1,9 +1,9 @@
 import { PopularCardsScheduler } from '@/popular-cards/popular-cards.scheduler';
 import { DiscoveryScheduler } from '@/discovery/discovery.scheduler';
-import { Injectable, Logger, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CacheService, QueueService, ProductUrl, UnmatchedCard, DiscoveryRun } from '@scoutlgs/core';
+import { Repository, DataSource } from 'typeorm';
+import { CacheService, QueueService, ProductUrl, UnmatchedCard, DiscoveryRun, Store, ShopifyProduct } from '@scoutlgs/core';
 import { ConfigService } from '@nestjs/config';
 const EXTRACTION_QUEUE_NAME = 'product-extraction';
 const EXTRACTION_TRIGGER_BATCH_SIZE = 500;
@@ -36,6 +36,9 @@ export class ManualService {
     private readonly unmatchedCardRepository: Repository<UnmatchedCard>,
     @InjectRepository(DiscoveryRun)
     private readonly discoveryRunRepository: Repository<DiscoveryRun>,
+    @InjectRepository(Store)
+    private readonly storeRepository: Repository<Store>,
+    private readonly dataSource: DataSource,
   ) { }
 
   async triggerScrape(
@@ -442,5 +445,99 @@ export class ManualService {
 
   getExtractionTriggerStatus() {
     return this.extractionTriggerStatus;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Storefront extraction
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Trigger storefront extraction for one or all stores.
+   * Routes based on store.platformType — currently only 'shopify_storefront'.
+   */
+  async triggerStorefrontExtraction(opts: { storeId?: number }) {
+    if (!opts.storeId) {
+      throw new BadRequestException('storeId is required. Use trigger-all for all stores.');
+    }
+
+    const store = await this.storeRepository.findOne({ where: { id: opts.storeId } });
+    if (!store) {
+      throw new NotFoundException(`Store ${opts.storeId} not found`);
+    }
+
+    if (store.platformType !== 'shopify_storefront') {
+      throw new BadRequestException(
+        `Store ${store.name} has platform type '${store.platformType}', expected 'shopify_storefront'`,
+      );
+    }
+
+    const scope = store.scraperConfig?.storefrontScope;
+    if (!scope) {
+      throw new BadRequestException(
+        `Store ${store.name} is missing scraperConfig.storefrontScope`,
+      );
+    }
+
+    await this.queueService.enqueueStorefrontExtractionJob(store.id);
+
+    this.logger.log(`Triggered storefront extraction for ${store.name}`);
+
+    return {
+      message: `Extraction triggered for ${store.name}`,
+      storeId: store.id,
+      platformType: store.platformType,
+      scope,
+    };
+  }
+
+  /**
+   * Trigger storefront extraction for all active stores.
+   */
+  async triggerAllStorefrontExtractions() {
+    const stores = await this.storeRepository.find({
+      where: { isActive: true, platformType: 'shopify_storefront' as any },
+    });
+
+    const results: { store: string; error?: string }[] = [];
+
+    for (const store of stores) {
+      const scope = store.scraperConfig?.storefrontScope;
+      if (!scope) {
+        results.push({ store: store.name, error: 'Missing storefrontScope' });
+        continue;
+      }
+
+      await this.queueService.enqueueStorefrontExtractionJob(store.id);
+      results.push({ store: store.name });
+    }
+
+    this.logger.log(
+      `Triggered storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores`,
+    );
+
+    return {
+      triggered: results.filter((r) => !r.error).length,
+      total: stores.length,
+      results,
+    };
+  }
+
+  /**
+   * Get storefront extraction status across all stores.
+   */
+  async getStorefrontExtractionStatus() {
+    return this.dataSource.query(`
+      SELECT s.name, s.platform_type,
+        (SELECT COUNT(*) FROM product_urls pu WHERE pu.store_id = s.id) as product_urls,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id) as shopify_products,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id AND sp.match_status = 'matched') as matched,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id AND sp.match_status = 'unmatched') as unmatched,
+        (SELECT COUNT(*) FROM shopify_products sp WHERE sp.store_id = s.id AND sp.match_status = 'token') as tokens,
+        (SELECT COUNT(*) FROM card_listings cl WHERE cl.store_id = s.id) as listings,
+        (SELECT COUNT(*) FROM unmatched_cards uc WHERE uc.store_id = s.id) as unmatched_cards
+      FROM stores s
+      WHERE s.is_active = true
+      ORDER BY s.id
+    `);
   }
 }

@@ -5,6 +5,25 @@ import { ManualService } from './manual.service'
 export class ManualController {
   constructor(private readonly manualService: ManualService) {}
 
+  // Storefront extraction (V3)
+
+  @Put('storefront/trigger')
+  putStorefrontTrigger(
+    @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
+  ) {
+    return this.manualService.triggerStorefrontExtraction({ storeId })
+  }
+
+  @Put('storefront/trigger-all')
+  putStorefrontTriggerAll() {
+    return this.manualService.triggerAllStorefrontExtractions()
+  }
+
+  @Get('storefront/status')
+  getStorefrontStatus() {
+    return this.manualService.getStorefrontExtractionStatus()
+  }
+
   // Popular cards scrape (V1)
 
   @Put('trigger')
