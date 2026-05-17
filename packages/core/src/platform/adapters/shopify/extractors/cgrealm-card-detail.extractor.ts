@@ -41,6 +41,32 @@ export class CgRealmCardDetailExtractor implements ICardDetailExtractor {
     // Strip trailing " : (descriptor)" pattern like ": (devoid)"
     working = working.replace(/\s*:\s*\([^)]+\)\s*$/, '').trim();
 
+    // The List format: "{CardName} (LIST-{...}) - The List"
+    //   e.g. "Druid's Familiar (LIST-AVR-175) - The List"  (inner set + collector)
+    //   e.g. "Acorn Catapult (LIST-241/318) - The List"    (just a list number)
+    // The original set code (AVR) is what's meaningful for matching, but
+    // for List-number-only variants we still want the cardName clean.
+    const listMatch = working.match(
+      /^(.+?)\s*\(LIST-([^)]+)\)\s*-\s*the list\s*$/i,
+    );
+    if (listMatch) {
+      const cardName = listMatch[1].trim();
+      const inner = listMatch[2];
+      // Inner of form "{SET}-{NUM}" → use both as matcher inputs
+      const setNumMatch = inner.match(/^([A-Z]{2,5})-([A-Za-z0-9]+)$/i);
+      if (setNumMatch) {
+        return {
+          cardName,
+          setCode: setNumMatch[1].toLowerCase(),
+          collectorNumber: setNumMatch[2],
+          setName: 'The List',
+          foil,
+        };
+      }
+      // Inner is just a List number (e.g. "241/318") — match by name only
+      return { cardName, setName: 'The List', foil };
+    }
+
     // Match: {CardName} ({SET-NUM}) - {SetName}
     // The (SET-NUM) part: SET is letters/digits, NUM is optional digits (may be alphanumeric)
     const match = working.match(
@@ -70,19 +96,24 @@ export class CgRealmCardDetailExtractor implements ICardDetailExtractor {
         }
       }
 
-      // Strip art-treatment suffixes from card name
-      cardName = cardName
-        .replace(
-          /\s*\((Borderless|Showcase|Extended Art|Retro Frame|Full Art|Etched|Textured|Surge|Serialized|Gilded|Galaxy|Step-and-Compleat|Halo|Concept Praetors|Inverted|Phyrexian|Foil)\)\s*$/i,
-          '',
-        )
-        .trim();
-
+      cardName = stripArtTreatments(cardName);
       return { cardName, setCode, collectorNumber, setName, foil };
     }
 
+    // Bracket format used for special editions / promos:
+    //   "{CardName} [Set Edition Info]"
+    //   "{CardName} (Ripple Foil) [Modern Horizons 3 Commander]"
+    //   "{CardName} ({Art Treatment}) [Set Info]"
+    // The set name in the brackets is fed to the matcher's set-name lookup
+    // so it can resolve the right printing.
+    const bracketMatch = working.match(/^(.+?)\s*\[([^\]]+)\]\s*$/);
+    if (bracketMatch) {
+      const cardName = stripArtTreatments(bracketMatch[1].trim());
+      return { cardName, setName: bracketMatch[2].trim(), foil };
+    }
+
     // Fallback: no set info embedded — just a plain card name
-    return { cardName: working.trim(), setName: '', foil };
+    return { cardName: stripArtTreatments(working.trim()), setName: '', foil };
   }
 
   parseSkuInfo(sku?: string): SkuInfo {
@@ -130,4 +161,24 @@ export class CgRealmCardDetailExtractor implements ICardDetailExtractor {
   parseImageFilename(): ImageInfo {
     return {};
   }
+}
+
+/**
+ * Strip art-treatment / foil suffixes from a card name.
+ *
+ * Two passes:
+ *   1. Any trailing "(... Foil)" — catches Ripple Foil, Surge Foil,
+ *      Step-and-Compleat Foil, Halo Foil, Etched Foil, etc. without
+ *      needing a hardcoded list.
+ *   2. Specific art-treatment keywords that don't include "Foil"
+ *      (Borderless, Showcase, Extended Art, etc.)
+ */
+function stripArtTreatments(name: string): string {
+  return name
+    .replace(/\s*\([^)]*\s*foil\)\s*$/i, '')
+    .replace(
+      /\s*\((Borderless|Showcase|Extended Art|Retro Frame|Full Art|Etched|Textured|Surge|Serialized|Gilded|Galaxy|Halo|Concept Praetors|Inverted|Phyrexian|Step-and-Compleat)\)\s*$/i,
+      '',
+    )
+    .trim();
 }
