@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 import { ManualModule } from './manual/manual.module';
-import { DiscoveryModule } from './discovery/discovery.module';
+import { ExtractionOrchestratorModule } from './extraction/extraction-orchestrator.module';
 import { getDatabaseConfig } from '@scoutlgs/core';
 
 @Module({
@@ -28,7 +28,7 @@ import { getDatabaseConfig } from '@scoutlgs/core';
     ScheduleModule.forRoot(),
 
     // Product discovery (V2 scraping)
-    DiscoveryModule,
+    ExtractionOrchestratorModule,
 
     // API to access scheduler status
     ManualModule

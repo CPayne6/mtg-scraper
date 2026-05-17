@@ -133,17 +133,20 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
    * Returns the extracted products and the last ID for the next page.
    * Returns empty products array when the catalog is exhausted.
    *
-   * @param store    - Store to extract from
-   * @param scope    - Query scope (e.g. 'product_type:"MTG Single"')
-   * @param lastId   - Shopify product ID to start after (null for first page)
-   * @param maxId    - Optional upper bound. When set, only products with
-   *                   `id <= maxId` are returned (used for range-split jobs).
+   * @param store         - Store to extract from
+   * @param scope         - Query scope (e.g. 'product_type:"MTG Single"')
+   * @param lastId        - Shopify product ID to start after (null for first page)
+   * @param maxId         - Optional upper bound. When set, only products with
+   *                        `id <= maxId` are returned (used for range-split jobs).
+   * @param updatedSince  - Optional ISO-8601 timestamp. When set, only products
+   *                        with `updated_at > updatedSince` are returned.
    */
   async fetchPage(
     store: Store,
     scope: string,
     lastId?: string | null,
     maxId?: string | null,
+    updatedSince?: string | null,
   ): Promise<{
     products: Array<{
       shopifyProductId: string;
@@ -156,6 +159,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const parts = [scope];
     if (lastId) parts.push(`id:>${lastId}`);
     if (maxId) parts.push(`id:<=${maxId}`);
+    if (updatedSince) parts.push(`updated_at:>'${updatedSince}'`);
     const query = parts.join(' ');
 
     const data = await this.storefrontClient.query<ProductsQueryData>(
@@ -192,14 +196,18 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   async fetchIdRange(
     store: Store,
     scope: string,
+    updatedSince?: string | null,
   ): Promise<{ minId: string | null; maxId: string | null }> {
+    const query = updatedSince
+      ? `${scope} updated_at:>'${updatedSince}'`
+      : scope;
     const [asc, desc] = await Promise.all([
       this.storefrontClient.query<{
         products: { edges: { node: { id: string } }[] };
-      }>(store, PRODUCT_ID_ASC_QUERY, { query: scope }),
+      }>(store, PRODUCT_ID_ASC_QUERY, { query }),
       this.storefrontClient.query<{
         products: { edges: { node: { id: string } }[] };
-      }>(store, PRODUCT_ID_DESC_QUERY, { query: scope }),
+      }>(store, PRODUCT_ID_DESC_QUERY, { query }),
     ]);
 
     const ascEdge = asc.products.edges[0]?.node.id;

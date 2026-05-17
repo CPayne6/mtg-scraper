@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DiscoveryService } from './discovery.service';
+import { ExtractionOrchestrator } from './extraction-orchestrator.service';
 
 function createStore(overrides: Record<string, unknown> = {}) {
   return {
@@ -15,32 +15,36 @@ function createStore(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('Scheduler DiscoveryService', () => {
+describe('Scheduler ExtractionOrchestrator', () => {
   let storeRepository: { find: ReturnType<typeof vi.fn> };
-  let discoveryRunRepository: {
+  let extractionRunRepository: {
     create: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    findOne: ReturnType<typeof vi.fn>;
   };
   let queueService: {
     enqueueStorefrontExtractionJob: ReturnType<typeof vi.fn>;
   };
-  let service: DiscoveryService;
+  let service: ExtractionOrchestrator;
 
   beforeEach(() => {
     storeRepository = {
       find: vi.fn(),
     };
-    discoveryRunRepository = {
+    extractionRunRepository = {
       create: vi.fn((data) => data),
       save: vi.fn(async (data) => ({ id: 42, ...data })),
+      update: vi.fn().mockResolvedValue({ affected: 1 }),
+      findOne: vi.fn().mockResolvedValue(null),
     };
     queueService = {
       enqueueStorefrontExtractionJob: vi.fn().mockResolvedValue(undefined),
     };
 
-    service = new DiscoveryService(
+    service = new ExtractionOrchestrator(
       storeRepository as any,
-      discoveryRunRepository as any,
+      extractionRunRepository as any,
       queueService as any,
     );
   });
@@ -54,10 +58,10 @@ describe('Scheduler DiscoveryService', () => {
       }),
     ]);
 
-    const result = await service.discoverAllStores(7, { trigger: 'manual' });
+    const result = await service.queueExtractionForAllStores(7, { trigger: 'manual' });
 
     expect(result.storesQueued).toBe(1);
-    expect(discoveryRunRepository.create).toHaveBeenCalledWith({
+    expect(extractionRunRepository.create).toHaveBeenCalledWith({
       status: 'running',
       trigger: 'manual',
       skipExtraction: false,
@@ -67,7 +71,12 @@ describe('Scheduler DiscoveryService', () => {
       2,
       7,
       42,
+      undefined,
     );
+    expect(extractionRunRepository.update).toHaveBeenCalledWith(42, {
+      status: 'completed',
+      completedAt: expect.any(Date),
+    });
   });
 
   it('does not queue any stores when skipExtraction is requested', async () => {
@@ -79,13 +88,13 @@ describe('Scheduler DiscoveryService', () => {
       }),
     ]);
 
-    const result = await service.discoverAllStores(1, {
+    const result = await service.queueExtractionForAllStores(1, {
       skipExtraction: true,
       trigger: 'manual',
     });
 
     expect(result.storesQueued).toBe(0);
-    expect(discoveryRunRepository.create).toHaveBeenCalledWith({
+    expect(extractionRunRepository.create).toHaveBeenCalledWith({
       status: 'running',
       trigger: 'manual',
       skipExtraction: true,
@@ -104,10 +113,54 @@ describe('Scheduler DiscoveryService', () => {
       }),
     ]);
 
-    const result = await service.discoverAllStores(5, { trigger: 'cron' });
+    const result = await service.queueExtractionForAllStores(5, { trigger: 'cron' });
 
     expect(result.storesQueued).toBe(1);
     expect(result.storeNames).toEqual(['storefront-store']);
     expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes updatedSince to enqueued jobs when incremental is requested', async () => {
+    const cutoff = new Date('2026-05-16T01:00:00Z');
+    extractionRunRepository.findOne.mockResolvedValue({
+      startedAt: cutoff,
+      skipExtraction: false,
+    });
+    storeRepository.find.mockResolvedValue([
+      createStore({ id: 9, name: 'storefront-store' }),
+    ]);
+
+    const result = await service.queueExtractionForAllStores(1, {
+      trigger: 'cron',
+      incremental: true,
+    });
+
+    expect(result.updatedSince).toBe(cutoff.toISOString());
+    expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledWith(
+      9,
+      1,
+      42,
+      cutoff.toISOString(),
+    );
+  });
+
+  it('falls back to a full crawl when incremental is requested but no prior run exists', async () => {
+    extractionRunRepository.findOne.mockResolvedValue(null);
+    storeRepository.find.mockResolvedValue([
+      createStore({ id: 9, name: 'storefront-store' }),
+    ]);
+
+    const result = await service.queueExtractionForAllStores(1, {
+      trigger: 'cron',
+      incremental: true,
+    });
+
+    expect(result.updatedSince).toBeNull();
+    expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledWith(
+      9,
+      1,
+      42,
+      undefined,
+    );
   });
 });

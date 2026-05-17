@@ -1,59 +1,62 @@
-import { DiscoveryScheduler } from '@/discovery/discovery.scheduler';
+import { ExtractionScheduler } from '@/extraction/extraction.scheduler';
+import { ExtractionOrchestrator } from '@/extraction/extraction-orchestrator.service';
 import { Injectable, Logger, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { QueueService, ProductUrl, UnmatchedCard, DiscoveryRun, Store, ShopifyProduct } from '@scoutlgs/core';
+import { QueueService, ProductUrl, UnmatchedCard, ExtractionRun, Store, ShopifyProduct } from '@scoutlgs/core';
 
 @Injectable()
 export class ManualService {
   private readonly logger = new Logger(ManualService.name);
 
   constructor(
-    private readonly discoveryScheduler: DiscoveryScheduler,
+    private readonly extractionScheduler: ExtractionScheduler,
+    private readonly extractionOrchestrator: ExtractionOrchestrator,
     private readonly queueService: QueueService,
     @InjectRepository(ProductUrl)
     private readonly productUrlRepository: Repository<ProductUrl>,
     @InjectRepository(UnmatchedCard)
     private readonly unmatchedCardRepository: Repository<UnmatchedCard>,
-    @InjectRepository(DiscoveryRun)
-    private readonly discoveryRunRepository: Repository<DiscoveryRun>,
+    @InjectRepository(ExtractionRun)
+    private readonly extractionRunRepository: Repository<ExtractionRun>,
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
     private readonly dataSource: DataSource,
   ) { }
 
-  // Discovery V2 methods
+  // Batch extraction-run endpoints
 
-  async triggerDiscovery(options?: { skipExtraction?: boolean }) {
+  async triggerExtractionRun(options?: { skipExtraction?: boolean; incremental?: boolean }) {
     this.logger.log(
-      `Manual trigger initiated for product discovery` +
-        (options?.skipExtraction ? ' (extraction skipped)' : ''),
+      `Manual extraction-run triggered` +
+        (options?.skipExtraction ? ' (extraction skipped)' : '') +
+        (options?.incremental ? ' (incremental)' : ''),
     );
 
-    const jobStatus = await this.discoveryScheduler.getJobStatus();
+    const jobStatus = await this.extractionScheduler.getJobStatus();
 
     if (jobStatus && jobStatus.status === 'running') {
-      this.logger.warn('Discovery job is currently running, trigger aborted');
-      throw new ConflictException('A discovery job is already in progress');
+      this.logger.warn('Extraction run already in progress, trigger aborted');
+      throw new ConflictException('An extraction run is already in progress');
     }
 
-    return this.discoveryScheduler.triggerDiscovery({ ...options, trigger: 'manual' });
+    return this.extractionScheduler.triggerExtractionRun({ ...options, trigger: 'manual' });
   }
 
-  async getDiscoveryStatus() {
-    this.logger.log('Fetching status of discovery job');
-    return this.discoveryScheduler.getJobStatus();
+  async getExtractionRunStatus() {
+    this.logger.log('Fetching latest extraction-run status');
+    return this.extractionScheduler.getJobStatus();
   }
 
-  async getDiscoveryRuns(limit: number = 20) {
-    return this.discoveryRunRepository.find({
+  async getExtractionRuns(limit: number = 20) {
+    return this.extractionRunRepository.find({
       order: { startedAt: 'DESC' },
       take: limit,
     });
   }
 
-  async getDiscoveryRun(id: number) {
-    return this.discoveryRunRepository.findOne({ where: { id } });
+  async getExtractionRun(id: number) {
+    return this.extractionRunRepository.findOne({ where: { id } });
   }
 
   // ---------------------------------------------------------------------------
@@ -68,7 +71,11 @@ export class ManualService {
    *                          store's ID range into N parallel extraction jobs.
    *                          Omit (or pass 1) for the default sequential paging.
    */
-  async triggerStorefrontExtraction(opts: { storeId?: number; splitRanges?: number }) {
+  async triggerStorefrontExtraction(opts: {
+    storeId?: number;
+    splitRanges?: number;
+    incremental?: boolean;
+  }) {
     if (!opts.storeId) {
       throw new BadRequestException('storeId is required. Use trigger-all for all stores.');
     }
@@ -91,16 +98,28 @@ export class ManualService {
       );
     }
 
+    const updatedSince = opts.incremental
+      ? (await this.extractionOrchestrator.resolveIncrementalCutoff()) ?? undefined
+      : undefined;
+
     const splitRanges = opts.splitRanges && opts.splitRanges > 1 ? opts.splitRanges : 0;
     if (splitRanges > 0) {
-      await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges);
+      await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges, {
+        updatedSince,
+      });
     } else {
-      await this.queueService.enqueueStorefrontExtractionJob(store.id);
+      await this.queueService.enqueueStorefrontExtractionJob(
+        store.id,
+        1,
+        undefined,
+        updatedSince,
+      );
     }
 
     this.logger.log(
       `Triggered storefront extraction for ${store.name}` +
-        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)'),
+        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)') +
+        (updatedSince ? ` (incremental since ${updatedSince})` : ''),
     );
 
     return {
@@ -109,6 +128,7 @@ export class ManualService {
       platformType: store.platformType,
       scope,
       mode: splitRanges > 0 ? `parallel-${splitRanges}` : 'sequential',
+      updatedSince: updatedSince ?? null,
     };
   }
 
@@ -118,12 +138,17 @@ export class ManualService {
    * @param opts.splitRanges  Same as triggerStorefrontExtraction; applied to
    *                          every store that's enqueued.
    */
-  async triggerAllStorefrontExtractions(opts: { splitRanges?: number } = {}) {
+  async triggerAllStorefrontExtractions(
+    opts: { splitRanges?: number; incremental?: boolean } = {},
+  ) {
     const stores = await this.storeRepository.find({
       where: { isActive: true, platformType: 'shopify_storefront' as any },
     });
 
     const splitRanges = opts.splitRanges && opts.splitRanges > 1 ? opts.splitRanges : 0;
+    const updatedSince = opts.incremental
+      ? (await this.extractionOrchestrator.resolveIncrementalCutoff()) ?? undefined
+      : undefined;
     const results: { store: string; error?: string }[] = [];
 
     for (const store of stores) {
@@ -134,22 +159,31 @@ export class ManualService {
       }
 
       if (splitRanges > 0) {
-        await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges);
+        await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges, {
+          updatedSince,
+        });
       } else {
-        await this.queueService.enqueueStorefrontExtractionJob(store.id);
+        await this.queueService.enqueueStorefrontExtractionJob(
+          store.id,
+          1,
+          undefined,
+          updatedSince,
+        );
       }
       results.push({ store: store.name });
     }
 
     this.logger.log(
       `Triggered storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores` +
-        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)'),
+        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)') +
+        (updatedSince ? ` (incremental since ${updatedSince})` : ''),
     );
 
     return {
       triggered: results.filter((r) => !r.error).length,
       total: stores.length,
       mode: splitRanges > 0 ? `parallel-${splitRanges}` : 'sequential',
+      updatedSince: updatedSince ?? null,
       results,
     };
   }

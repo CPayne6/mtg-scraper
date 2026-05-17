@@ -15,7 +15,7 @@ import {
   TokenPrinting,
   TokenListing,
   TokenVariant,
-  DiscoveryRun,
+  ExtractionRun,
   CardList,
   CardListEntry,
 } from '@scoutlgs/core';
@@ -48,7 +48,7 @@ export default new DataSource({
     TokenPrinting,
     TokenListing,
     TokenVariant,
-    DiscoveryRun,
+    ExtractionRun,
     CardList,
     CardListEntry,
   ],

@@ -83,7 +83,7 @@ export class StorefrontProcessor implements OnModuleInit {
   async process(
     job: Job<StorefrontExtractionJobData>,
   ): Promise<StorefrontExtractionJobResult> {
-    const { storeId, lastId, maxId, discoveryRunId } = job.data;
+    const { storeId, lastId, maxId, discoveryRunId, updatedSince } = job.data;
 
     const store = await this.storeRepository.findOne({
       where: { id: storeId },
@@ -115,7 +115,7 @@ export class StorefrontProcessor implements OnModuleInit {
     let products: ExtractedProduct[];
     let nextLastId: string | null;
     try {
-      const result = await adapter.fetchPage(store, scope, lastId, maxId);
+      const result = await adapter.fetchPage(store, scope, lastId, maxId, updatedSince);
       products = result.products;
       nextLastId = result.nextLastId;
     } catch (error) {
@@ -172,6 +172,7 @@ export class StorefrontProcessor implements OnModuleInit {
           lastId: nextLastId,
           maxId,
           scope,
+          updatedSince,
           discoveryRunId,
         } as StorefrontExtractionJobData,
         {
@@ -206,7 +207,7 @@ export class StorefrontProcessor implements OnModuleInit {
   async bootstrap(
     job: Job<StorefrontBootstrapJobData>,
   ): Promise<{ storeId: number; rangesEnqueued: number; success: boolean }> {
-    const { storeId, splitRanges, discoveryRunId } = job.data;
+    const { storeId, splitRanges, discoveryRunId, updatedSince } = job.data;
 
     const store = await this.storeRepository.findOne({ where: { id: storeId } });
     if (!store) throw new Error(`Store ${storeId} not found`);
@@ -225,7 +226,7 @@ export class StorefrontProcessor implements OnModuleInit {
     let minId: string | null;
     let maxId: string | null;
     try {
-      ({ minId, maxId } = await adapter.fetchIdRange(store, scope));
+      ({ minId, maxId } = await adapter.fetchIdRange(store, scope, updatedSince));
     } catch (error) {
       if (await this.rescheduleIfThrottled(job, error)) {
         return { storeId, rangesEnqueued: 0, success: true };
@@ -251,6 +252,7 @@ export class StorefrontProcessor implements OnModuleInit {
           lastId,
           maxId: rangeMax,
           scope,
+          updatedSince,
           discoveryRunId,
         } as StorefrontExtractionJobData,
         { removeOnComplete: 100, removeOnFail: 500 },

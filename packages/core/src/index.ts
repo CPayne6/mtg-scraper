@@ -18,12 +18,12 @@ export {
   TokenPrinting,
   TokenListing,
   TokenVariant,
-  DiscoveryRun,
+  ExtractionRun,
   ShopifyProduct,
   CardList,
   CardListEntry,
 } from './database/index';
-export type { ExtractionStatus, DiscoveryRunStatus, DiscoveryRunTrigger, ShopifyProductMatchStatus } from './database/index';
+export type { ExtractionStatus, ExtractionRunStatus, ExtractionRunTrigger, ShopifyProductMatchStatus } from './database/index';
 
 // Queue
 export { QueueModule, QueueService } from './queue/index';

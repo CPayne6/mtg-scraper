@@ -57,6 +57,7 @@ export class QueueService {
     storeId: number,
     priority: number = 1,
     discoveryRunId?: number,
+    updatedSince?: string,
   ): Promise<void> {
     try {
       await this.storefrontExtractionQueue.add(
@@ -65,6 +66,7 @@ export class QueueService {
           storeId,
           priority,
           discoveryRunId,
+          updatedSince,
         } satisfies StorefrontExtractionJobData,
         {
           priority,
@@ -100,7 +102,7 @@ export class QueueService {
   async enqueueStorefrontBootstrapJob(
     storeId: number,
     splitRanges: number,
-    options: { discoveryRunId?: number; scope?: string } = {},
+    options: { discoveryRunId?: number; scope?: string; updatedSince?: string } = {},
   ): Promise<void> {
     try {
       await this.storefrontExtractionQueue.add(

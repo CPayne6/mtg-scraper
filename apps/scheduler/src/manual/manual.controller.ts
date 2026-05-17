@@ -11,15 +11,17 @@ export class ManualController {
   putStorefrontTrigger(
     @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
     @Query('splitRanges', new ParseIntPipe({ optional: true })) splitRanges?: number,
+    @Query('incremental', new ParseBoolPipe({ optional: true })) incremental?: boolean,
   ) {
-    return this.manualService.triggerStorefrontExtraction({ storeId, splitRanges })
+    return this.manualService.triggerStorefrontExtraction({ storeId, splitRanges, incremental })
   }
 
   @Put('storefront/trigger-all')
   putStorefrontTriggerAll(
     @Query('splitRanges', new ParseIntPipe({ optional: true })) splitRanges?: number,
+    @Query('incremental', new ParseBoolPipe({ optional: true })) incremental?: boolean,
   ) {
-    return this.manualService.triggerAllStorefrontExtractions({ splitRanges })
+    return this.manualService.triggerAllStorefrontExtractions({ splitRanges, incremental })
   }
 
   @Get('storefront/status')
@@ -42,31 +44,32 @@ export class ManualController {
     return this.manualService.getUnmatchedStats()
   }
 
-  // Product discovery
+  // Batch extraction runs
 
-  @Put('discovery/trigger')
-  putDiscoveryTrigger(
+  @Put('extraction/trigger')
+  putExtractionRunTrigger(
     @Query('skipExtraction', new ParseBoolPipe({ optional: true })) skipExtraction?: boolean,
+    @Query('incremental', new ParseBoolPipe({ optional: true })) incremental?: boolean,
   ) {
-    return this.manualService.triggerDiscovery({ skipExtraction })
+    return this.manualService.triggerExtractionRun({ skipExtraction, incremental })
   }
 
-  @Get('discovery/status')
-  getDiscoveryStatus() {
-    return this.manualService.getDiscoveryStatus()
+  @Get('extraction/status')
+  getExtractionRunStatus() {
+    return this.manualService.getExtractionRunStatus()
   }
 
-  @Get('discovery/runs')
-  getDiscoveryRuns(
+  @Get('extraction')
+  getExtractionRuns(
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.manualService.getDiscoveryRuns(limit)
+    return this.manualService.getExtractionRuns(limit)
   }
 
-  @Get('discovery/runs/:id')
-  getDiscoveryRun(
+  @Get('extraction/:id')
+  getExtractionRun(
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.manualService.getDiscoveryRun(id)
+    return this.manualService.getExtractionRun(id)
   }
 }

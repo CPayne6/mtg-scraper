@@ -141,8 +141,10 @@ services:
       - DATABASE_USER=postgres
       - PORT=5001
       - USE_DOCKER_SECRETS=true
-      - DISCOVERY_ENABLED=true
-      - DISCOVERY_CRON_TIME=0 1 * * *
+      - EXTRACTION_ENABLED=true
+      - EXTRACTION_CRON_TIME=0 1 * * *
+      - INCREMENTAL_EXTRACTION_ENABLED=true
+      - INCREMENTAL_EXTRACTION_CRON_TIME=0 9-21 * * *
       - SCHEDULE_TIMEZONE=America/Toronto
       - LOG_LEVEL=log,warn,error,fatal
     ports:

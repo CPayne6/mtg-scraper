@@ -6,20 +6,20 @@ import {
   Index,
 } from 'typeorm';
 
-export type DiscoveryRunStatus = 'running' | 'completed' | 'failed';
-export type DiscoveryRunTrigger = 'cron' | 'manual';
+export type ExtractionRunStatus = 'running' | 'completed' | 'failed';
+export type ExtractionRunTrigger = 'cron' | 'manual';
 
 @Entity('discovery_runs')
-export class DiscoveryRun {
+export class ExtractionRun {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Index()
   @Column({ type: 'varchar', length: 20, default: 'running' })
-  status: DiscoveryRunStatus;
+  status: ExtractionRunStatus;
 
   @Column({ type: 'varchar', length: 20, default: 'cron' })
-  trigger: DiscoveryRunTrigger;
+  trigger: ExtractionRunTrigger;
 
   @Column({ name: 'skip_extraction', type: 'boolean', default: false })
   skipExtraction: boolean;

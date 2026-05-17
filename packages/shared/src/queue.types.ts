@@ -51,6 +51,13 @@ export interface StorefrontExtractionJobData {
   maxId?: string | null;
   /** Scope query for this store (e.g. 'product_type:"MTG Single"') */
   scope?: string;
+  /**
+   * ISO-8601 timestamp for incremental mode. When set, the query gets
+   * `updated_at:>'<value>'` appended so only products modified after this
+   * cutoff are returned. Propagated unchanged to next-page jobs so an
+   * entire run uses a single, stable cutoff.
+   */
+  updatedSince?: string;
   priority?: number;
   discoveryRunId?: number;
   maxCardsAdded?: number;
@@ -66,6 +73,8 @@ export interface StorefrontBootstrapJobData {
   /** Number of parallel range jobs to create. */
   splitRanges: number;
   scope?: string;
+  /** Same as StorefrontExtractionJobData.updatedSince. Propagated to each range job. */
+  updatedSince?: string;
   discoveryRunId?: number;
   maxCardsAdded?: number;
 }
