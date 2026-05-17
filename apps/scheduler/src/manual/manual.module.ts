@@ -1,7 +1,8 @@
 import { PopularCardsModule } from '@/popular-cards/popular-cards.module';
 import { DiscoveryModule } from '@/discovery/discovery.module';
 import { Module } from '@nestjs/common';
-import { CacheModule } from '@scoutlgs/core';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { CacheModule, QueueModule, ProductUrl, UnmatchedCard, DiscoveryRun } from '@scoutlgs/core';
 import { ManualController } from './manual.controller';
 import { ManualService } from './manual.service';
 
@@ -9,7 +10,9 @@ import { ManualService } from './manual.service';
   imports: [
     PopularCardsModule,
     DiscoveryModule,
-    CacheModule
+    CacheModule,
+    QueueModule,
+    TypeOrmModule.forFeature([ProductUrl, UnmatchedCard, DiscoveryRun]),
   ],
   controllers: [ ManualController ],
   providers: [ ManualService ],

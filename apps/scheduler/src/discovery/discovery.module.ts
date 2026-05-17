@@ -5,13 +5,14 @@ import {
   QueueModule,
   CacheModule,
   Store,
+  DiscoveryRun,
 } from '@scoutlgs/core';
 import { DiscoveryService } from './discovery.service';
 import { DiscoveryScheduler } from './discovery.scheduler';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store]),
+    TypeOrmModule.forFeature([Store, DiscoveryRun]),
     QueueModule,
     CacheModule,
     ScheduleModule.forRoot(),
