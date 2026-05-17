@@ -1,13 +1,15 @@
-import { Parser } from '../Parser';
+import { BaseParser, parseCondition } from '../Parser';
 import { F2FSearch } from './search.types';
-import { Card, Condition } from '@scoutlgs/shared';
+import { Card } from '@scoutlgs/shared';
 import { isValidSetCode } from '@/scraper/sets';
 
-export class F2FSearchParser implements Parser {
+export class F2FSearchParser extends BaseParser {
   constructor(
     protected searchString = '\\"searchResult\\":',
     protected store_host = 'https://facetofacegames.com',
-  ) {}
+  ) {
+    super();
+  }
 
   private cleanJsonString(str: string) {
     return str.replaceAll('\\"', '"').replaceAll('\\/', '/');
@@ -19,7 +21,7 @@ export class F2FSearchParser implements Parser {
     try {
       searchResults = JSON.parse(data);
     } catch (err) {
-      console.error(err);
+      this.logger.error('JSON parse error', err);
       return {
         result: [],
         error: `JSON parse error: ${err?.toString() as string}`,
@@ -55,10 +57,11 @@ export class F2FSearchParser implements Parser {
               image: this.cleanJsonString(variant.image.url),
               price: variant.price,
               currency: 'CAD',
-              condition:
-                (variant.selectedOptions
-                  .find((item) => item['name'] === 'Condition')
-                  ?.value?.toLocaleLowerCase() as Condition) ?? 'unknown',
+              condition: parseCondition(
+                variant.selectedOptions.find(
+                  (item) => item['name'] === 'Condition',
+                )?.value,
+              ),
               title: Array.isArray(cardInfo['Card Name'])
                 ? cardInfo['Card Name'][0]
                 : cardInfo['Card Name'],
@@ -77,10 +80,7 @@ export class F2FSearchParser implements Parser {
           }
         }
       } catch (err) {
-        console.error('F2F Parser: Unexpected hit structure', {
-          hit,
-          error: err,
-        });
+        this.logger.error('Unexpected hit structure', { hit, error: err });
         continue;
       }
     }

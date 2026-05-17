@@ -1,5 +1,5 @@
-import { Card, Condition } from '@scoutlgs/shared';
-import { Parser } from '../Parser';
+import { Card } from '@scoutlgs/shared';
+import { BaseParser, parseCondition } from '../Parser';
 import { HobbiesSearch } from './search.types';
 
 const nameRegex = /^([^\(]+) \(/i;
@@ -20,9 +20,10 @@ const defaultConfig: HobbiesParserConfig = {
   ),
 };
 
-export class HobbiesParser implements Parser {
+export class HobbiesParser extends BaseParser {
   protected searchConfig: HobbiesParserConfig;
   constructor(config?: Partial<HobbiesParserConfig>) {
+    super();
     this.searchConfig = {
       ...defaultConfig,
       ...config,
@@ -35,7 +36,7 @@ export class HobbiesParser implements Parser {
     try {
       parsedData = JSON.parse(page);
     } catch (err) {
-      console.error('Hobbies Parser: JSON parse error', err);
+      this.logger.error('JSON parse error', err);
       return {
         result: [],
         error: `JSON parse error: ${err?.toString() as string}`,
@@ -66,7 +67,7 @@ export class HobbiesParser implements Parser {
               price: variant.price,
               currency: 'CAD',
               image: product.imageUrl ?? product.image_url,
-              condition: variant.title.toLocaleLowerCase() as Condition,
+              condition: parseCondition(variant.title),
               title:
                 product.display_name.match(nameRegex)?.[1] ??
                 product.display_name,
@@ -90,7 +91,7 @@ export class HobbiesParser implements Parser {
 
         cards.push(...innerCards);
       } catch (err) {
-        console.error('Hobbies Parser: Unexpected product structure', {
+        this.logger.error('Unexpected product structure', {
           product,
           error: err,
         });

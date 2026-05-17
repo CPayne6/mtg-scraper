@@ -1,6 +1,5 @@
-import { writeFileSync } from 'fs';
 import { Card } from '@scoutlgs/shared';
-import { Parser } from '../Parser';
+import { BaseParser, parseCondition } from '../Parser';
 import { _401Search } from './search.types';
 
 const cardNameRegex = /^([^\(]+) \(/i;
@@ -25,10 +24,11 @@ const defaultConfig: _401ParserSearchConfig = {
   store_host: 'https://store.401games.ca',
 };
 
-export class _401Parser implements Parser {
+export class _401Parser extends BaseParser {
   protected searchConfig: _401ParserSearchConfig;
 
   constructor(config?: Partial<_401ParserSearchConfig>) {
+    super();
     this.searchConfig = {
       ...defaultConfig,
       ...config,
@@ -43,7 +43,7 @@ export class _401Parser implements Parser {
     try {
       parsedData = JSON.parse(data);
     } catch (err) {
-      console.error(err);
+      this.logger.error('JSON parse error', err);
       return {
         result: [],
         error: err?.toString() as string,
@@ -105,7 +105,7 @@ export class _401Parser implements Parser {
             attrMap['Product-sku'] ?? attrMap['Barcode']
           )?.split('-');
           innerCards.push({
-            condition: attrMap['Condition']?.toLocaleLowerCase(),
+            condition: parseCondition(attrMap['Condition']),
             price: Number(attrMap['Price']?.split(':').pop()),
             currency: attrMap['Price']?.split(':').shift(),
             image: item.t,

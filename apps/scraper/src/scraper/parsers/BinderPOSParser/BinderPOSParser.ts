@@ -1,9 +1,11 @@
-import { Card, Condition } from '@scoutlgs/shared';
-import { Parser } from '../Parser';
+import { Card } from '@scoutlgs/shared';
+import { BaseParser, parseCondition } from '../Parser';
 import { BinderPOSSearch } from './search.types';
 
-export class BinderPOSParser implements Parser {
-  constructor(protected storeHost: string) {}
+export class BinderPOSParser extends BaseParser {
+  constructor(protected storeHost: string) {
+    super();
+  }
 
   async extractItems(
     data: string,
@@ -13,9 +15,10 @@ export class BinderPOSParser implements Parser {
     try {
       parsedData = JSON.parse(data);
     } catch (err) {
+      this.logger.error('JSON parse error', err);
       return {
         result: [],
-        error: 'Unable to parse json data',
+        error: `JSON parse error: ${err?.toString() as string}`,
       };
     }
 
@@ -23,33 +26,41 @@ export class BinderPOSParser implements Parser {
     if (!parsedData || !Array.isArray(parsedData.products)) {
       return { result: [] };
     }
-    const products = parsedData.products;
-    for (const product of products) {
-      if (!Array.isArray(product.variants)) {
+
+    for (const product of parsedData.products) {
+      try {
+        if (!Array.isArray(product.variants)) {
+          continue;
+        }
+
+        for (const variant of product.variants) {
+          if (variant.quantity > 0) {
+            cards.push({
+              condition: parseCondition(
+                variant.option1
+                  .match(/\b(\w)/g)
+                  ?.map((str) => str.toLocaleLowerCase())
+                  .join(''),
+              ),
+              currency: 'CAD',
+              image: product.img,
+              link: this.storeHost + '/products/' + product.handle,
+              price: variant.price,
+              title: product.cardName,
+              set: product.setCode,
+              card_number: product.cardNumber,
+            });
+          }
+        }
+      } catch (err) {
+        this.logger.error('Unexpected product structure', {
+          product,
+          error: err,
+        });
         continue;
       }
-
-      for (const variant of product.variants) {
-        if (variant.quantity > 0) {
-          cards.push({
-            condition:
-              (variant.option1
-                .match(/\b(\w)/g)
-                ?.map((str) => str.toLocaleLowerCase())
-                .join('') as Condition) ?? 'unknown',
-            currency: 'CAD',
-            image: product.img,
-            link: this.storeHost + '/products/' + product.handle,
-            price: variant.price,
-            title: product.cardName,
-            set: product.setCode,
-            card_number: product.cardNumber,
-          });
-        }
-      }
     }
-    return {
-      result: cards,
-    };
+
+    return { result: cards };
   }
 }
