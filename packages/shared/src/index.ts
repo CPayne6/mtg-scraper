@@ -10,5 +10,7 @@ export type {
   ExtractProductJobData,
   DiscoverStoreJobResult,
   ExtractProductJobResult,
+  StorefrontExtractionJobData,
+  StorefrontExtractionJobResult,
 } from './queue.types.js';
 export { QUEUE_NAMES, JOB_NAMES } from './queue.types.js';
