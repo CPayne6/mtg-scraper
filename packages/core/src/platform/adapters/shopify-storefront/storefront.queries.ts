@@ -119,15 +119,16 @@ export const SEARCH_PRODUCTS_QUERY = `
 `;
 
 /**
- * Root products query with full variant details.
- * Used for prefix-based extraction via products(query: "scope title:prefix*").
- * Variables: $query (filter string), $first, $after
+ * Root products query with full variant details, sorted by ID.
+ * Used for ID-based pagination via products(query: "scope id:>lastId").
+ * Variables: $query (filter string including id:>X), $first
  */
 export const PRODUCTS_QUERY = `
-  query ProductsByQuery($query: String!, $first: Int!, $after: String) {
-    products(first: $first, query: $query, after: $after) {
+  query ProductsByQuery($query: String!, $first: Int!) {
+    products(first: $first, query: $query, sortKey: ID) {
       edges {
         node {
+          id
           handle
           title
           vendor
