@@ -17,8 +17,8 @@ import { ProductUrl } from './product-url.entity';
 @Index('idx_unmatched_cards_normalized_name', ['normalizedName'])
 @Index('idx_unmatched_cards_created_at', ['createdAt'])
 export class UnmatchedCard {
-  @PrimaryGeneratedColumn({ type: 'bigint' })
-  id: string;
+  @PrimaryGeneratedColumn('increment')
+  id: number;
 
   @ManyToOne(() => Store)
   @JoinColumn({ name: 'store_id' })
@@ -31,8 +31,8 @@ export class UnmatchedCard {
   @JoinColumn({ name: 'product_url_id' })
   productUrl: ProductUrl;
 
-  @Column({ name: 'product_url_id', type: 'bigint' })
-  productUrlId: string;
+  @Column({ name: 'product_url_id' })
+  productUrlId: number;
 
   @Column({ name: 'raw_name', length: 500 })
   rawName: string;
