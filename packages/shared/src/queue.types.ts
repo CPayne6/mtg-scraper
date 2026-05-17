@@ -2,11 +2,68 @@ import type { CardWithStore } from './card.types.js';
 
 export const QUEUE_NAMES = {
   CARD_SCRAPE: 'card-scrape',
+  PRODUCT_DISCOVERY: 'product-discovery',
+  PRODUCT_EXTRACTION: 'product-extraction',
 } as const;
 
 export const JOB_NAMES = {
   SCRAPE_CARD: 'scrape-card',
+  DISCOVER_STORE: 'discover-store',
+  EXTRACT_PRODUCT: 'extract-product',
 } as const;
+
+/**
+ * Platform types for discovery/extraction adapters
+ */
+export type PlatformType = 'shopify' | 'conduct_commerce';
+
+/**
+ * Store discovery configuration stored in stores.discovery_config
+ */
+export interface StoreDiscoveryConfig {
+  mtgSinglesCollectionId: number;
+  discoveryEnabled: boolean;
+  discoverySchedule?: string;
+}
+
+/**
+ * Job data for discovering products from a store's sitemap
+ */
+export interface DiscoverStoreJobData {
+  storeId: number;
+  priority?: number;
+}
+
+/**
+ * Job data for extracting product data from a discovered URL
+ */
+export interface ExtractProductJobData {
+  productUrlId: string;
+  storeId: number;
+  handle: string;
+  priority?: number;
+}
+
+/**
+ * Result from discovering products at a store
+ */
+export interface DiscoverStoreJobResult {
+  storeId: number;
+  discovered: number;
+  validated: number;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Result from extracting a single product
+ */
+export interface ExtractProductJobResult {
+  productUrlId: string;
+  variantsExtracted: number;
+  success: boolean;
+  error?: string;
+}
 
 /**
  * Job data for scraping a single card from a single store.

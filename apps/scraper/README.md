@@ -141,7 +141,6 @@ DATABASE_PORT=5432
 DATABASE_NAME=mtg_scraper
 DATABASE_USER=postgres
 DATABASE_PASSWORD=postgres
-DATABASE_SYNCHRONIZE=false
 
 # Proxy Configuration - Webshare (Optional)
 WEBSHARE_USERNAME=your_webshare_username

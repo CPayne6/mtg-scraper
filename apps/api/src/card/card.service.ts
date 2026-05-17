@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CacheService, CardWithStore, QueueService, StoreService } from '@scoutlgs/core';
-import { CardSearchResponse, StoreInfo, PriceStats } from '@scoutlgs/shared';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { CacheService, CardWithStore, QueueService, StoreService, Card, CardName, Store } from '@scoutlgs/core';
+import { CardSearchResponse, StoreInfo, PriceStats, Condition } from '@scoutlgs/shared';
 import { randomUUID } from 'crypto';
 
 const MAX_STORE_RETRIES = 2;
@@ -8,14 +11,118 @@ const MAX_STORE_RETRIES = 2;
 @Injectable()
 export class CardService {
   private readonly logger = new Logger(CardService.name);
+  private readonly useDatabaseFirst: boolean;
 
   constructor(
+    @InjectRepository(Card)
+    private readonly cardRepository: Repository<Card>,
+    @InjectRepository(CardName)
+    private readonly cardNameRepository: Repository<CardName>,
+    @InjectRepository(Store)
+    private readonly storeRepository: Repository<Store>,
     private readonly cacheService: CacheService,
     private readonly queueService: QueueService,
     private readonly storeService: StoreService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.useDatabaseFirst = this.configService.get<boolean>('useDatabaseFirst') ?? false;
+    if (this.useDatabaseFirst) {
+      this.logger.log('Using database-first approach (V2 scraping)');
+    }
+  }
 
   async getCardByName(cardName: string): Promise<CardSearchResponse> {
+    // Use database-first approach if enabled
+    if (this.useDatabaseFirst) {
+      return this.getCardFromDatabase(cardName);
+    }
+
+    // Otherwise, use the cache-first approach (V1)
+    return this.getCardFromCache(cardName);
+  }
+
+  /**
+   * V2: Database-first approach - query cards table directly.
+   * Results are pre-scraped via discovery/extraction pipeline.
+   */
+  private async getCardFromDatabase(cardName: string): Promise<CardSearchResponse> {
+    this.logger.debug(`[V2] Querying database for: ${cardName}`);
+
+    // Normalize card name for lookup
+    const normalizedName = this.normalizeCardName(cardName);
+
+    // Find card name record
+    const cardNameRecord = await this.cardNameRepository.findOne({
+      where: { normalizedName },
+    });
+
+    if (!cardNameRecord) {
+      this.logger.debug(`[V2] Card name not found: ${cardName}`);
+      return this.buildEmptyResponse(cardName);
+    }
+
+    // Query all cards for this card name, join with store info
+    const cards = await this.cardRepository
+      .createQueryBuilder('card')
+      .leftJoinAndSelect('card.store', 'store')
+      .where('card.card_name_id = :cardNameId', { cardNameId: cardNameRecord.id })
+      .andWhere('card.in_stock = true')
+      .orderBy('card.price', 'ASC')
+      .getMany();
+
+    this.logger.log(`[V2] Found ${cards.length} results for: ${cardName}`);
+
+    // Convert to CardWithStore format
+    const cardResults: CardWithStore[] = cards.map((card) => ({
+      price: Number(card.price),
+      condition: card.condition as Condition,
+      foil: card.foil,
+      image: card.imageUrl || '',
+      title: card.title,
+      currency: card.currency,
+      link: card.productLink,
+      set: card.setName || '',
+      card_number: card.collectorNumber || '',
+      store: card.store.displayName,
+    }));
+
+    // Get all stores that have results
+    const storesWithCards = new Set(cards.map((c) => c.store.id));
+    const allStores = await this.storeService.findAllActive();
+    const storesInfo = allStores.filter((s) => storesWithCards.has(s.id));
+
+    return this.buildResponse(cardName, cardResults, [], storesInfo);
+  }
+
+  /**
+   * Normalize card name for consistent database lookups.
+   */
+  private normalizeCardName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/['']/g, "'")
+      .replace(/[""]/g, '"');
+  }
+
+  /**
+   * Build an empty response when no cards are found.
+   */
+  private buildEmptyResponse(cardName: string): CardSearchResponse {
+    return {
+      cardName,
+      stores: [],
+      priceStats: { min: 0, max: 0, avg: 0, count: 0 },
+      results: [],
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * V1: Cache-first approach - check cache, scrape on miss.
+   */
+  private async getCardFromCache(cardName: string): Promise<CardSearchResponse> {
     const requestId = randomUUID();
 
     // 1. Get all active stores

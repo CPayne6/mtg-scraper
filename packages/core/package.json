@@ -36,7 +36,9 @@
     "bullmq": "^5.66.4",
     "ioredis": "^5.8.2",
     "reflect-metadata": "^0.2.2",
-    "typeorm": "^0.3.19"
+    "typeorm": "^0.3.19",
+    "lru-cache": "^11.2.5",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

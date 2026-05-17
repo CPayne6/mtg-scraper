@@ -1,4 +1,5 @@
 import { PopularCardsScheduler } from '@/popular-cards/popular-cards.scheduler';
+import { DiscoveryScheduler } from '@/discovery/discovery.scheduler';
 import { Injectable, Logger, ConflictException } from '@nestjs/common';
 import { CacheService } from '@scoutlgs/core';
 import { ConfigService } from '@nestjs/config';
@@ -9,6 +10,7 @@ export class ManualService {
 
   constructor(
     private readonly popularCardsScheduler: PopularCardsScheduler,
+    private readonly discoveryScheduler: DiscoveryScheduler,
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService
   ) { }
@@ -46,5 +48,25 @@ export class ManualService {
   getStatus() {
     this.logger.log('Fetching status of last popular cards scrape')
     return this.cacheService.schedulerJobStatus();
+  }
+
+  // Discovery V2 methods
+
+  async triggerDiscovery() {
+    this.logger.log('Manual trigger initiated for product discovery');
+
+    const jobStatus = this.discoveryScheduler.getJobStatus();
+
+    if (jobStatus && jobStatus.status === 'running') {
+      this.logger.warn('Discovery job is currently running, trigger aborted');
+      throw new ConflictException('A discovery job is already in progress');
+    }
+
+    return this.discoveryScheduler.triggerDiscovery();
+  }
+
+  getDiscoveryStatus() {
+    this.logger.log('Fetching status of discovery job');
+    return this.discoveryScheduler.getJobStatus();
   }
 }

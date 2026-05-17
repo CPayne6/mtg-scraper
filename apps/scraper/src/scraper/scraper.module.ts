@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ProxyService } from './proxy/proxy.service';
 import {
   LoaderService,
   ProxyAgentFactory,
@@ -7,12 +6,11 @@ import {
 } from './loader.service';
 import { ScraperService } from './scraper.service';
 import { ScrapeCardProcessor } from './scraper.processor';
-import { StoreModule, CacheModule, QueueModule } from '@scoutlgs/core';
+import { StoreModule, CacheModule, QueueModule, ProxyModule, ProxyService } from '@scoutlgs/core';
 
 @Module({
-  imports: [StoreModule, CacheModule, QueueModule],
+  imports: [StoreModule, CacheModule, QueueModule, ProxyModule],
   providers: [
-    ProxyService,
     {
       provide: PROXY_AGENT_FACTORY,
       useFactory: (proxyService: ProxyService): ProxyAgentFactory => {

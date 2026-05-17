@@ -18,18 +18,21 @@
     "scrape-test": "npx ts-node src/scripts/test-scrape.ts"
   },
   "dependencies": {
-    "@scoutlgs/core": "workspace:*",
     "@nestjs/common": "^11.1.11",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.11",
     "@nestjs/schedule": "^6.1.0",
     "@nestjs/typeorm": "^10.0.1",
+    "@scoutlgs/core": "workspace:*",
     "bullmq": "^5.32.0",
     "cron": "4.3.5",
     "joi": "^18.0.2",
+    "lru-cache": "^11.2.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "typeorm": "^0.3.19"
+    "typeorm": "^0.3.19",
+    "undici": "^7.16.0",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.1",
