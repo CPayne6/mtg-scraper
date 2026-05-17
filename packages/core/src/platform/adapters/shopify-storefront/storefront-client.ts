@@ -24,8 +24,13 @@ export class StorefrontClient {
   /**
    * Execute a GraphQL query against a store's Shopify Storefront API endpoint.
    *
-   * Handles proxy rotation, rate limiting, Web Bot Auth signing, and
-   * Storefront API error semantics (HTTP 429/430, GraphQL THROTTLED).
+   * Routes each request through a rotating proxy IP from the Webshare pool
+   * because Shopify's Storefront API rate limit is scoped per buyer IP, not
+   * per shop — so rotating IPs gives each request its own bucket and
+   * dramatically increases sustained throughput across the cluster.
+   *
+   * Web Bot Auth signs with the per-proxy key matching the chosen IP so
+   * Shopify sees a consistent (signing key ↔ IP) pair per request.
    */
   async query<T>(
     store: Store,
@@ -35,9 +40,18 @@ export class StorefrontClient {
   ): Promise<T> {
     const url = this.getEndpointUrl(store);
 
-    // Storefront API does not use proxies - per-store complexity throttling
-    // means proxy rotation doesn't increase throughput. Direct requests only.
-    const proxyNumber = 0;
+    // Pick the next proxy in the rotation (atomic Redis INCR across workers).
+    // proxyNumber 0 means "no proxy" — used when proxies are disabled or the
+    // caller explicitly passed its own dispatcher.
+    let proxyNumber = 0;
+    let proxyDispatcher: Dispatcher | undefined = dispatcher;
+    if (!dispatcher && this.proxyService.isEnabled()) {
+      proxyNumber = await this.cacheService.getNextProxyNumber(
+        'storefront',
+        this.proxyService.getIpCount(),
+      );
+      proxyDispatcher = this.proxyService.getProxyAgentForNumber(proxyNumber);
+    }
 
     // Build headers
     const headers: Record<string, string> = {
@@ -47,7 +61,8 @@ export class StorefrontClient {
       Accept: 'application/json',
     };
 
-    // Web Bot Auth signing (sign before proxy so signed components stay intact)
+    // Web Bot Auth signing — signed with the key matching the proxy IP so
+    // Shopify sees a consistent (key, IP) pair per request.
     if (this.webBotAuth.isEnabled()) {
       const authHeaders = await this.webBotAuth.signRequest(
         proxyNumber,
@@ -59,12 +74,11 @@ export class StorefrontClient {
       }
     }
 
-    // Execute request (no proxy - direct to Shopify)
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ query: gql, variables }),
-      ...(dispatcher ? { dispatcher } : {}),
+      ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
       signal: AbortSignal.timeout(15000),
     });
 

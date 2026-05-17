@@ -28,7 +28,7 @@ export class ProxyService implements OnModuleDestroy {
     this.port = this.configService.get<string>('WEBSHARE_PORT', '80');
     this.username = this.configService.get<string>('WEBSHARE_USERNAME', '');
     this.password = this.configService.get<string>('WEBSHARE_PASSWORD', '');
-    this.ipCount = this.configService.get<number>('WEBSHARE_IP_COUNT', 1000);
+    this.ipCount = this.configService.get<number>('WEBSHARE_IP_COUNT', 100);
 
     this.proxyEnabled = !!(this.username && this.password);
 

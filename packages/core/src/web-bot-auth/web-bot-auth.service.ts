@@ -37,7 +37,7 @@ export class WebBotAuthService implements OnModuleInit {
     const keyCount = parseInt(
       process.env.WEB_BOT_AUTH_KEY_COUNT ||
         process.env.WEBSHARE_IP_COUNT ||
-        '1',
+        '100',
       10,
     );
     await this.generateKeyPairs(seed, keyCount);
