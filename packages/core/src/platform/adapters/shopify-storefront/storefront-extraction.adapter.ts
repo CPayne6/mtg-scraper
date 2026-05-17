@@ -1,12 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Dispatcher } from 'undici';
 import type { Store } from '../../../database/store.entity';
 import type {
   IExtractionAdapter,
   ExtractedCardVariant,
 } from '../../platform.interfaces';
-import type { ICardDetailExtractor } from '../shopify/card-detail-extractor.interface';
-import { DefaultCardDetailExtractor } from '../shopify/extractors/default-card-detail.extractor';
+import { CardDetailExtractorRegistry } from '../shopify/card-detail-extractor.registry';
 import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { parseConditionAndFoil } from '../shopify/shopify-variant.utils';
 import { StorefrontClient } from './storefront-client';
@@ -14,6 +13,8 @@ import {
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
   PRODUCTS_QUERY,
+  PRODUCT_ID_ASC_QUERY,
+  PRODUCT_ID_DESC_QUERY,
 } from './storefront.queries';
 import type {
   StorefrontProduct,
@@ -25,16 +26,11 @@ import type {
 @Injectable()
 export class StorefrontExtractionAdapter implements IExtractionAdapter {
   private readonly logger = new Logger(StorefrontExtractionAdapter.name);
-  private readonly extractorMap: Record<string, ICardDetailExtractor>;
 
   constructor(
     private readonly storefrontClient: StorefrontClient,
-    @Inject('CARD_DETAIL_EXTRACTORS')
-    extractors: Record<string, ICardDetailExtractor>,
-    private readonly defaultExtractor: DefaultCardDetailExtractor,
-  ) {
-    this.extractorMap = extractors;
-  }
+    private readonly extractorRegistry: CardDetailExtractorRegistry,
+  ) {}
 
   /**
    * Extract product data from a single product by handle via Storefront API.
@@ -137,14 +133,17 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
    * Returns the extracted products and the last ID for the next page.
    * Returns empty products array when the catalog is exhausted.
    *
-   * @param store - Store to extract from
-   * @param scope - Query scope (e.g. 'product_type:"MTG Single"')
-   * @param lastId - Shopify product ID to start after (null for first page)
+   * @param store    - Store to extract from
+   * @param scope    - Query scope (e.g. 'product_type:"MTG Single"')
+   * @param lastId   - Shopify product ID to start after (null for first page)
+   * @param maxId    - Optional upper bound. When set, only products with
+   *                   `id <= maxId` are returned (used for range-split jobs).
    */
   async fetchPage(
     store: Store,
     scope: string,
     lastId?: string | null,
+    maxId?: string | null,
   ): Promise<{
     products: Array<{
       shopifyProductId: string;
@@ -154,7 +153,10 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     }>;
     nextLastId: string | null;
   }> {
-    const query = lastId ? `${scope} id:>${lastId}` : scope;
+    const parts = [scope];
+    if (lastId) parts.push(`id:>${lastId}`);
+    if (maxId) parts.push(`id:<=${maxId}`);
+    const query = parts.join(' ');
 
     const data = await this.storefrontClient.query<ProductsQueryData>(
       store,
@@ -179,6 +181,34 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       : edges[edges.length - 1].node.id.split('/').pop()!;
 
     return { products, nextLastId };
+  }
+
+  /**
+   * Get the lowest and highest Shopify product IDs for the given scope.
+   * Two cheap single-product queries (sorted by ID asc / desc).
+   *
+   * Returns `null` for both endpoints if the scope matches no products.
+   */
+  async fetchIdRange(
+    store: Store,
+    scope: string,
+  ): Promise<{ minId: string | null; maxId: string | null }> {
+    const [asc, desc] = await Promise.all([
+      this.storefrontClient.query<{
+        products: { edges: { node: { id: string } }[] };
+      }>(store, PRODUCT_ID_ASC_QUERY, { query: scope }),
+      this.storefrontClient.query<{
+        products: { edges: { node: { id: string } }[] };
+      }>(store, PRODUCT_ID_DESC_QUERY, { query: scope }),
+    ]);
+
+    const ascEdge = asc.products.edges[0]?.node.id;
+    const descEdge = desc.products.edges[0]?.node.id;
+
+    return {
+      minId: ascEdge ? ascEdge.split('/').pop() ?? null : null,
+      maxId: descEdge ? descEdge.split('/').pop() ?? null : null,
+    };
   }
 
   /**
@@ -257,8 +287,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     product: StorefrontProduct,
   ): ExtractedCardVariant[] {
-    const extractor =
-      this.extractorMap[store.scraperType] ?? this.defaultExtractor;
+    const extractor = this.extractorRegistry.get(store.scraperType);
 
     // Parse product-level info
     const titleInfo = extractor.parseTitle(product.title);
@@ -294,16 +323,22 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
 
       const skuInfo = extractor.parseSkuInfo(variant.sku ?? undefined);
 
-      // Merge set code: SKU > image filename
-      const setCode = skuInfo.setCode || imageInfo.setCode || undefined;
+      // Merge set code: SKU > title > image filename
+      const setCode =
+        skuInfo.setCode || titleInfo.setCode || imageInfo.setCode || undefined;
       // Merge collector number: SKU > title bracket > image filename
       const collectorNumber =
         skuInfo.collectorNumber ||
         titleInfo.collectorNumber ||
         imageInfo.collectorNumber ||
         undefined;
-      // Merge foil: SKU is most reliable when present, else variant parsing
-      const resolvedFoil = skuInfo.foil !== undefined ? skuInfo.foil : foil;
+      // Merge foil: SKU > title > variant parsing
+      const resolvedFoil =
+        skuInfo.foil !== undefined
+          ? skuInfo.foil
+          : titleInfo.foil !== undefined
+            ? titleInfo.foil || foil
+            : foil;
 
       variants.push({
         cardName,
