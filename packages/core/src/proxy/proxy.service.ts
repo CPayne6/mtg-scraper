@@ -90,6 +90,19 @@ export class ProxyService implements OnModuleDestroy {
     return this.getOrCreateProxyAgent(proxyNumber);
   }
 
+  /**
+   * Get a proxy agent for a specific proxy number.
+   * Use this when the proxy number has already been determined
+   * (e.g., after rate limit check with that proxy number).
+   */
+  getProxyAgentForNumber(proxyNumber: number): undici.ProxyAgent | undefined {
+    if (!this.proxyEnabled) {
+      return undefined;
+    }
+
+    return this.getOrCreateProxyAgent(proxyNumber);
+  }
+
   getIpCount(): number {
     return this.ipCount;
   }
