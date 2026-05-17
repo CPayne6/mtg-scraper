@@ -1,5 +1,5 @@
 import { Card } from '@scoutlgs/shared';
-import { BaseParser, parseCondition } from '../Parser';
+import { BaseParser, parseConditionWithFoil } from '../Parser';
 import { BinderPOSSearch } from './search.types';
 
 export class BinderPOSParser extends BaseParser {
@@ -35,13 +35,10 @@ export class BinderPOSParser extends BaseParser {
 
         for (const variant of product.variants) {
           if (variant.quantity > 0) {
+            const { condition, foil } = parseConditionWithFoil(variant.option1);
             cards.push({
-              condition: parseCondition(
-                variant.option1
-                  .match(/\b(\w)/g)
-                  ?.map((str) => str.toLocaleLowerCase())
-                  .join(''),
-              ),
+              condition,
+              foil,
               currency: 'CAD',
               image: product.img,
               link: this.storeHost + '/products/' + product.handle,

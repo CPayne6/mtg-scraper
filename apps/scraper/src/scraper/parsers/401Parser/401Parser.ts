@@ -1,5 +1,5 @@
 import { Card } from '@scoutlgs/shared';
-import { BaseParser, parseCondition } from '../Parser';
+import { BaseParser, parseConditionWithFoil } from '../Parser';
 import { _401Search } from './search.types';
 
 const cardNameRegex = /^([^\(]+) \(/i;
@@ -58,7 +58,7 @@ export class _401Parser extends BaseParser {
       const innerCards: Card[] = [];
 
       let type = '';
-      const attrMap: Record<string, any> = {};
+      const itemAttrMap: Record<string, any> = {};
       for (const att of item.att) {
         const name = att[0];
         const values = att[1];
@@ -67,7 +67,7 @@ export class _401Parser extends BaseParser {
         for (let i = 0; Array.isArray(values) && i < values.length; i++) {
           const value = values[i];
           if (name && value) {
-            attrMap[name] = value;
+            itemAttrMap[name] = value;
           }
           if (name.toLocaleLowerCase() === 'type') {
             type = value;
@@ -81,6 +81,14 @@ export class _401Parser extends BaseParser {
       if (type !== 'Magic: The Gathering Singles') {
         continue;
       }
+
+      // Check for foil in Tag array (e.g., "Foil or Non-Foil_Foil", "Finish_Foil")
+      const tags: string[] = Array.isArray(itemAttrMap['Tag']) ? itemAttrMap['Tag'] : [];
+      const productFoil = tags.some(
+        (tag) =>
+          (tag.includes('Foil or Non-Foil_Foil') || tag.includes('Finish_Foil')) &&
+          !tag.includes('Non-Foil'),
+      );
 
       // Iterate through the convoluted object structure
       for (const innerItem of item.vra) {
@@ -104,8 +112,12 @@ export class _401Parser extends BaseParser {
           const splitSku = (
             attrMap['Product-sku'] ?? attrMap['Barcode']
           )?.split('-');
+          const { condition, foil: conditionFoil } = parseConditionWithFoil(attrMap['Condition']);
+          // Use foil from condition if present, otherwise from product tags
+          const foil = conditionFoil || productFoil;
           innerCards.push({
-            condition: parseCondition(attrMap['Condition']),
+            condition,
+            foil,
             price: Number(attrMap['Price']?.split(':').pop()),
             currency: attrMap['Price']?.split(':').shift(),
             image: item.t,
