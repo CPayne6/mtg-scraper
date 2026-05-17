@@ -4,18 +4,20 @@ export const QUEUE_NAMES = {
   CARD_SCRAPE: 'card-scrape',
   PRODUCT_DISCOVERY: 'product-discovery',
   PRODUCT_EXTRACTION: 'product-extraction',
+  STOREFRONT_EXTRACTION: 'storefront-extraction',
 } as const;
 
 export const JOB_NAMES = {
   SCRAPE_CARD: 'scrape-card',
   DISCOVER_STORE: 'discover-store',
   EXTRACT_PRODUCT: 'extract-product',
+  EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
 } as const;
 
 /**
  * Platform types for discovery/extraction adapters
  */
-export type PlatformType = 'shopify' | 'conduct_commerce';
+export type PlatformType = 'shopify' | 'shopify_storefront' | 'conduct_commerce';
 
 /**
  * Store discovery configuration stored in stores.discovery_config
@@ -66,6 +68,29 @@ export interface DiscoverStoreJobResult {
  */
 export interface ExtractProductJobResult {
   productUrlId: number;
+  variantsExtracted: number;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Job data for extracting products from a Shopify Storefront API collection
+ */
+export interface StorefrontExtractionJobData {
+  storeId: number;
+  collectionHandle: string;
+  priority?: number;
+  /** ID of the discovery_runs row tracking this run. */
+  discoveryRunId?: number;
+}
+
+/**
+ * Result from extracting products via Shopify Storefront API
+ */
+export interface StorefrontExtractionJobResult {
+  storeId: number;
+  collectionHandle: string;
+  productsExtracted: number;
   variantsExtracted: number;
   success: boolean;
   error?: string;

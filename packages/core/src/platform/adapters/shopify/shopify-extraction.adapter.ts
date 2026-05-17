@@ -11,6 +11,7 @@ import { DefaultCardDetailExtractor } from './extractors/default-card-detail.ext
 import { ProxyService } from '../../../proxy/proxy.service';
 import { CacheService } from '../../../cache/cache.service';
 import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
+import { parseConditionAndFoil as parseConditionAndFoilUtil } from './shopify-variant.utils';
 
 /**
  * Error thrown during extraction with HTTP context
@@ -199,31 +200,12 @@ export class ShopifyExtractionAdapter implements IExtractionAdapter {
 
   /**
    * Parse condition and foil status from variant.
-   * Shared across all store types — condition/foil encoding is consistent.
+   * Delegates to the standalone utility for reuse across adapters.
    */
   parseConditionAndFoil(variant: ShopifyVariant): {
     condition: Condition;
     foil: boolean;
   } {
-    const conditionStr = variant.option1 || variant.title || '';
-    const foilStr = variant.option2 || variant.title || '';
-    const fullStr = `${conditionStr} ${foilStr}`.toLowerCase();
-
-    let condition = Condition.UNKNOWN;
-    if (/\b(nm|near\s*mint)\b/i.test(conditionStr)) {
-      condition = Condition.NM;
-    } else if (/\b(lp|pl|light(ly)?\s*played|sp|slight(ly)?\s*played)\b/i.test(conditionStr)) {
-      condition = Condition.LP;
-    } else if (/\b(mp|moderate(ly)?\s*played)\b/i.test(conditionStr)) {
-      condition = Condition.MP;
-    } else if (/\b(hp|heavy|heavily\s*played)\b/i.test(conditionStr)) {
-      condition = Condition.HP;
-    } else if (/\b(dmg|damaged)\b/i.test(conditionStr)) {
-      condition = Condition.DMG;
-    }
-
-    const foil = /\bfoil\b/i.test(fullStr) && !/\bnon[- ]?foil\b/i.test(fullStr);
-
-    return { condition, foil };
+    return parseConditionAndFoilUtil(variant);
   }
 }

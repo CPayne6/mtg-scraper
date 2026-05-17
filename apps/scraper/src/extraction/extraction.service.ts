@@ -123,6 +123,86 @@ export class ExtractionService {
 
       // Extract product data
       const variants = await adapter.extractProduct(store, handle);
+
+      return this.processExtractedVariants(
+        productUrlId,
+        storeId,
+        handle,
+        variants,
+        discoveryRunId,
+      );
+    } catch (error) {
+      if (error instanceof ExtractionHttpError) {
+        const errorType = classifyHttpStatus(error.statusCode) ?? ScrapeErrorType.UNKNOWN;
+        const scrapeError = new ScrapeError(error.message, errorType, {
+          statusCode: error.statusCode,
+          retryAfter: error.retryAfter,
+          url: error.url,
+        });
+
+        this.logger.error(`Extraction HTTP error for ${handle}: ${scrapeError.message}`);
+        await this.updateProductUrlStatus(productUrlId, 'error', scrapeError.message);
+        throw scrapeError;
+      }
+
+      // Check for network-level errors (ECONNREFUSED, ECONNRESET, ETIMEDOUT, etc.)
+      // These are retryable — wrap as ScrapeError and throw so the processor backs off
+      const cause = error instanceof Error && 'cause' in error ? (error as any).cause : undefined;
+      const causeCode = cause?.code ?? '';
+      const isNetworkError = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT'].includes(causeCode)
+        || (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout')));
+
+      if (isNetworkError) {
+        const scrapeError = ScrapeError.fromNetworkError(
+          error instanceof Error ? error : new Error(String(error)),
+          `${handle} @ store ${storeId}`,
+        );
+        this.logger.warn(`Network error for ${handle}: ${scrapeError.message} (${causeCode})`);
+        await this.updateProductUrlStatus(productUrlId, 'error', `fetch failed (${causeCode})`);
+        throw scrapeError;
+      }
+
+      const causeDetail = causeCode || cause?.message || '';
+      result.error = error instanceof Error ? error.message : String(error);
+      if (causeDetail) result.error += ` (${causeDetail})`;
+      this.logger.error(`Extraction failed for ${handle}: ${result.error}`);
+      await this.updateProductUrlStatus(productUrlId, 'error', result.error);
+      return result;
+    }
+  }
+
+  /**
+   * Process pre-fetched variants through matching + upsert pipeline.
+   * Used by the Storefront API processor which fetches variants inline.
+   */
+  async processExtractedVariants(
+    productUrlId: number,
+    storeId: number,
+    handle: string,
+    variants: ExtractedCardVariant[],
+    discoveryRunId?: number,
+  ): Promise<ExtractionResult> {
+    const result: ExtractionResult = {
+      productUrlId,
+      variantsExtracted: 0,
+      variantsInStock: 0,
+      variantsOutOfStock: 0,
+      cardsUpserted: 0,
+      matchedPrintings: 0,
+      unmatchedPrintings: 0,
+      unmatchedCards: 0,
+      success: false,
+    };
+
+    try {
+      const store = await this.getStore(storeId);
+
+      if (!store) {
+        result.error = `Store ${storeId} not found`;
+        await this.updateProductUrlStatus(productUrlId, 'error', result.error);
+        return result;
+      }
+
       result.variantsExtracted = variants.length;
 
       if (variants.length === 0) {
@@ -284,40 +364,8 @@ export class ExtractionService {
 
       return result;
     } catch (error) {
-      if (error instanceof ExtractionHttpError) {
-        const errorType = classifyHttpStatus(error.statusCode) ?? ScrapeErrorType.UNKNOWN;
-        const scrapeError = new ScrapeError(error.message, errorType, {
-          statusCode: error.statusCode,
-          retryAfter: error.retryAfter,
-          url: error.url,
-        });
-
-        this.logger.error(`Extraction HTTP error for ${handle}: ${scrapeError.message}`);
-        await this.updateProductUrlStatus(productUrlId, 'error', scrapeError.message);
-        throw scrapeError;
-      }
-
-      // Check for network-level errors (ECONNREFUSED, ECONNRESET, ETIMEDOUT, etc.)
-      // These are retryable — wrap as ScrapeError and throw so the processor backs off
-      const cause = error instanceof Error && 'cause' in error ? (error as any).cause : undefined;
-      const causeCode = cause?.code ?? '';
-      const isNetworkError = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT'].includes(causeCode)
-        || (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout')));
-
-      if (isNetworkError) {
-        const scrapeError = ScrapeError.fromNetworkError(
-          error instanceof Error ? error : new Error(String(error)),
-          `${handle} @ store ${storeId}`,
-        );
-        this.logger.warn(`Network error for ${handle}: ${scrapeError.message} (${causeCode})`);
-        await this.updateProductUrlStatus(productUrlId, 'error', `fetch failed (${causeCode})`);
-        throw scrapeError;
-      }
-
-      const causeDetail = causeCode || cause?.message || '';
       result.error = error instanceof Error ? error.message : String(error);
-      if (causeDetail) result.error += ` (${causeDetail})`;
-      this.logger.error(`Extraction failed for ${handle}: ${result.error}`);
+      this.logger.error(`Processing failed for ${handle}: ${result.error}`);
       await this.updateProductUrlStatus(productUrlId, 'error', result.error);
       return result;
     }
