@@ -16,6 +16,8 @@ import {
   TokenListing,
   TokenVariant,
   DiscoveryRun,
+  CardList,
+  CardListEntry,
 } from '@scoutlgs/core';
 
 // TypeORM CLI configuration for migrations
@@ -47,6 +49,8 @@ export default new DataSource({
     TokenListing,
     TokenVariant,
     DiscoveryRun,
+    CardList,
+    CardListEntry,
   ],
   migrations: isProduction
     ? ['dist/database/migrations/*.js']
