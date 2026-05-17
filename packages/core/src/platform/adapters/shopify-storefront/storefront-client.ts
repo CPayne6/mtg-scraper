@@ -1,0 +1,173 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { fetch } from 'undici';
+import type { Dispatcher } from 'undici';
+import type { Store } from '../../../database/store.entity';
+import { ProxyService } from '../../../proxy/proxy.service';
+import { CacheService } from '../../../cache/cache.service';
+import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
+import { WebBotAuthService } from '../../../web-bot-auth/web-bot-auth.service';
+import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
+import { STOREFRONT_API_VERSION } from './storefront.queries';
+import type { StorefrontGraphQLResponse } from './storefront.types';
+
+@Injectable()
+export class StorefrontClient {
+  private readonly logger = new Logger(StorefrontClient.name);
+
+  constructor(
+    private readonly proxyService: ProxyService,
+    private readonly cacheService: CacheService,
+    private readonly rateLimiter: RateLimiterService,
+    private readonly webBotAuth: WebBotAuthService,
+  ) {}
+
+  /**
+   * Execute a GraphQL query against a store's Shopify Storefront API endpoint.
+   *
+   * Handles proxy rotation, rate limiting, Web Bot Auth signing, and
+   * Storefront API error semantics (HTTP 429/430, GraphQL THROTTLED).
+   */
+  async query<T>(
+    store: Store,
+    gql: string,
+    variables: Record<string, unknown>,
+    dispatcher?: Dispatcher,
+  ): Promise<T> {
+    const url = this.getEndpointUrl(store);
+
+    // Acquire rate-limited proxy slot (same pattern as ShopifyExtractionAdapter)
+    const ipCount = this.proxyService.getIpCount();
+    const { proxyNumber } = await this.rateLimiter.acquireWithRotation(
+      store.name,
+      store.rateLimitPerSecond,
+      () => this.cacheService.getNextProxyNumber(store.name, ipCount),
+    );
+    const proxyAgent = this.proxyService.getProxyAgentForNumber(proxyNumber);
+
+    // Build headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent':
+        'Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)',
+      Accept: 'application/json',
+    };
+
+    if (store.scraperConfig?.storefrontAccessToken) {
+      headers['X-Shopify-Storefront-Access-Token'] =
+        store.scraperConfig.storefrontAccessToken;
+    }
+
+    // Web Bot Auth signing (sign before proxy so signed components stay intact)
+    if (this.webBotAuth.isEnabled()) {
+      const authHeaders = await this.webBotAuth.signRequest(
+        proxyNumber,
+        'POST',
+        url,
+      );
+      if (authHeaders) {
+        Object.assign(headers, authHeaders);
+      }
+    }
+
+    // Execute request
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query: gql, variables }),
+      dispatcher: dispatcher ?? (proxyAgent as Dispatcher | undefined),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    // Handle HTTP-level errors
+    if (!response.ok) {
+      const retryAfter = response.headers.get('retry-after');
+      const retryAfterSeconds = retryAfter
+        ? parseInt(retryAfter, 10)
+        : undefined;
+
+      if (response.status === 429) {
+        throw new ExtractionHttpError(
+          `HTTP 429 Too Many Requests from ${store.name}`,
+          429,
+          url,
+          retryAfterSeconds,
+        );
+      }
+
+      if (response.status === 430) {
+        throw new ExtractionHttpError(
+          `HTTP 430 Shopify security rejection from ${store.name}`,
+          430,
+          url,
+        );
+      }
+
+      if (response.status >= 500) {
+        throw new ExtractionHttpError(
+          `HTTP ${response.status} ${response.statusText} from ${store.name}`,
+          response.status,
+          url,
+          retryAfterSeconds,
+        );
+      }
+
+      throw new ExtractionHttpError(
+        `HTTP ${response.status} ${response.statusText} from ${store.name}`,
+        response.status,
+        url,
+        retryAfterSeconds,
+      );
+    }
+
+    // Parse GraphQL response
+    const body =
+      (await response.json()) as StorefrontGraphQLResponse<T>;
+
+    // Handle GraphQL-level errors
+    if (body.errors && body.errors.length > 0) {
+      const isThrottled = body.errors.some(
+        (e) =>
+          e.extensions?.code === 'THROTTLED' ||
+          e.message.includes('Throttled'),
+      );
+
+      if (isThrottled) {
+        // Compute backoff from throttle status if available
+        let retryAfterSeconds: number | undefined;
+        const throttleStatus = body.extensions?.cost?.throttleStatus;
+        if (throttleStatus && throttleStatus.restoreRate > 0) {
+          const deficit =
+            (body.extensions!.cost.requestedQueryCost ?? 0) -
+            throttleStatus.currentlyAvailable;
+          if (deficit > 0) {
+            retryAfterSeconds = Math.ceil(deficit / throttleStatus.restoreRate);
+          }
+        }
+
+        throw new ExtractionHttpError(
+          `GraphQL throttled at ${store.name}: ${body.errors[0].message}`,
+          429,
+          url,
+          retryAfterSeconds,
+        );
+      }
+
+      // Non-throttle GraphQL errors
+      const messages = body.errors.map((e) => e.message).join('; ');
+      throw new Error(
+        `GraphQL errors from ${store.name}: ${messages}`,
+      );
+    }
+
+    return body.data as T;
+  }
+
+  /**
+   * Build the Storefront API GraphQL endpoint URL for a store.
+   */
+  getEndpointUrl(store: Store): string {
+    const host =
+      store.scraperConfig?.shopifyUrl || new URL(store.baseUrl).host;
+    return `https://${host}/api/${STOREFRONT_API_VERSION}/graphql.json`;
+  }
+}
