@@ -28,7 +28,10 @@ const stores: Partial<Store>[] = [
     displayName: 'House of Cards',
     baseUrl: 'https://houseofcards.ca',
     scraperType: 'binderpos' as const,
-    scraperConfig: { searchPath: 'mtg-advanced-search' },
+    scraperConfig: {
+      searchPath: 'mtg-advanced-search',
+      shopifyUrl: 'house-of-cards-mtg.myshopify.com',
+    },
     isActive: true,
   },
   {
@@ -36,7 +39,10 @@ const stores: Partial<Store>[] = [
     displayName: 'Black Knight Games',
     baseUrl: 'https://blackknightgames.ca',
     scraperType: 'binderpos' as const,
-    scraperConfig: { searchPath: 'magic-the-gathering-search' },
+    scraperConfig: {
+      searchPath: 'magic-the-gathering-search',
+      shopifyUrl: 'black-knight-games.myshopify.com',
+    },
     isActive: true,
   },
   {
@@ -44,7 +50,10 @@ const stores: Partial<Store>[] = [
     displayName: 'Exor Games',
     baseUrl: 'https://exorgames.com',
     scraperType: 'binderpos' as const,
-    scraperConfig: { searchPath: 'advanced-search' },
+    scraperConfig: {
+      searchPath: 'advanced-search',
+      shopifyUrl: 'most-wanted-ca.myshopify.com',
+    },
     isActive: true,
   },
   {
@@ -52,7 +61,21 @@ const stores: Partial<Store>[] = [
     displayName: 'Game Knight',
     baseUrl: 'https://gameknight.ca',
     scraperType: 'binderpos' as const,
-    scraperConfig: { searchPath: 'magic-the-gathering-singles' },
+    scraperConfig: {
+      searchPath: 'magic-the-gathering-singles',
+      shopifyUrl: 'gameknight-games.myshopify.com',
+    },
+    isActive: true,
+  },
+  {
+    name: 'the-cg-realm',
+    displayName: 'The CG Realm',
+    baseUrl: 'https://www.thecgrealm.com',
+    scraperType: 'binderpos' as const,
+    scraperConfig: {
+      searchPath: 'search',
+      shopifyUrl: 'the-cg-realm.myshopify.com',
+    },
     isActive: true,
   },
 ];
