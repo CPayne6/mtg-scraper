@@ -20,6 +20,8 @@ export interface ScrapeCardJobData {
   requestId?: string;
   /** Track retries for this specific store-card combo */
   retryCount?: number;
+  /** Scraper type for API-level rate limiting (e.g., 'binderpos') */
+  scraperType?: string;
 }
 
 /**
