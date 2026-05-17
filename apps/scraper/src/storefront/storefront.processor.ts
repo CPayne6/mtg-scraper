@@ -289,39 +289,46 @@ export class StorefrontProcessor implements OnModuleInit {
       };
     }
 
-    // Stale unmatched_cards rows from the previous extraction would conflict
-    // with new rows if the fresh extraction parses a different raw_name (the
-    // (store_id, product_url_id, raw_name) unique constraint allows multiple).
-    // Drop them first so the table holds only the latest extraction's view.
-    const productUrlIds = unmatched
-      .map((p) => p.productUrlId)
-      .filter((id): id is number => id != null);
-    if (productUrlIds.length > 0) {
-      await this.unmatchedCardRepository.delete({
-        productUrlId: In(productUrlIds),
-      });
-    }
-
     let refetched = 0;
     let errors = 0;
 
     // Re-fetch in batches via the products(query: "id:X OR id:Y OR ...") API.
-    // Each batch fetches up to BATCH_SIZE products in one GraphQL call,
-    // then processPage handles upsert/match/promote/store-unmatched.
+    // Each batch:
+    //   1. Fetch from Shopify first — if this fails, no DB changes
+    //   2. Delete the batch's stale unmatched_cards rows
+    //   3. Run processPage (upserts product_urls, matches, promotes or
+    //      writes fresh unmatched_cards rows from the new extraction)
+    //
+    // This ordering limits data loss on failure to a single 50-product batch
+    // instead of the entire job's remaining products.
     const BATCH_SIZE = 50;
     for (let i = 0; i < unmatched.length; i += BATCH_SIZE) {
       const batch = unmatched.slice(i, i + BATCH_SIZE);
       const idQuery = batch
         .map((p) => `id:${p.shopifyProductId}`)
         .join(' OR ');
+      const batchProductUrlIds = batch
+        .map((p) => p.productUrlId)
+        .filter((id): id is number => id != null);
 
       try {
+        // 1. Fetch first — pre-commit to nothing if Shopify fails
         const { products } = await adapter.fetchPage(store, idQuery);
         refetched += products.length;
 
-        if (products.length > 0) {
-          await this.processPage(products, store.id, collectionId);
+        if (products.length === 0) continue;
+
+        // 2. Drop stale unmatched_cards for this batch only. If we crash
+        //    here or in processPage, only these ~50 products lose their
+        //    old data — retrievable by re-running the job.
+        if (batchProductUrlIds.length > 0) {
+          await this.unmatchedCardRepository.delete({
+            productUrlId: In(batchProductUrlIds),
+          });
         }
+
+        // 3. Process: writes the fresh extraction's view to the DB
+        await this.processPage(products, store.id, collectionId);
       } catch (error) {
         errors++;
         this.logger.error(
