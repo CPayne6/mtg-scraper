@@ -49,6 +49,11 @@ export {
   BinderposCardDetailExtractor,
   DefaultCardDetailExtractor,
   Four01CardDetailExtractor,
+  StorefrontClient,
+  StorefrontExtractionAdapter,
+  STOREFRONT_API_VERSION,
+  COLLECTION_PRODUCTS_QUERY,
+  PRODUCT_BY_HANDLE_QUERY,
 } from './platform/index';
 export type {
   ICardDetailExtractor,
@@ -56,6 +61,15 @@ export type {
   SkuInfo,
   TagsInfo,
   ImageInfo,
+} from './platform/index';
+export type {
+  StorefrontGraphQLResponse,
+  StorefrontGraphQLError,
+  StorefrontProduct,
+  StorefrontVariant,
+  CollectionProductsData,
+  ProductByHandleData,
+  PageInfo,
 } from './platform/index';
 export type {
   IDiscoveryAdapter,

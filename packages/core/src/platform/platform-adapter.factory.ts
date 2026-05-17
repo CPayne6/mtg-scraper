@@ -3,6 +3,7 @@ import type { PlatformType } from '@scoutlgs/shared';
 import type { IDiscoveryAdapter, IExtractionAdapter } from './platform.interfaces';
 import { ShopifyDiscoveryAdapter } from './adapters/shopify/shopify-discovery.adapter';
 import { ShopifyExtractionAdapter } from './adapters/shopify/shopify-extraction.adapter';
+import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
 
 /**
  * Factory for creating platform-specific adapters
@@ -15,6 +16,7 @@ export class PlatformAdapterFactory {
   constructor(
     private readonly shopifyDiscovery: ShopifyDiscoveryAdapter,
     private readonly shopifyExtraction: ShopifyExtractionAdapter,
+    private readonly storefrontExtraction: StorefrontExtractionAdapter,
     // Future: ConductCommerce adapters
     // private readonly conductCommerceDiscovery: ConductCommerceDiscoveryAdapter,
     // private readonly conductCommerceExtraction: ConductCommerceExtractionAdapter,
@@ -27,6 +29,8 @@ export class PlatformAdapterFactory {
     switch (platformType) {
       case 'shopify':
         return this.shopifyDiscovery;
+      case 'shopify_storefront':
+        throw new Error('Storefront API uses dedicated queue, not discovery adapter');
       case 'conduct_commerce':
         throw new Error('ConductCommerce discovery adapter not yet implemented');
       default:
@@ -41,6 +45,8 @@ export class PlatformAdapterFactory {
     switch (platformType) {
       case 'shopify':
         return this.shopifyExtraction;
+      case 'shopify_storefront':
+        return this.storefrontExtraction;
       case 'conduct_commerce':
         throw new Error('ConductCommerce extraction adapter not yet implemented');
       default:
@@ -52,6 +58,6 @@ export class PlatformAdapterFactory {
    * Check if a platform type is supported
    */
   isSupported(platformType: PlatformType): boolean {
-    return platformType === 'shopify';
+    return platformType === 'shopify' || platformType === 'shopify_storefront';
   }
 }
