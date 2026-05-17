@@ -30,4 +30,9 @@ export default defineConfig({
       include: [/packages[\\/]shared/, /node_modules/],
     },
   },
+  optimizeDeps: {
+    // Dev-mode equivalent of the commonjsOptions above: force esbuild to
+    // pre-bundle the workspace CJS package so named exports are detectable.
+    include: ['@scoutlgs/shared'],
+  },
 })
