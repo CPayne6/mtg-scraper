@@ -43,8 +43,6 @@ export {
   PlatformModule,
   PLATFORM_PROXY_FACTORY,
   PlatformAdapterFactory,
-  ShopifyDiscoveryAdapter,
-  ShopifyExtractionAdapter,
   ExtractionHttpError,
   F2fCardDetailExtractor,
   BinderposCardDetailExtractor,
@@ -75,12 +73,8 @@ export type {
   PageInfo,
 } from './platform/index';
 export type {
-  IDiscoveryAdapter,
   IExtractionAdapter,
-  DiscoveredProduct,
   ExtractedCardVariant,
-  SitemapEntry,
-  GetProxyAgentFn,
 } from './platform/index';
 
 // Rate Limiter

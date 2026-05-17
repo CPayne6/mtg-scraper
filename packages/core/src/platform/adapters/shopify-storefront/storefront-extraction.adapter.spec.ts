@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorefrontExtractionAdapter } from './storefront-extraction.adapter';
-import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
+import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { Condition } from '@scoutlgs/shared';
 import type { Store } from '../../../database/store.entity';
 import type { StorefrontProduct, ProductByHandleData, CollectionProductsData } from './storefront.types';

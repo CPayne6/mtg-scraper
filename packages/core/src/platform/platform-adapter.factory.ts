@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { PlatformType } from '@scoutlgs/shared';
-import type { IDiscoveryAdapter, IExtractionAdapter } from './platform.interfaces';
-import { ShopifyDiscoveryAdapter } from './adapters/shopify/shopify-discovery.adapter';
-import { ShopifyExtractionAdapter } from './adapters/shopify/shopify-extraction.adapter';
+import type { IExtractionAdapter } from './platform.interfaces';
 import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
 
 /**
@@ -14,37 +12,14 @@ export class PlatformAdapterFactory {
   private readonly logger = new Logger(PlatformAdapterFactory.name);
 
   constructor(
-    private readonly shopifyDiscovery: ShopifyDiscoveryAdapter,
-    private readonly shopifyExtraction: ShopifyExtractionAdapter,
     private readonly storefrontExtraction: StorefrontExtractionAdapter,
-    // Future: ConductCommerce adapters
-    // private readonly conductCommerceDiscovery: ConductCommerceDiscoveryAdapter,
-    // private readonly conductCommerceExtraction: ConductCommerceExtractionAdapter,
   ) {}
-
-  /**
-   * Get the discovery adapter for a given platform type
-   */
-  getDiscoveryAdapter(platformType: PlatformType): IDiscoveryAdapter {
-    switch (platformType) {
-      case 'shopify':
-        return this.shopifyDiscovery;
-      case 'shopify_storefront':
-        throw new Error('Storefront API uses dedicated queue, not discovery adapter');
-      case 'conduct_commerce':
-        throw new Error('ConductCommerce discovery adapter not yet implemented');
-      default:
-        throw new Error(`No discovery adapter for platform: ${platformType}`);
-    }
-  }
 
   /**
    * Get the extraction adapter for a given platform type
    */
   getExtractionAdapter(platformType: PlatformType): IExtractionAdapter {
     switch (platformType) {
-      case 'shopify':
-        return this.shopifyExtraction;
       case 'shopify_storefront':
         return this.storefrontExtraction;
       case 'conduct_commerce':
@@ -58,6 +33,6 @@ export class PlatformAdapterFactory {
    * Check if a platform type is supported
    */
   isSupported(platformType: PlatformType): boolean {
-    return platformType === 'shopify' || platformType === 'shopify_storefront';
+    return platformType === 'shopify_storefront';
   }
 }

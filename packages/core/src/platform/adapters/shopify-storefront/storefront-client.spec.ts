@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorefrontClient } from './storefront-client';
-import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
+import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { DEFAULT_STOREFRONT_API_VERSION } from './storefront.queries';
 import type { Store } from '../../../database/store.entity';
 

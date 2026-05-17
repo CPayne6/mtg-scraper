@@ -23,7 +23,7 @@ export class DiscoveryService {
   ) {}
 
   /**
-   * Queue discovery jobs for all active stores with discovery enabled.
+   * Queue extraction jobs for all active stores with discovery enabled.
    * Creates a discovery_runs row to track progress, then enqueues jobs
    * with the run ID attached.
    */
@@ -38,12 +38,17 @@ export class DiscoveryService {
     const enabledStores = stores.filter(
       (s) => s.platformType && s.discoveryConfig?.discoveryEnabled,
     );
-    const discoveryStores = options?.skipExtraction
-      ? enabledStores.filter((s) => s.platformType !== 'shopify_storefront')
-      : enabledStores;
+
+    // Only storefront stores are supported now
+    const storefrontStores = enabledStores.filter(
+      (s) => s.platformType === 'shopify_storefront',
+    );
+
+    // When extraction is skipped, no storefront jobs are queued
+    const discoveryStores = options?.skipExtraction ? [] : storefrontStores;
 
     this.logger.log(
-      `Found ${discoveryStores.length} stores to queue out of ${enabledStores.length} discovery-enabled stores` +
+      `Found ${discoveryStores.length} storefront stores to queue out of ${enabledStores.length} discovery-enabled stores` +
         (options?.skipExtraction ? ' (extraction skipped)' : ''),
     );
 
@@ -58,22 +63,14 @@ export class DiscoveryService {
     this.logger.log(`Created discovery run #${savedRun.id} (trigger: ${savedRun.trigger})`);
 
     for (const store of discoveryStores) {
-      if (store.platformType === 'shopify_storefront') {
-        await this.queueService.enqueueStorefrontExtractionJob(
-          store.id,
-          priority,
-          savedRun.id,
-        );
-        this.logger.log(
-          `Enqueued Storefront extraction job for store: ${store.name} (ID: ${store.id})`,
-        );
-      } else {
-        await this.queueService.enqueueDiscoveryJob(store.id, priority, {
-          skipExtraction: options?.skipExtraction,
-          discoveryRunId: savedRun.id,
-        });
-        this.logger.log(`Enqueued discovery job for store: ${store.name} (ID: ${store.id})`);
-      }
+      await this.queueService.enqueueStorefrontExtractionJob(
+        store.id,
+        priority,
+        savedRun.id,
+      );
+      this.logger.log(
+        `Enqueued Storefront extraction job for store: ${store.name} (ID: ${store.id})`,
+      );
     }
 
     return {

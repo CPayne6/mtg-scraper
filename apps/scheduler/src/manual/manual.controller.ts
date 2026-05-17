@@ -38,7 +38,7 @@ export class ManualController {
     return this.manualService.getStatus()
   }
 
-  // Product discovery (V2)
+  // Product discovery
 
   @Put('discovery/trigger')
   putDiscoveryTrigger(
@@ -64,47 +64,5 @@ export class ManualController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.manualService.getDiscoveryRun(id)
-  }
-
-  // Extraction error retry
-
-  @Put('extraction/retry-errors')
-  putRetryErrors(
-    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
-  ) {
-    return this.manualService.retryErroredUrls(batchSize)
-  }
-
-  @Get('extraction/retry-status')
-  getRetryStatus() {
-    return this.manualService.getRetryStatus()
-  }
-
-  // Re-extract unmatched cards
-
-  @Put('extraction/reextract-unmatched')
-  putReextractUnmatched(
-    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
-  ) {
-    return this.manualService.reextractUnmatched(batchSize)
-  }
-
-  @Get('extraction/reextract-status')
-  getReextractStatus() {
-    return this.manualService.getReextractStatus()
-  }
-
-  // Re-extract all product URLs from DB
-
-  @Put('extraction/trigger')
-  putTriggerExtraction(
-    @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
-  ) {
-    return this.manualService.triggerExtraction({ storeId })
-  }
-
-  @Get('extraction/trigger-status')
-  getTriggerExtractionStatus() {
-    return this.manualService.getExtractionTriggerStatus()
   }
 }

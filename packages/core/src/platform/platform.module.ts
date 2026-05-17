@@ -3,8 +3,6 @@ import { CacheModule } from '../cache/cache.module';
 import { ProxyModule } from '../proxy/proxy.module';
 import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { WebBotAuthModule } from '../web-bot-auth/web-bot-auth.module';
-import { ShopifyDiscoveryAdapter } from './adapters/shopify/shopify-discovery.adapter';
-import { ShopifyExtractionAdapter } from './adapters/shopify/shopify-extraction.adapter';
 import { F2fCardDetailExtractor } from './adapters/shopify/extractors/f2f-card-detail.extractor';
 import { BinderposCardDetailExtractor } from './adapters/shopify/extractors/binderpos-card-detail.extractor';
 import { DefaultCardDetailExtractor } from './adapters/shopify/extractors/default-card-detail.extractor';
@@ -38,15 +36,11 @@ export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
       }),
       inject: [F2fCardDetailExtractor, BinderposCardDetailExtractor, Four01CardDetailExtractor],
     },
-    ShopifyDiscoveryAdapter,
-    ShopifyExtractionAdapter,
     StorefrontClient,
     StorefrontExtractionAdapter,
     PlatformAdapterFactory,
   ],
   exports: [
-    ShopifyDiscoveryAdapter,
-    ShopifyExtractionAdapter,
     StorefrontExtractionAdapter,
     PlatformAdapterFactory,
     F2fCardDetailExtractor,

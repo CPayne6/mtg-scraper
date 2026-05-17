@@ -1,21 +1,5 @@
 import { Condition } from '@scoutlgs/shared';
 import type { Store } from '../database/store.entity';
-import type { MtgSinglesCollection } from '../database/mtg-singles-collection.entity';
-
-/**
- * Represents a discovered product from a store's catalog
- * Platform-agnostic - adapters normalize to this format
- */
-export interface DiscoveredProduct {
-  /** Unique product identifier within the store (e.g., product handle/slug) */
-  handle: string;
-  /** When product was last updated (from sitemap/feed) */
-  lastModified?: Date;
-  /** Product image URL */
-  imageUrl?: string;
-  /** Image title - often contains card name + set */
-  imageTitle?: string;
-}
 
 /**
  * Represents a single card variant extracted from a product
@@ -55,38 +39,8 @@ export interface ExtractedCardVariant {
 }
 
 /**
- * Discovery adapter - fetches product catalog from a store
- * Implementations: ShopifyDiscoveryAdapter, ConductCommerceDiscoveryAdapter
- */
-export interface IDiscoveryAdapter {
-  /**
-   * Fetch all product handles from the store's catalog
-   * @param store - Store configuration
-   * @param collection - MTG singles collection to filter by
-   * @returns Async iterator of discovered products
-   */
-  discoverProducts(
-    store: Store,
-    collection: MtgSinglesCollection,
-  ): AsyncIterable<DiscoveredProduct>;
-
-  /**
-   * Validate if a product belongs to the MTG singles collection
-   * @param store - Store configuration
-   * @param collection - MTG singles collection
-   * @param handle - Product handle to validate
-   * @returns true if product is a valid MTG single
-   */
-  validateProduct(
-    store: Store,
-    collection: MtgSinglesCollection,
-    handle: string,
-  ): Promise<boolean>;
-}
-
-/**
  * Extraction adapter - fetches and normalizes product data
- * Implementations: ShopifyExtractionAdapter, ConductCommerceExtractionAdapter
+ * Implementations: StorefrontExtractionAdapter, ConductCommerceExtractionAdapter
  */
 export interface IExtractionAdapter {
   /**
@@ -100,20 +54,3 @@ export interface IExtractionAdapter {
     handle: string,
   ): Promise<ExtractedCardVariant[]>;
 }
-
-/**
- * Sitemap entry from XML parsing
- */
-export interface SitemapEntry {
-  loc: string;
-  lastmod?: string;
-  image?: {
-    loc?: string;
-    title?: string;
-  };
-}
-
-/**
- * Function type for getting a proxy agent
- */
-export type GetProxyAgentFn = () => Promise<import('undici').ProxyAgent | undefined>;

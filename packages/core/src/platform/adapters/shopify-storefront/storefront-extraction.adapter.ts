@@ -7,7 +7,7 @@ import type {
 } from '../../platform.interfaces';
 import type { ICardDetailExtractor } from '../shopify/card-detail-extractor.interface';
 import { DefaultCardDetailExtractor } from '../shopify/extractors/default-card-detail.extractor';
-import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
+import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { parseConditionAndFoil } from '../shopify/shopify-variant.utils';
 import { StorefrontClient } from './storefront-client';
 import {

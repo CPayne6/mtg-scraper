@@ -6,9 +6,7 @@ import {
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from './config/config.module';
 import { getDatabaseConfig } from '@scoutlgs/core';
-import { ScraperModule } from './scraper/scraper.module';
 import { ExtractionModule } from './extraction/extraction.module';
-import { DiscoveryModule } from './discovery/discovery.module';
 import { StorefrontModule } from './storefront/storefront.module';
 import { HealthModule } from './health/health.module';
 
@@ -20,9 +18,7 @@ import { HealthModule } from './health/health.module';
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
-    ScraperModule,
     ExtractionModule,
-    DiscoveryModule,
     StorefrontModule,
     HealthModule,
   ],

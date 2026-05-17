@@ -6,7 +6,7 @@ import { ProxyService } from '../../../proxy/proxy.service';
 import { CacheService } from '../../../cache/cache.service';
 import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
 import { WebBotAuthService } from '../../../web-bot-auth/web-bot-auth.service';
-import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
+import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { getStorefrontApiVersion } from './storefront.queries';
 import type { StorefrontGraphQLResponse } from './storefront.types';
 

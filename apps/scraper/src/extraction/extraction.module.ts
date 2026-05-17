@@ -14,7 +14,6 @@ import {
   TokenPrinting,
 } from '@scoutlgs/core';
 import { ExtractionService } from './extraction.service';
-import { ExtractionProcessor } from './extraction.processor';
 import { PrintingMatcherService } from './printing-matcher.service';
 import { BatchAccumulatorService } from './batch-accumulator.service';
 import { ListingUpsertService } from './listing-upsert.service';
@@ -32,7 +31,6 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
   ],
   providers: [
     ExtractionService,
-    ExtractionProcessor,
     PrintingMatcherService,
     BatchAccumulatorService,
     ListingUpsertService,

@@ -1,8 +1,6 @@
 export { PlatformModule, PLATFORM_PROXY_FACTORY } from './platform.module';
 export { PlatformAdapterFactory } from './platform-adapter.factory';
 export {
-  ShopifyDiscoveryAdapter,
-  ShopifyExtractionAdapter,
   ExtractionHttpError,
   F2fCardDetailExtractor,
   BinderposCardDetailExtractor,
@@ -38,10 +36,6 @@ export type {
   PageInfo,
 } from './adapters/shopify-storefront';
 export type {
-  IDiscoveryAdapter,
   IExtractionAdapter,
-  DiscoveredProduct,
   ExtractedCardVariant,
-  SitemapEntry,
-  GetProxyAgentFn,
 } from './platform.interfaces';

@@ -1,7 +1,20 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { StoreCardCacheEntry, CardWithStore } from '@scoutlgs/shared';
+import type { CardWithStore } from '@scoutlgs/shared';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
+
+/**
+ * Cache entry for a single store-card combination.
+ * Used for batch cache retrieval by the API.
+ */
+export interface StoreCardCacheEntry {
+  /** Store name slug (e.g., 'f2f', '401', 'hobbies') */
+  storeName: string;
+  results: CardWithStore[];
+  timestamp: number;
+  error?: string;
+  retryCount?: number;
+}
 
 export type { CardWithStore };
 
