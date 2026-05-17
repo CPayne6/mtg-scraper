@@ -39,9 +39,9 @@ export class PrintingMatcherService {
     private readonly setRepository: Repository<ScryfallSet>,
     private readonly dataSource: DataSource,
   ) {
-    this.printingCache = new LRUCache({ max: 10000 });
-    this.nameCache = new LRUCache({ max: 10000 });
-    this.setNameCache = new LRUCache({ max: 1000 });
+    this.printingCache = new LRUCache({ max: 100000 });
+    this.nameCache = new LRUCache({ max: 50000 });
+    this.setNameCache = new LRUCache({ max: 2000 });
   }
 
   /**
