@@ -19,6 +19,7 @@ import {
   ShopifyProduct,
   UnmatchedCard,
   CardListing,
+  ExtractionHttpError,
   PlatformAdapterFactory,
 } from '@scoutlgs/core';
 import type { ExtractedCardVariant } from '@scoutlgs/core';
@@ -108,13 +109,28 @@ export class StorefrontProcessor implements OnModuleInit {
     const collection = await this.getCollection(store);
     const collectionId = collection?.id ?? 0;
 
-    // Fetch one page (with optional upper bound for range-split jobs)
-    const { products, nextLastId } = await adapter.fetchPage(
-      store,
-      scope,
-      lastId,
-      maxId,
-    );
+    // Fetch one page (with optional upper bound for range-split jobs).
+    // Wrapped to translate Shopify throttle errors into a delayed re-enqueue
+    // rather than letting BullMQ run its fixed exponential backoff.
+    let products: ExtractedProduct[];
+    let nextLastId: string | null;
+    try {
+      const result = await adapter.fetchPage(store, scope, lastId, maxId);
+      products = result.products;
+      nextLastId = result.nextLastId;
+    } catch (error) {
+      if (await this.rescheduleIfThrottled(job, error)) {
+        return {
+          storeId,
+          productsProcessed: 0,
+          cardsAdded: 0,
+          errors: 0,
+          isLastPage: false,
+          success: true,
+        };
+      }
+      throw error;
+    }
 
     if (products.length === 0) {
       const rangeNote = maxId ? ` [range ≤${maxId}]` : '';
@@ -206,7 +222,17 @@ export class StorefrontProcessor implements OnModuleInit {
       store.platformType!,
     ) as StorefrontExtractionAdapter;
 
-    const { minId, maxId } = await adapter.fetchIdRange(store, scope);
+    let minId: string | null;
+    let maxId: string | null;
+    try {
+      ({ minId, maxId } = await adapter.fetchIdRange(store, scope));
+    } catch (error) {
+      if (await this.rescheduleIfThrottled(job, error)) {
+        return { storeId, rangesEnqueued: 0, success: true };
+      }
+      throw error;
+    }
+
     if (!minId || !maxId) {
       this.logger.warn(`${store.name}: bootstrap found no products`);
       return { storeId, rangesEnqueued: 0, success: true };
@@ -330,6 +356,20 @@ export class StorefrontProcessor implements OnModuleInit {
         // 3. Process: writes the fresh extraction's view to the DB
         await this.processPage(products, store.id, collectionId);
       } catch (error) {
+        // If Shopify throttled us, reschedule the whole job for after
+        // the cooldown and stop processing the rest of the batches.
+        // BullMQ will pick up the rescheduled job; we return normally.
+        if (await this.rescheduleIfThrottled(job, error)) {
+          return {
+            storeId,
+            attempted: unmatched.length,
+            refetched,
+            matched: 0,
+            stillUnmatched: unmatched.length - refetched,
+            errors,
+            success: true,
+          };
+        }
         errors++;
         this.logger.error(
           `reextract-unmatched batch ${i}-${i + batch.length}: ${error instanceof Error ? error.message : String(error)}`,
@@ -647,6 +687,42 @@ export class StorefrontProcessor implements OnModuleInit {
     return this.collectionRepository.findOne({
       where: { id: store.discoveryConfig.mtgSinglesCollectionId },
     });
+  }
+
+  /**
+   * If the error is a Shopify throttle (HTTP 429 or GraphQL THROTTLED) with
+   * a known retryAfter, re-enqueue the same job with that delay instead of
+   * letting BullMQ run its fixed exponential backoff.
+   *
+   * Returns true if the job was rescheduled — caller should return normally
+   * rather than throwing, otherwise BullMQ would also retry on top of our
+   * delayed re-enqueue.
+   *
+   * Adds ±20% jitter so multiple workers hitting the same store don't all
+   * retry at the exact same moment.
+   */
+  private async rescheduleIfThrottled(
+    job: Job,
+    error: unknown,
+  ): Promise<boolean> {
+    if (!(error instanceof ExtractionHttpError)) return false;
+    if (!error.retryAfter || error.retryAfter <= 0) return false;
+
+    // Cap to 5 min — if Shopify is asking for longer than that, something
+    // bigger is wrong and we should let normal job-fail visibility kick in.
+    const baseMs = Math.min(error.retryAfter, 300) * 1000;
+    const jittered = Math.round(baseMs * (0.8 + Math.random() * 0.4));
+
+    this.logger.warn(
+      `${job.name}: throttled (${error.statusCode}) — rescheduling in ${jittered}ms`,
+    );
+
+    await this.storefrontQueue.add(job.name, job.data, {
+      delay: jittered,
+      removeOnComplete: 100,
+      removeOnFail: 500,
+    });
+    return true;
   }
 }
 
