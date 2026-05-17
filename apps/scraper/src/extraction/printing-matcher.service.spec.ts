@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PrintingMatcherService } from './printing-matcher.service';
 import { Repository, DataSource } from 'typeorm';
-import { CardPrinting, ScryfallSet } from '@scoutlgs/core';
+import { CardName, CardPrinting, ScryfallSet } from '@scoutlgs/core';
 
 /**
  * Simulated card name data (card_names table).
@@ -89,20 +89,33 @@ describe('PrintingMatcherService', () => {
   let service: PrintingMatcherService;
   let mockDataSource: Partial<DataSource>;
   let mockPrintingRepo: Partial<Repository<CardPrinting>>;
+  let mockCardNameRepo: Partial<Repository<CardName>>;
   let mockSetRepo: Partial<Repository<ScryfallSet>>;
 
   beforeEach(() => {
     mockPrintingRepo = {};
     mockSetRepo = {};
 
-    // Mock dataSource.query for the three query types:
-    // 1. findBySetAndNumber: SELECT cp.id, cp.card_name_id FROM card_printings ...
-    // 2. resolveCardName exact: SELECT id FROM card_names WHERE normalized_name = ...
-    // 3. resolveCardName fuzzy: SELECT id FROM card_names WHERE similarity(...) > 0.8
-    // 4. resolvePrinting: SELECT cp.id AS printing_id ... WHERE cp.card_name_id = ...
+    // resolveCardName uses the repo: findOne({ where: { normalizedName } })
+    // and a frontface LIKE lookup. We only need to mock findOne to return the
+    // card_names row matching the given normalized name.
+    mockCardNameRepo = {
+      findOne: vi.fn().mockImplementation(async (opts: any) => {
+        const where = opts?.where ?? {};
+        if (typeof where.normalizedName === 'string') {
+          const result = simulateResolveCardName(where.normalizedName);
+          return result ? { id: result.id } : null;
+        }
+        // frontface LIKE path — not exercised in these tests
+        return null;
+      }),
+    };
+
+    // Remaining raw SQL: findBySetAndNumber (priority lookup),
+    // resolvePrinting (CASE-WHEN priority ranking), and the trgm
+    // similarity() fuzzy fallback.
     mockDataSource = {
       query: vi.fn().mockImplementation(async (sql: string, params: any[]) => {
-        // findBySetAndNumber: simple lookup by set code + collector number
         if (sql.includes('cp.card_name_id') && sql.includes('s.code = $1') && !sql.includes('printing_id')) {
           const [setCode, collectorNumber] = params;
           const printing = PRINTINGS.find(
@@ -110,34 +123,21 @@ describe('PrintingMatcherService', () => {
           );
           return printing ? [{ id: printing.id, card_name_id: printing.card_name_id }] : [];
         }
-
-        // resolveCardName exact: SELECT id FROM card_names WHERE normalized_name = $1
-        if (sql.includes('card_names') && sql.includes('normalized_name = $1') && !sql.includes('similarity')) {
-          const [normalizedName] = params;
-          const result = simulateResolveCardName(normalizedName);
-          return result ? [result] : [];
-        }
-
-        // resolveCardName fuzzy: SELECT id FROM card_names WHERE similarity(...)
         if (sql.includes('similarity')) {
-          // In tests, we only match exact — fuzzy simulation would be unreliable
-          // Return empty to indicate no trgm match
           return [];
         }
-
-        // resolvePrinting: SELECT cp.id AS printing_id ... WHERE cp.card_name_id = $1
         if (sql.includes('printing_id') && sql.includes('card_name_id = $1')) {
           const [cardNameId, setCode, collectorNumber] = params;
           const result = simulateResolvePrinting(cardNameId, setCode, collectorNumber);
           return result ? [result] : [];
         }
-
         return [];
       }),
     };
 
     service = new PrintingMatcherService(
       mockPrintingRepo as Repository<CardPrinting>,
+      mockCardNameRepo as Repository<CardName>,
       mockSetRepo as Repository<ScryfallSet>,
       mockDataSource as DataSource,
     );

@@ -560,24 +560,22 @@ export class StorefrontProcessor implements OnModuleInit {
   ): Promise<Map<string, number>> {
     if (products.length === 0) return new Map();
 
-    const values: string[] = [];
-    const params: unknown[] = [];
-    let paramIdx = 1;
-
-    for (const product of products) {
-      values.push(
-        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, 'pending')`,
-      );
-      params.push(storeId, product.handle, product.updatedAt);
-      paramIdx += 3;
-    }
-
-    await this.dataSource.query(
-      `INSERT INTO product_urls (store_id, handle, sitemap_lastmod, extraction_status)
-       VALUES ${values.join(', ')}
-       ON CONFLICT (store_id, handle) DO UPDATE SET sitemap_lastmod = EXCLUDED.sitemap_lastmod`,
-      params,
-    );
+    // On conflict, only refresh sitemap_lastmod — leave extraction_status
+    // alone so previously-processed URLs keep their 'success'/'error' state
+    // across re-discovery cycles.
+    await this.productUrlRepository
+      .createQueryBuilder()
+      .insert()
+      .values(
+        products.map((p) => ({
+          storeId,
+          handle: p.handle,
+          sitemapLastmod: p.updatedAt,
+          extractionStatus: 'pending' as const,
+        })),
+      )
+      .orUpdate(['sitemap_lastmod'], ['store_id', 'handle'])
+      .execute();
 
     const handles = products.map((p) => p.handle);
     const rows = await this.productUrlRepository.find({
@@ -604,35 +602,26 @@ export class StorefrontProcessor implements OnModuleInit {
   ): Promise<void> {
     if (inserts.length === 0) return;
 
-    const values: string[] = [];
-    const params: unknown[] = [];
-    let paramIdx = 1;
-
-    for (const row of inserts) {
-      values.push(
-        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5})`,
-      );
-      params.push(
-        row.shopifyProductId,
-        storeId,
-        row.productUrlId,
-        row.cardListingId,
-        row.isToken,
-        row.matchStatus,
-      );
-      paramIdx += 6;
-    }
-
-    await this.dataSource.query(
-      `INSERT INTO shopify_products (shopify_product_id, store_id, product_url_id, card_listing_id, is_token, match_status)
-       VALUES ${values.join(', ')}
-       ON CONFLICT (shopify_product_id) DO UPDATE SET
-         card_listing_id = EXCLUDED.card_listing_id,
-         match_status = EXCLUDED.match_status,
-         is_token = EXCLUDED.is_token,
-         updated_at = NOW()`,
-      params,
-    );
+    const now = new Date();
+    await this.shopifyProductRepository
+      .createQueryBuilder()
+      .insert()
+      .values(
+        inserts.map((row) => ({
+          shopifyProductId: row.shopifyProductId,
+          storeId,
+          productUrlId: row.productUrlId,
+          cardListingId: row.cardListingId,
+          isToken: row.isToken,
+          matchStatus: row.matchStatus as 'pending' | 'matched' | 'unmatched' | 'token',
+          updatedAt: now,
+        })),
+      )
+      .orUpdate(
+        ['card_listing_id', 'match_status', 'is_token', 'updated_at'],
+        ['shopify_product_id'],
+      )
+      .execute();
   }
 
   private async bulkUpdateProductUrlStatus(

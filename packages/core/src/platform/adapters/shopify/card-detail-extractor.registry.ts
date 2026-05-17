@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { DiscoveryService, Reflector } from '@nestjs/core';
 import type { ICardDetailExtractor } from './card-detail-extractor.interface';
 import { CARD_DETAIL_EXTRACTOR_METADATA } from './card-detail-extractor.decorator';
-import { DefaultCardDetailExtractor } from './extractors/default-card-detail.extractor';
+import { DefaultCardDetailExtractor } from './extractors/default/default-card-detail.extractor';
 import { StoreService } from '../../../store/store.service';
 import type { Store } from '../../../database/store.entity';
 

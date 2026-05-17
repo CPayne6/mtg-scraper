@@ -6,8 +6,8 @@ import type {
   TagsInfo,
   ImageInfo,
   ProductMetaInfo,
-} from '../card-detail-extractor.interface';
-import { CardDetailExtractor } from '../card-detail-extractor.decorator';
+} from '../../card-detail-extractor.interface';
+import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
 
 /**
  * Card detail extractor for 401 Games.
@@ -35,7 +35,7 @@ import { CardDetailExtractor } from '../card-detail-extractor.decorator';
  */
 @CardDetailExtractor('401')
 @Injectable()
-export class Four01CardDetailExtractor implements ICardDetailExtractor {
+export class _401CardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {
     // Strip trailing "(Foil)" or "(Non-Foil)" marker before parsing
     let cleaned = title.replace(/\s*\((Non-?Foil|Foil)\)\s*$/i, '').trim();

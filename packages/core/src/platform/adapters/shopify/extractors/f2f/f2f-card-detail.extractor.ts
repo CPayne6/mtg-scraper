@@ -5,8 +5,8 @@ import type {
   SkuInfo,
   TagsInfo,
   ImageInfo,
-} from '../card-detail-extractor.interface';
-import { CardDetailExtractor } from '../card-detail-extractor.decorator';
+} from '../../card-detail-extractor.interface';
+import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
 
 /**
  * Card detail extractor for Face to Face Games (F2F).

@@ -5,7 +5,7 @@ import type {
   SkuInfo,
   TagsInfo,
   ImageInfo,
-} from '../card-detail-extractor.interface';
+} from '../../card-detail-extractor.interface';
 
 /**
  * Generic fallback card detail extractor.

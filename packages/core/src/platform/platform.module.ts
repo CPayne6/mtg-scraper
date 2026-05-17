@@ -5,12 +5,12 @@ import { ProxyModule } from '../proxy/proxy.module';
 import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { WebBotAuthModule } from '../web-bot-auth/web-bot-auth.module';
 import { StoreModule } from '../store/store.module';
-import { F2fCardDetailExtractor } from './adapters/shopify/extractors/f2f-card-detail.extractor';
-import { BinderposCardDetailExtractor } from './adapters/shopify/extractors/binderpos-card-detail.extractor';
-import { DefaultCardDetailExtractor } from './adapters/shopify/extractors/default-card-detail.extractor';
-import { Four01CardDetailExtractor } from './adapters/shopify/extractors/four01-card-detail.extractor';
-import { CgRealmCardDetailExtractor } from './adapters/shopify/extractors/cgrealm-card-detail.extractor';
-import { HobbiesvilleCardDetailExtractor } from './adapters/shopify/extractors/hobbiesville-card-detail.extractor';
+import { F2fCardDetailExtractor } from './adapters/shopify/extractors/f2f/f2f-card-detail.extractor';
+import { BinderposCardDetailExtractor } from './adapters/shopify/extractors/binderpos/binderpos-card-detail.extractor';
+import { DefaultCardDetailExtractor } from './adapters/shopify/extractors/default/default-card-detail.extractor';
+import { _401CardDetailExtractor } from './adapters/shopify/extractors/_401/_401-card-detail.extractor';
+import { CgRealmCardDetailExtractor } from './adapters/shopify/extractors/cgrealm/cgrealm-card-detail.extractor';
+import { HobbiesvilleCardDetailExtractor } from './adapters/shopify/extractors/hobbiesville/hobbiesville-card-detail.extractor';
 import { CardDetailExtractorRegistry } from './adapters/shopify/card-detail-extractor.registry';
 import { StorefrontClient } from './adapters/shopify-storefront/storefront-client';
 import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
@@ -29,7 +29,7 @@ export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
     F2fCardDetailExtractor,
     BinderposCardDetailExtractor,
     DefaultCardDetailExtractor,
-    Four01CardDetailExtractor,
+    _401CardDetailExtractor,
     CgRealmCardDetailExtractor,
     HobbiesvilleCardDetailExtractor,
     CardDetailExtractorRegistry,

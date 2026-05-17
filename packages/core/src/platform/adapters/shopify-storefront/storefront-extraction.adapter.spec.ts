@@ -92,10 +92,15 @@ describe('StorefrontExtractionAdapter', () => {
     mockExtractor = createMockExtractor();
     mockDefaultExtractor = createMockExtractor();
 
+    // Adapter now takes a CardDetailExtractorRegistry (with .get(scraperType))
+    // instead of separate extractor maps + default.
+    const mockRegistry = {
+      get: (scraperType: string) =>
+        scraperType === 'binderpos' ? mockExtractor : mockDefaultExtractor,
+    };
     adapter = new StorefrontExtractionAdapter(
       mockClient as any,
-      { binderpos: mockExtractor },
-      mockDefaultExtractor as any,
+      mockRegistry as any,
     );
   });
 

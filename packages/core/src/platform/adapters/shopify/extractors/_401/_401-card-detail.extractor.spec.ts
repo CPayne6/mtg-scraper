@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { Four01CardDetailExtractor } from './four01-card-detail.extractor';
+import { _401CardDetailExtractor } from './_401-card-detail.extractor';
 
-const extractor = new Four01CardDetailExtractor();
+const extractor = new _401CardDetailExtractor();
 
-describe('Four01CardDetailExtractor', () => {
+describe('_401CardDetailExtractor', () => {
   describe('parseTitle', () => {
     describe('standard format: "Card Name (SET)"', () => {
       it('"Teferi\'s Puzzle Box (8ED)" → Teferi\'s Puzzle Box', () => {

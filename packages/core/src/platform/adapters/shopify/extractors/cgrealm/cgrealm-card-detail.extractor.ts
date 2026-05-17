@@ -6,8 +6,8 @@ import type {
   TagsInfo,
   ImageInfo,
   ProductMetaInfo,
-} from '../card-detail-extractor.interface';
-import { CardDetailExtractor } from '../card-detail-extractor.decorator';
+} from '../../card-detail-extractor.interface';
+import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
 
 /**
  * Card detail extractor for The CG Realm.

@@ -33,6 +33,7 @@ function createMockStore(overrides: Partial<Store> = {}): Store {
 function createMockDeps() {
   return {
     proxyService: {
+      isEnabled: () => false,
       getIpCount: () => 10,
       getProxyAgentForNumber: () => undefined,
     },

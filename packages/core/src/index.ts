@@ -44,7 +44,7 @@ export {
   F2fCardDetailExtractor,
   BinderposCardDetailExtractor,
   DefaultCardDetailExtractor,
-  Four01CardDetailExtractor,
+  _401CardDetailExtractor,
   CgRealmCardDetailExtractor,
   CardDetailExtractor,
   CardDetailExtractorRegistry,
