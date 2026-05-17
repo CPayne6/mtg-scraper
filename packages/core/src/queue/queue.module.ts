@@ -17,9 +17,9 @@ import { QueueService } from './queue.service';
         },
       }),
     }),
-    BullModule.registerQueue({
-      name: QUEUE_NAMES.CARD_SCRAPE,
-    }),
+    BullModule.registerQueue(
+      { name: QUEUE_NAMES.STOREFRONT_EXTRACTION },
+    ),
   ],
   providers: [QueueService],
   exports: [QueueService, BullModule],

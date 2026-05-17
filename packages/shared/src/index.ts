@@ -1,3 +1,23 @@
-export type { Card, Condition, CardWithStore, StoreInfo, PriceStats, CardSearchResponse, Set } from './card.types.js';
-export type { ScrapeCardJobData, ScrapeCardJobResult, StoreCardCacheEntry } from './queue.types.js';
-export { QUEUE_NAMES, JOB_NAMES } from './queue.types.js';
+export type {
+  Card,
+  CardWithStore,
+  StoreInfo,
+  PriceStats,
+  PaginationMeta,
+  CardSearchResponse,
+  Set,
+} from './card.types';
+export { Condition } from './card.types';
+export type {
+  PlatformType,
+  StoreDiscoveryConfig,
+  StorefrontExtractionJobData,
+  StorefrontExtractionJobResult,
+  StorefrontBootstrapJobData,
+  StorefrontPlanJobData,
+  StorefrontPrefixJobData,
+  StorefrontPrefixJobResult,
+  ReextractUnmatchedJobData,
+  ReextractUnmatchedJobResult,
+} from './queue.types';
+export { QUEUE_NAMES, JOB_NAMES } from './queue.types';

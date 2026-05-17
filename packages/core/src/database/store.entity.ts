@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   Generated,
 } from 'typeorm';
+import type { PlatformType, StoreDiscoveryConfig } from '@scoutlgs/shared';
 
 @Entity('stores')
 export class Store {
@@ -32,10 +33,26 @@ export class Store {
   isActive: boolean;
 
   @Column({ name: 'scraper_type' })
-  scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos';
+  scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos' | 'cgrealm';
 
   @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
-  scraperConfig?: { searchPath?: string };
+  scraperConfig?: {
+    searchPath?: string;
+    shopifyUrl?: string;
+    storefrontApiVersion?: string;
+    storefrontAccessToken?: string;
+    /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
+    storefrontScope?: string;
+  };
+
+  @Column({ name: 'platform_type', length: 50, nullable: true })
+  platformType?: PlatformType;
+
+  @Column({ name: 'rate_limit_per_second', type: 'int', default: 15 })
+  rateLimitPerSecond: number;
+
+  @Column({ name: 'discovery_config', type: 'jsonb', nullable: true })
+  discoveryConfig?: StoreDiscoveryConfig;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

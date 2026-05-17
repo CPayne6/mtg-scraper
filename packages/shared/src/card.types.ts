@@ -1,9 +1,17 @@
 
-export type Condition = 'nm' | 'pl' | 'mp' | 'hp' | 'unknown'
+export enum Condition {
+  NM = 'nm',
+  LP = 'lp',
+  MP = 'mp',
+  HP = 'hp',
+  DMG = 'dmg',
+  UNKNOWN = 'unknown',
+}
 
 export interface Card {
   price: number;
   condition: Condition;
+  foil?: boolean;
   image: string;
   title: string;
   currency: string;
@@ -29,6 +37,14 @@ export interface PriceStats {
   max: number;
   avg: number;
   count: number;
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
 export interface CardSearchResponse {
