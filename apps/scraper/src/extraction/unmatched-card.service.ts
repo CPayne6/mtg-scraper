@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 
 export interface UnmatchedCardRow {
   storeId: number;
-  productUrlId: string;
+  productUrlId: number;
   rawName: string;
   normalizedName: string;
   setName: string | null;
@@ -35,8 +35,22 @@ export class UnmatchedCardService {
   async upsertBatch(rows: UnmatchedCardRow[]): Promise<number> {
     if (rows.length === 0) return 0;
 
+    // Deduplicate by (storeId, productUrlId, rawName) — keep last occurrence
+    const seen = new Map<string, number>();
+    const deduped: UnmatchedCardRow[] = [];
+    for (const row of rows) {
+      const key = `${row.storeId}:${row.productUrlId}:${row.rawName}`;
+      const existingIdx = seen.get(key);
+      if (existingIdx !== undefined) {
+        deduped[existingIdx] = row;
+        continue;
+      }
+      seen.set(key, deduped.length);
+      deduped.push(row);
+    }
+
     const storeIds: number[] = [];
-    const productUrlIds: string[] = [];
+    const productUrlIds: number[] = [];
     const rawNames: string[] = [];
     const normalizedNames: string[] = [];
     const setNames: (string | null)[] = [];
@@ -53,7 +67,7 @@ export class UnmatchedCardService {
     const skus: (string | null)[] = [];
     const platformVariantIds: (string | null)[] = [];
 
-    for (const row of rows) {
+    for (const row of deduped) {
       storeIds.push(row.storeId);
       productUrlIds.push(row.productUrlId);
       rawNames.push(row.rawName);
@@ -83,7 +97,7 @@ export class UnmatchedCardService {
       )
       SELECT
         unnest($1::int[]),
-        unnest($2::bigint[]),
+        unnest($2::int[]),
         unnest($3::varchar[]),
         unnest($4::varchar[]),
         unnest($5::varchar[]),

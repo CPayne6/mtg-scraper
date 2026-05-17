@@ -7,15 +7,21 @@ import {
   PlatformAdapterFactory,
   ExtractionHttpError,
 } from '@scoutlgs/core';
+import type { ExtractedCardVariant } from '@scoutlgs/core';
 import { ScrapeError, ScrapeErrorType, classifyHttpStatus } from '../scraper/errors';
 import { PrintingMatcherService } from './printing-matcher.service';
 import { BatchAccumulatorService } from './batch-accumulator.service';
+import { ListingUpsertService } from './listing-upsert.service';
 import { UnmatchedCardService } from './unmatched-card.service';
-import type { ListingRow } from './listing-upsert.service';
+import { TokenMatcherService } from './token-matcher.service';
+import { TokenBatchAccumulatorService } from './token-batch-accumulator.service';
+import { TokenListingUpsertService } from './token-listing-upsert.service';
+import type { ListingRow, VariantRow, ListingWithVariants } from './listing-upsert.service';
+import type { TokenListingRow, TokenVariantRow } from './token-listing-upsert.service';
 import type { UnmatchedCardRow } from './unmatched-card.service';
 
 export interface ExtractionResult {
-  productUrlId: string;
+  productUrlId: number;
   variantsExtracted: number;
   variantsInStock: number;
   variantsOutOfStock: number;
@@ -42,7 +48,11 @@ export class ExtractionService {
     private readonly platformAdapterFactory: PlatformAdapterFactory,
     private readonly printingMatcher: PrintingMatcherService,
     private readonly batchAccumulator: BatchAccumulatorService,
+    private readonly listingUpsertService: ListingUpsertService,
     private readonly unmatchedCardService: UnmatchedCardService,
+    private readonly tokenMatcher: TokenMatcherService,
+    private readonly tokenBatchAccumulator: TokenBatchAccumulatorService,
+    private readonly tokenListingUpsertService: TokenListingUpsertService,
   ) {}
 
   /**
@@ -65,14 +75,15 @@ export class ExtractionService {
   }
 
   /**
-   * Extract product data and upsert card variants to database.
-   * V2: Stores ALL variants (not just in-stock), matches to card_printings.
-   * Cards that can't be matched are stored in unmatched_cards instead.
+   * Extract product data and upsert in-stock card variants to database.
+   * Out-of-stock variants are deleted. Cards that can't be matched are stored
+   * in unmatched_cards instead.
    */
   async extractProduct(
-    productUrlId: string,
+    productUrlId: number,
     storeId: number,
     handle: string,
+    discoveryRunId?: number,
   ): Promise<ExtractionResult> {
     const result: ExtractionResult = {
       productUrlId,
@@ -128,6 +139,19 @@ export class ExtractionService {
 
       // All variants in a product share the same card — resolve once
       const firstVariant = variants[0];
+
+      // Check if this is a token product — route to token pipeline
+      if (this.detectToken(firstVariant)) {
+        return this.handleTokenProduct(
+          firstVariant,
+          variants,
+          store,
+          productUrlId,
+          result,
+          discoveryRunId,
+        );
+      }
+
       const matchResult = await this.printingMatcher.match(
         firstVariant.cardName,
         firstVariant.setCode,
@@ -183,39 +207,46 @@ export class ExtractionService {
         return result;
       }
 
-      // Matched card — build listing rows
+      // Matched card — build listing + variant rows (in-stock only)
       if (matchResult.cardPrintingId) {
         result.matchedPrintings = 1;
       } else {
         result.unmatchedPrintings = 1;
       }
 
-      const rows: ListingRow[] = [];
-      const title = `${firstVariant.cardName} [${firstVariant.setName || 'Unknown'}]`;
+      // Filter to in-stock variants only
+      const inStockVariants = variants.filter(
+        (v) => v.inStock && (v.quantity === undefined || v.quantity > 0),
+      );
 
-      for (const variant of variants) {
+      // Build one listing per product, with variants underneath
+      const listing: ListingRow = {
+        cardNameId: matchResult.cardNameId,
+        cardPrintingId: matchResult.cardPrintingId,
+        storeId: store.id,
+        productUrlId,
+        rawTitle: firstVariant.cardName,
+        imageUrl: firstVariant.imageUrl || null,
+        currency: firstVariant.currency,
+      };
+
+      const variantRows: VariantRow[] = [];
+      const inStockVariantIds: string[] = [];
+
+      for (const variant of inStockVariants) {
         try {
-          rows.push({
-            cardNameId: matchResult.cardNameId,
-            cardPrintingId: matchResult.cardPrintingId,
-            storeId: store.id,
-            productUrlId,
-            title,
-            rawTitle: variant.cardName,
-            setName: variant.setName || null,
-            setCode: variant.setCode || null,
-            collectorNumber: variant.collectorNumber || null,
-            condition: variant.condition,
+          variantRows.push({
+            conditionCode: variant.condition,
             foil: variant.foil,
             price: variant.price,
-            currency: variant.currency,
-            inStock: variant.inStock ?? false,
             quantity: variant.quantity ?? null,
-            imageUrl: variant.imageUrl || null,
-            productLink: variant.productUrl,
-            sku: variant.sku || null,
             platformVariantId: variant.platformVariantId || null,
+            sku: variant.sku || null,
           });
+
+          if (variant.platformVariantId) {
+            inStockVariantIds.push(variant.platformVariantId);
+          }
         } catch (error) {
           this.logger.warn(
             `Failed to prepare variant ${variant.cardName}: ${error}`,
@@ -224,9 +255,18 @@ export class ExtractionService {
       }
 
       // Add to batch accumulator (non-blocking, flushed in background)
-      if (rows.length > 0) {
-        this.batchAccumulator.addMany(rows);
-        result.cardsUpserted = rows.length;
+      // Stale cleanup runs after upsert in the flush cycle to avoid race condition
+      if (variantRows.length > 0) {
+        this.batchAccumulator.addMany([{
+          listing,
+          variants: variantRows,
+          staleCleanup: { productUrlId, inStockVariantIds },
+          discoveryRunId,
+        }]);
+        result.cardsUpserted = variantRows.length;
+      } else {
+        // All variants OOS — just delete, nothing to upsert
+        await this.listingUpsertService.deleteStaleListings(productUrlId, []);
       }
 
       result.success = true;
@@ -236,7 +276,8 @@ export class ExtractionService {
 
       this.logger.log(
         `Extracted ${variants.length} variants (${result.variantsInStock} in stock), ` +
-          `upserted ${result.cardsUpserted} listings ` +
+          `upserted ${result.cardsUpserted} listings, ` +
+          `deleted stale (${result.variantsOutOfStock} OOS) ` +
           `(${result.matchedPrintings} matched, ${result.unmatchedPrintings} unmatched) ` +
           `for ${handle} @ ${store.name}`,
       );
@@ -256,8 +297,24 @@ export class ExtractionService {
         throw scrapeError;
       }
 
+      // Check for network-level errors (ECONNREFUSED, ECONNRESET, ETIMEDOUT, etc.)
+      // These are retryable — wrap as ScrapeError and throw so the processor backs off
       const cause = error instanceof Error && 'cause' in error ? (error as any).cause : undefined;
-      const causeDetail = cause?.code ?? cause?.message ?? '';
+      const causeCode = cause?.code ?? '';
+      const isNetworkError = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT'].includes(causeCode)
+        || (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timeout')));
+
+      if (isNetworkError) {
+        const scrapeError = ScrapeError.fromNetworkError(
+          error instanceof Error ? error : new Error(String(error)),
+          `${handle} @ store ${storeId}`,
+        );
+        this.logger.warn(`Network error for ${handle}: ${scrapeError.message} (${causeCode})`);
+        await this.updateProductUrlStatus(productUrlId, 'error', `fetch failed (${causeCode})`);
+        throw scrapeError;
+      }
+
+      const causeDetail = causeCode || cause?.message || '';
       result.error = error instanceof Error ? error.message : String(error);
       if (causeDetail) result.error += ` (${causeDetail})`;
       this.logger.error(`Extraction failed for ${handle}: ${result.error}`);
@@ -266,8 +323,189 @@ export class ExtractionService {
     }
   }
 
+  /**
+   * Detect whether an extracted variant represents a token product.
+   * Checks multiple signals in priority order.
+   */
+  private detectToken(variant: ExtractedCardVariant): boolean {
+    // 1. Explicit isToken from SKU parsing (e.g., 401 MTGTN/MTGTF)
+    if (variant.isToken) return true;
+
+    // 2. SKU prefix check
+    if (variant.sku) {
+      const skuUpper = variant.sku.toUpperCase();
+      if (skuUpper.startsWith('MTGTN') || skuUpper.startsWith('MTGTF')) return true;
+    }
+
+    // 3. Set name contains token/emblem/art series keywords
+    if (variant.setName) {
+      const setNameLower = variant.setName.toLowerCase();
+      if (
+        setNameLower.includes('token') ||
+        setNameLower.includes('emblem') ||
+        setNameLower.includes('art series')
+      ) {
+        return true;
+      }
+    }
+
+    // 4. Card name contains "Emblem" or "Art Card"
+    if (variant.cardName) {
+      const nameLower = variant.cardName.toLowerCase();
+      if (nameLower.includes('emblem') || nameLower.includes('art card')) return true;
+    }
+
+    // 5. T-prefixed set code (e.g., TIKO, TM21) — token sets
+    if (variant.setCode) {
+      const codeUpper = variant.setCode.toUpperCase();
+      if (/^T[A-Z0-9]{2,4}$/.test(codeUpper)) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Handle a token product: match against token tables, upsert to token_listings/token_variants.
+   * Falls through to unmatched_cards if no token name match is found.
+   */
+  private async handleTokenProduct(
+    firstVariant: ExtractedCardVariant,
+    variants: ExtractedCardVariant[],
+    store: Store,
+    productUrlId: number,
+    result: ExtractionResult,
+    discoveryRunId?: number,
+  ): Promise<ExtractionResult> {
+    const matchResult = await this.tokenMatcher.match(
+      firstVariant.cardName,
+      firstVariant.setCode,
+      firstVariant.collectorNumber,
+      firstVariant.setName,
+    );
+
+    // Unmatched token — store in unmatched_cards
+    if (matchResult.confidence === 'none') {
+      result.unmatchedPrintings = 1;
+
+      const normalizedName = firstVariant.cardName
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/['']/g, "'")
+        .replace(/[""]/g, '"');
+
+      const unmatchedRows: UnmatchedCardRow[] = [];
+      for (const variant of variants) {
+        unmatchedRows.push({
+          storeId: store.id,
+          productUrlId,
+          rawName: variant.cardName,
+          normalizedName,
+          setName: variant.setName || null,
+          setCode: variant.setCode || null,
+          collectorNumber: variant.collectorNumber || null,
+          condition: variant.condition,
+          foil: variant.foil,
+          price: variant.price,
+          currency: variant.currency,
+          inStock: variant.inStock ?? false,
+          quantity: variant.quantity ?? null,
+          imageUrl: variant.imageUrl || null,
+          productLink: variant.productUrl,
+          sku: variant.sku || null,
+          platformVariantId: variant.platformVariantId || null,
+        });
+      }
+
+      await this.unmatchedCardService.upsertBatch(unmatchedRows);
+      result.unmatchedCards = unmatchedRows.length;
+      result.success = true;
+
+      await this.updateProductUrlStatus(productUrlId, 'success', undefined, variants.length);
+
+      this.logger.log(
+        `Extracted ${variants.length} token variants (unmatched) ` +
+          `for product @ ${store.name} → unmatched_cards`,
+      );
+
+      return result;
+    }
+
+    // Matched token — build listing + variant rows (in-stock only)
+    if (matchResult.tokenPrintingId) {
+      result.matchedPrintings = 1;
+    } else {
+      result.unmatchedPrintings = 1;
+    }
+
+    const inStockVariants = variants.filter(
+      (v) => v.inStock && (v.quantity === undefined || v.quantity > 0),
+    );
+
+    const listing: TokenListingRow = {
+      tokenNameId: matchResult.tokenNameId,
+      tokenPrintingId: matchResult.tokenPrintingId,
+      storeId: store.id,
+      productUrlId,
+      rawTitle: firstVariant.cardName,
+      imageUrl: firstVariant.imageUrl || null,
+      currency: firstVariant.currency,
+    };
+
+    const variantRows: TokenVariantRow[] = [];
+    const inStockVariantIds: string[] = [];
+
+    for (const variant of inStockVariants) {
+      try {
+        variantRows.push({
+          conditionCode: variant.condition,
+          foil: variant.foil,
+          price: variant.price,
+          quantity: variant.quantity ?? null,
+          platformVariantId: variant.platformVariantId || null,
+          sku: variant.sku || null,
+        });
+
+        if (variant.platformVariantId) {
+          inStockVariantIds.push(variant.platformVariantId);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to prepare token variant ${variant.cardName}: ${error}`,
+        );
+      }
+    }
+
+    // Stale cleanup runs after upsert in the flush cycle to avoid race condition
+    if (variantRows.length > 0) {
+      this.tokenBatchAccumulator.addMany([{
+        listing,
+        variants: variantRows,
+        staleCleanup: { productUrlId, inStockVariantIds },
+        discoveryRunId,
+      }]);
+      result.cardsUpserted = variantRows.length;
+    } else {
+      // All variants OOS — just delete, nothing to upsert
+      await this.tokenListingUpsertService.deleteStaleListings(productUrlId, []);
+    }
+
+    result.success = true;
+
+    await this.updateProductUrlStatus(productUrlId, 'success', undefined, variants.length);
+
+    this.logger.log(
+      `Extracted ${variants.length} token variants (${result.variantsInStock} in stock), ` +
+        `upserted ${result.cardsUpserted} token listings ` +
+        `(${result.matchedPrintings} matched, ${result.unmatchedPrintings} unmatched) ` +
+        `for product @ ${store.name}`,
+    );
+
+    return result;
+  }
+
   private async updateProductUrlStatus(
-    productUrlId: string,
+    productUrlId: number,
     status: 'success' | 'error',
     error?: string,
     variantsTotal?: number,
@@ -275,11 +513,8 @@ export class ExtractionService {
     const updateData: Partial<ProductUrl> = {
       extractionStatus: status,
       lastExtractedAt: new Date(),
+      extractionError: error ?? undefined,
     };
-
-    if (error) {
-      updateData.extractionError = error;
-    }
 
     if (variantsTotal !== undefined) {
       updateData.variantsTotal = variantsTotal;

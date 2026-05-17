@@ -1,29 +1,29 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { ListingUpsertService, ListingWithVariants } from './listing-upsert.service';
+import { TokenListingUpsertService, TokenListingWithVariants } from './token-listing-upsert.service';
 
 @Injectable()
-export class BatchAccumulatorService implements OnModuleDestroy {
-  private readonly logger = new Logger(BatchAccumulatorService.name);
+export class TokenBatchAccumulatorService implements OnModuleDestroy {
+  private readonly logger = new Logger(TokenBatchAccumulatorService.name);
   private readonly BATCH_SIZE = 500;
   private readonly FLUSH_INTERVAL_MS = 2000;
   private readonly MAX_CONCURRENT_FLUSHES = 3;
 
-  private buffer: ListingWithVariants[] = [];
+  private buffer: TokenListingWithVariants[] = [];
   private activeFlushes = 0;
   private drainLoop: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
 
-  constructor(private readonly listingUpsertService: ListingUpsertService) {
+  constructor(private readonly tokenListingUpsertService: TokenListingUpsertService) {
     this.drainLoop = setInterval(() => {
       this.drainBuffer();
     }, this.FLUSH_INTERVAL_MS);
   }
 
   /**
-   * Add multiple listing-with-variants items to the buffer. Returns immediately (non-blocking).
+   * Add multiple token listing-with-variants items to the buffer. Returns immediately (non-blocking).
    * Kicks off a drain if buffer exceeds batch size.
    */
-  addMany(items: ListingWithVariants[]): void {
+  addMany(items: TokenListingWithVariants[]): void {
     this.buffer.push(...items);
 
     if (this.buffer.length >= this.BATCH_SIZE) {
@@ -43,13 +43,13 @@ export class BatchAccumulatorService implements OnModuleDestroy {
       const batch = this.buffer.splice(0, this.BATCH_SIZE);
       this.activeFlushes++;
 
-      this.listingUpsertService
+      this.tokenListingUpsertService
         .upsertBatch(batch)
         .then(async (count) => {
           // Run stale cleanup after upsert completes to avoid race condition
           for (const item of batch) {
             if (item.staleCleanup) {
-              await this.listingUpsertService.deleteStaleListings(
+              await this.tokenListingUpsertService.deleteStaleListings(
                 item.staleCleanup.productUrlId,
                 item.staleCleanup.inStockVariantIds,
               );
@@ -64,18 +64,17 @@ export class BatchAccumulatorService implements OnModuleDestroy {
             }
           }
           for (const [runId, n] of runCounts) {
-            await this.listingUpsertService.incrementRunExtractions(runId, n).catch((err) => {
-              this.logger.error(`Failed to increment run #${runId} extractions: ${err}`);
+            await this.tokenListingUpsertService.incrementRunExtractions(runId, n).catch((err) => {
+              this.logger.error(`Failed to increment run #${runId} token extractions: ${err}`);
             });
           }
 
-          this.logger.debug(`Flushed ${count} listings to database`);
+          this.logger.debug(`Flushed ${count} token listings to database`);
         })
         .catch((error) => {
-          // Re-queue failed batch at the front for retry on next drain
           this.buffer.unshift(...batch);
           this.logger.error(
-            `Flush failed, ${batch.length} items re-queued: ${error}`,
+            `Flush failed, ${batch.length} token items re-queued: ${error}`,
           );
         })
         .finally(() => {
@@ -86,15 +85,12 @@ export class BatchAccumulatorService implements OnModuleDestroy {
 
   /**
    * Wait for all in-flight flushes to complete and drain remaining buffer.
-   * Used during graceful shutdown.
    */
   async drain(): Promise<void> {
-    // Flush everything remaining
     while (this.buffer.length > 0 || this.activeFlushes > 0) {
       if (this.buffer.length > 0 && this.activeFlushes < this.MAX_CONCURRENT_FLUSHES) {
         this.drainBuffer();
       }
-      // Wait a tick for in-flight flushes to settle
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }

@@ -1,6 +1,7 @@
 import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
+import { DataSource } from 'typeorm';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
@@ -29,6 +30,7 @@ export class ExtractionProcessor {
   constructor(
     private readonly extractionService: ExtractionService,
     private readonly cacheService: CacheService,
+    private readonly dataSource: DataSource,
     @InjectQueue(QUEUE_NAMES.PRODUCT_EXTRACTION)
     private readonly extractionQueue: Queue<ExtractProductJobData>,
   ) {}
@@ -73,10 +75,10 @@ export class ExtractionProcessor {
 
   @Process({
     name: JOB_NAMES.EXTRACT_PRODUCT,
-    concurrency: 20,
+    concurrency: 40,
   })
   async process(job: Job<ExtractProductJobData>): Promise<ExtractProductJobResult> {
-    const { productUrlId, storeId, handle } = job.data;
+    const { productUrlId, storeId, handle, discoveryRunId } = job.data;
 
     // Get store info for rate limiting
     const store = await this.extractionService.getStore(storeId);
@@ -117,6 +119,7 @@ export class ExtractionProcessor {
         productUrlId,
         storeId,
         handle,
+        discoveryRunId,
       );
 
       if (result.success) {
@@ -128,6 +131,7 @@ export class ExtractionProcessor {
         );
       } else {
         this.logger.warn(`[FAIL] Extraction failed for ${handle} @ ${storeName}: ${result.error}`);
+        await this.incrementExtractionsFailed(discoveryRunId);
       }
 
       return {
@@ -166,6 +170,7 @@ export class ExtractionProcessor {
             },
           );
 
+          // Don't count as failed — will be retried
           return {
             productUrlId,
             variantsExtracted: 0,
@@ -176,6 +181,7 @@ export class ExtractionProcessor {
 
         // Non-retryable error - mark as failed
         this.logger.error(`[ERROR] ${handle} @ ${storeName} (${errorType}): ${error.message}`);
+        await this.incrementExtractionsFailed(discoveryRunId);
         return {
           productUrlId,
           variantsExtracted: 0,
@@ -187,6 +193,7 @@ export class ExtractionProcessor {
       // Unknown error type
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[ERROR] Extraction error for ${handle} @ ${storeName}: ${errorMessage}`);
+      await this.incrementExtractionsFailed(discoveryRunId);
 
       return {
         productUrlId,
@@ -194,6 +201,18 @@ export class ExtractionProcessor {
         success: false,
         error: errorMessage,
       };
+    }
+  }
+
+  private async incrementExtractionsFailed(discoveryRunId?: number): Promise<void> {
+    if (!discoveryRunId) return;
+    try {
+      await this.dataSource.query(
+        'UPDATE discovery_runs SET extractions_failed = extractions_failed + 1 WHERE id = $1',
+        [discoveryRunId],
+      );
+    } catch (error) {
+      this.logger.error(`Failed to increment extractions_failed for run #${discoveryRunId}: ${error}`);
     }
   }
 }
