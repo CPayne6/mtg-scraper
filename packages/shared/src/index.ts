@@ -5,6 +5,7 @@ export type {
   StoreDiscoveryConfig,
   StorefrontExtractionJobData,
   StorefrontExtractionJobResult,
+  StorefrontBootstrapJobData,
   StorefrontPlanJobData,
   StorefrontPrefixJobData,
   StorefrontPrefixJobResult,

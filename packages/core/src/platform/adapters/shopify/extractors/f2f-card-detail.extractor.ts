@@ -6,6 +6,7 @@ import type {
   TagsInfo,
   ImageInfo,
 } from '../card-detail-extractor.interface';
+import { CardDetailExtractor } from '../card-detail-extractor.decorator';
 
 /**
  * Card detail extractor for Face to Face Games (F2F).
@@ -21,6 +22,7 @@ import type {
  *
  * Image URLs: "Asset_MTG_{SET}_{NUM}_{LANG}_{FOIL}_jpg.jpg"
  */
+@CardDetailExtractor('f2f')
 @Injectable()
 export class F2fCardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {

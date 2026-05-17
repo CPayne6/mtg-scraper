@@ -10,13 +10,16 @@ export class ManualController {
   @Put('storefront/trigger')
   putStorefrontTrigger(
     @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
+    @Query('splitRanges', new ParseIntPipe({ optional: true })) splitRanges?: number,
   ) {
-    return this.manualService.triggerStorefrontExtraction({ storeId })
+    return this.manualService.triggerStorefrontExtraction({ storeId, splitRanges })
   }
 
   @Put('storefront/trigger-all')
-  putStorefrontTriggerAll() {
-    return this.manualService.triggerAllStorefrontExtractions()
+  putStorefrontTriggerAll(
+    @Query('splitRanges', new ParseIntPipe({ optional: true })) splitRanges?: number,
+  ) {
+    return this.manualService.triggerAllStorefrontExtractions({ splitRanges })
   }
 
   @Get('storefront/status')

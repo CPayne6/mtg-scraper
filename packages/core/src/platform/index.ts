@@ -6,6 +6,9 @@ export {
   BinderposCardDetailExtractor,
   DefaultCardDetailExtractor,
   Four01CardDetailExtractor,
+  CgRealmCardDetailExtractor,
+  CardDetailExtractor,
+  CardDetailExtractorRegistry,
 } from './adapters/shopify';
 export type {
   ICardDetailExtractor,

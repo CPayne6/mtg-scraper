@@ -8,6 +8,7 @@ import {
   JOB_NAMES,
   StorefrontExtractionJobData,
   StorefrontExtractionJobResult,
+  StorefrontBootstrapJobData,
 } from '@scoutlgs/shared';
 import {
   Store,
@@ -31,7 +32,8 @@ interface ExtractedProduct {
 /**
  * Processes one page (250 products) per job.
  * After processing, enqueues the next page back into the queue.
- * With concurrency 3, pages from all stores interleave naturally.
+ * With concurrency 5 per worker (× 3 workers = 15 concurrent pages),
+ * pages from all stores interleave naturally.
  */
 @Processor(QUEUE_NAMES.STOREFRONT_EXTRACTION)
 export class StorefrontProcessor implements OnModuleInit {
@@ -67,12 +69,12 @@ export class StorefrontProcessor implements OnModuleInit {
    */
   @Process({
     name: JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
-    concurrency: 3,
+    concurrency: 5,
   })
   async process(
     job: Job<StorefrontExtractionJobData>,
   ): Promise<StorefrontExtractionJobResult> {
-    const { storeId, lastId, discoveryRunId } = job.data;
+    const { storeId, lastId, maxId, discoveryRunId } = job.data;
 
     const store = await this.storeRepository.findOne({
       where: { id: storeId },
@@ -98,15 +100,17 @@ export class StorefrontProcessor implements OnModuleInit {
     const collection = await this.getCollection(store);
     const collectionId = collection?.id ?? 0;
 
-    // Fetch one page
+    // Fetch one page (with optional upper bound for range-split jobs)
     const { products, nextLastId } = await adapter.fetchPage(
       store,
       scope,
       lastId,
+      maxId,
     );
 
     if (products.length === 0) {
-      this.logger.warn(`${store.name}: no more products (done)`);
+      const rangeNote = maxId ? ` [range ≤${maxId}]` : '';
+      this.logger.warn(`${store.name}${rangeNote}: no more products (done)`);
       return {
         storeId,
         productsProcessed: 0,
@@ -125,20 +129,24 @@ export class StorefrontProcessor implements OnModuleInit {
       discoveryRunId,
     );
 
+    // A "last page" within a range means: hit the end of the scope OR
+    // crossed the upper bound. fetchPage signals this with nextLastId === null.
     const isLastPage = nextLastId === null;
+    const rangeNote = maxId ? ` [≤${maxId}]` : '';
 
     this.logger.warn(
-      `${store.name}: ${products.length} products, ${pageResult.cards} cards, ${pageResult.errors} errors` +
-        (isLastPage ? ' (last page)' : ` (next: id:>${nextLastId})`),
+      `${store.name}${rangeNote}: ${products.length} products, ${pageResult.cards} cards, ${pageResult.errors} errors` +
+        (isLastPage ? ' (range complete)' : ` (next: id:>${nextLastId})`),
     );
 
-    // Enqueue next page if there are more products
+    // Enqueue next page if there are more products in this range
     if (!isLastPage) {
       await this.storefrontQueue.add(
         JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
         {
           storeId,
           lastId: nextLastId,
+          maxId,
           scope,
           discoveryRunId,
         } as StorefrontExtractionJobData,
@@ -157,6 +165,65 @@ export class StorefrontProcessor implements OnModuleInit {
       isLastPage,
       success: true,
     };
+  }
+
+  /**
+   * Bootstrap job: discover min/max product IDs for a store, then enqueue
+   * N parallel range-bounded extraction jobs.
+   *
+   * Lets a single store's pages be processed in parallel instead of being
+   * chained sequentially by `lastId`. Throughput becomes constrained by
+   * worker concurrency, not per-store sequentiality.
+   */
+  @Process({
+    name: JOB_NAMES.BOOTSTRAP_STOREFRONT_EXTRACTION,
+    concurrency: 5,
+  })
+  async bootstrap(
+    job: Job<StorefrontBootstrapJobData>,
+  ): Promise<{ storeId: number; rangesEnqueued: number; success: boolean }> {
+    const { storeId, splitRanges, discoveryRunId } = job.data;
+
+    const store = await this.storeRepository.findOne({ where: { id: storeId } });
+    if (!store) throw new Error(`Store ${storeId} not found`);
+
+    const scope = job.data.scope ?? store.scraperConfig?.storefrontScope;
+    if (!scope) {
+      throw new Error(
+        `Store ${store.name} (${storeId}) is missing storefrontScope`,
+      );
+    }
+
+    const adapter = this.platformAdapterFactory.getExtractionAdapter(
+      store.platformType!,
+    ) as StorefrontExtractionAdapter;
+
+    const { minId, maxId } = await adapter.fetchIdRange(store, scope);
+    if (!minId || !maxId) {
+      this.logger.warn(`${store.name}: bootstrap found no products`);
+      return { storeId, rangesEnqueued: 0, success: true };
+    }
+
+    const ranges = splitIdRange(minId, maxId, splitRanges);
+    this.logger.warn(
+      `${store.name}: bootstrap [${minId}..${maxId}] → ${ranges.length} ranges`,
+    );
+
+    for (const { lastId, maxId: rangeMax } of ranges) {
+      await this.storefrontQueue.add(
+        JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
+        {
+          storeId,
+          lastId,
+          maxId: rangeMax,
+          scope,
+          discoveryRunId,
+        } as StorefrontExtractionJobData,
+        { removeOnComplete: 100, removeOnFail: 500 },
+      );
+    }
+
+    return { storeId, rangesEnqueued: ranges.length, success: true };
   }
 
   // ---------------------------------------------------------------------------
@@ -456,4 +523,43 @@ export class StorefrontProcessor implements OnModuleInit {
       where: { id: store.discoveryConfig.mtgSinglesCollectionId },
     });
   }
+}
+
+/**
+ * Split an ID range [minId, maxId] into `count` chunks of roughly equal ID-space.
+ *
+ * Returns chunks as `{ lastId, maxId }` pairs suitable for extraction jobs:
+ *   - `lastId` is exclusive (the chunk fetches `id:>lastId`).
+ *   - `maxId` is inclusive (the chunk fetches `id:<=maxId`).
+ *
+ * Chunk N covers `(boundary[N], boundary[N+1]]`. The first chunk uses
+ * `minId - 1` as its exclusive lower bound so the actual minimum is included.
+ *
+ * Note: ID-space chunking gives roughly equal physical ranges, not equal
+ * product counts. Stores with bursty imports will see uneven chunk durations.
+ */
+export function splitIdRange(
+  minId: string,
+  maxId: string,
+  count: number,
+): { lastId: string; maxId: string }[] {
+  const min = BigInt(minId);
+  const max = BigInt(maxId);
+  if (count <= 1 || max <= min) {
+    return [{ lastId: (min - 1n).toString(), maxId: max.toString() }];
+  }
+
+  const total = max - min + 1n;
+  const chunkSize = total / BigInt(count);
+  const remainder = total % BigInt(count);
+
+  const ranges: { lastId: string; maxId: string }[] = [];
+  let cursor = min - 1n;
+  for (let i = 0; i < count; i++) {
+    const size = chunkSize + (BigInt(i) < remainder ? 1n : 0n);
+    const upper = cursor + size;
+    ranges.push({ lastId: cursor.toString(), maxId: upper.toString() });
+    cursor = upper;
+  }
+  return ranges;
 }

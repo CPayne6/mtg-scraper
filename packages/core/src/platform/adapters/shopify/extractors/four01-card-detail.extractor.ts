@@ -7,6 +7,7 @@ import type {
   ImageInfo,
   ProductMetaInfo,
 } from '../card-detail-extractor.interface';
+import { CardDetailExtractor } from '../card-detail-extractor.decorator';
 
 /**
  * Card detail extractor for 401 Games.
@@ -32,6 +33,7 @@ import type {
  * Image filename: "{Card-Name}-{SET}.jpg"
  *   e.g. "Teferis-Puzzle-Box-8ED.jpg", "Sol-Ring-C21.png"
  */
+@CardDetailExtractor('401')
 @Injectable()
 export class Four01CardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {

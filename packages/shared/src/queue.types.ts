@@ -4,6 +4,12 @@ export const QUEUE_NAMES = {
 
 export const JOB_NAMES = {
   EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
+  /**
+   * Bootstrap job: fetches min/max product IDs for a store and enqueues N
+   * range-bounded extraction jobs. Lets a single store's pages run in parallel
+   * instead of being serially chained by `lastId`.
+   */
+  BOOTSTRAP_STOREFRONT_EXTRACTION: 'bootstrap-storefront-extraction',
 } as const;
 
 /**
@@ -23,15 +29,35 @@ export interface StoreDiscoveryConfig {
 /**
  * Job data for extracting one page of products from Shopify Storefront API.
  * Each job fetches 250 products, processes them, then enqueues the next page.
- * With concurrency 3, pages from all stores interleave naturally.
+ * With concurrency 5, pages from all stores interleave naturally.
  */
 export interface StorefrontExtractionJobData {
   storeId: number;
   /** Shopify product ID to start from (id:>lastId). Null for first page. */
   lastId?: string | null;
+  /**
+   * Upper bound on Shopify product ID for this job (id:<=maxId).
+   * Used when a store's range is split into N parallel jobs by the bootstrap
+   * step. Omit for "no upper bound" (default behavior).
+   */
+  maxId?: string | null;
   /** Scope query for this store (e.g. 'product_type:"MTG Single"') */
   scope?: string;
   priority?: number;
+  discoveryRunId?: number;
+  maxCardsAdded?: number;
+}
+
+/**
+ * Job data for the bootstrap phase that splits a store's ID range into N
+ * parallel extraction jobs. Optional optimization triggered by passing
+ * `splitRanges > 1` to the trigger endpoint.
+ */
+export interface StorefrontBootstrapJobData {
+  storeId: number;
+  /** Number of parallel range jobs to create. */
+  splitRanges: number;
+  scope?: string;
   discoveryRunId?: number;
   maxCardsAdded?: number;
 }

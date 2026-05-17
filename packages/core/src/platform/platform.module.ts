@@ -1,12 +1,16 @@
 import { Module } from '@nestjs/common';
+import { DiscoveryModule } from '@nestjs/core';
 import { CacheModule } from '../cache/cache.module';
 import { ProxyModule } from '../proxy/proxy.module';
 import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { WebBotAuthModule } from '../web-bot-auth/web-bot-auth.module';
+import { StoreModule } from '../store/store.module';
 import { F2fCardDetailExtractor } from './adapters/shopify/extractors/f2f-card-detail.extractor';
 import { BinderposCardDetailExtractor } from './adapters/shopify/extractors/binderpos-card-detail.extractor';
 import { DefaultCardDetailExtractor } from './adapters/shopify/extractors/default-card-detail.extractor';
 import { Four01CardDetailExtractor } from './adapters/shopify/extractors/four01-card-detail.extractor';
+import { CgRealmCardDetailExtractor } from './adapters/shopify/extractors/cgrealm-card-detail.extractor';
+import { CardDetailExtractorRegistry } from './adapters/shopify/card-detail-extractor.registry';
 import { StorefrontClient } from './adapters/shopify-storefront/storefront-client';
 import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
 import { PlatformAdapterFactory } from './platform-adapter.factory';
@@ -17,25 +21,16 @@ import { PlatformAdapterFactory } from './platform-adapter.factory';
 export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
 
 @Module({
-  imports: [CacheModule, ProxyModule, RateLimiterModule, WebBotAuthModule],
+  imports: [DiscoveryModule, CacheModule, ProxyModule, RateLimiterModule, WebBotAuthModule, StoreModule],
   providers: [
+    // Card detail extractors — discovered automatically via @CardDetailExtractor decorator.
+    // Adding a new extractor requires only the new file + including it in this list.
     F2fCardDetailExtractor,
     BinderposCardDetailExtractor,
     DefaultCardDetailExtractor,
     Four01CardDetailExtractor,
-    {
-      provide: 'CARD_DETAIL_EXTRACTORS',
-      useFactory: (
-        f2f: F2fCardDetailExtractor,
-        binderpos: BinderposCardDetailExtractor,
-        four01: Four01CardDetailExtractor,
-      ) => ({
-        f2f,
-        binderpos,
-        '401': four01,
-      }),
-      inject: [F2fCardDetailExtractor, BinderposCardDetailExtractor, Four01CardDetailExtractor],
-    },
+    CgRealmCardDetailExtractor,
+    CardDetailExtractorRegistry,
     StorefrontClient,
     StorefrontExtractionAdapter,
     PlatformAdapterFactory,
@@ -43,10 +38,8 @@ export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
   exports: [
     StorefrontExtractionAdapter,
     PlatformAdapterFactory,
-    F2fCardDetailExtractor,
-    BinderposCardDetailExtractor,
+    CardDetailExtractorRegistry,
     DefaultCardDetailExtractor,
-    Four01CardDetailExtractor,
   ],
 })
 export class PlatformModule {}

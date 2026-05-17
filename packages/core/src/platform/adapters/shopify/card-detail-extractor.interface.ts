@@ -2,6 +2,10 @@ export interface TitleInfo {
   cardName: string;
   setName: string;
   collectorNumber?: string;
+  /** Set code parsed from title when present (e.g., CG Realm's "(SET-NUM)") */
+  setCode?: string;
+  /** Foil flag parsed from title (e.g., trailing "Foil") */
+  foil?: boolean;
 }
 
 export interface SkuInfo {

@@ -5,6 +5,7 @@ import {
   QUEUE_NAMES,
   JOB_NAMES,
   StorefrontExtractionJobData,
+  StorefrontBootstrapJobData,
 } from '@scoutlgs/shared';
 
 @Injectable()
@@ -16,7 +17,9 @@ export class QueueService {
 
   constructor(
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
-    private readonly storefrontExtractionQueue: Queue<StorefrontExtractionJobData>,
+    private readonly storefrontExtractionQueue: Queue<
+      StorefrontExtractionJobData | StorefrontBootstrapJobData
+    >,
   ) {
     this.queues = new Map<string, Queue>([
       [QUEUE_NAMES.STOREFRONT_EXTRACTION, this.storefrontExtractionQueue],
@@ -78,6 +81,47 @@ export class QueueService {
     } catch (error) {
       this.logger.error(
         `Failed to enqueue Storefront extraction job for store ID ${storeId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Enqueue a bootstrap job that discovers a store's min/max product IDs
+   * and fans out `splitRanges` range-bounded extraction jobs.
+   *
+   * Use this when you want single-store parallelism instead of the default
+   * sequential pagination.
+   */
+  async enqueueStorefrontBootstrapJob(
+    storeId: number,
+    splitRanges: number,
+    options: { discoveryRunId?: number; scope?: string } = {},
+  ): Promise<void> {
+    try {
+      await this.storefrontExtractionQueue.add(
+        JOB_NAMES.BOOTSTRAP_STOREFRONT_EXTRACTION,
+        {
+          storeId,
+          splitRanges,
+          ...options,
+        } satisfies StorefrontBootstrapJobData,
+        {
+          priority: 1,
+          removeOnComplete: 50,
+          removeOnFail: 100,
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      );
+
+      this.logger.log(
+        `Enqueued Storefront bootstrap for store ${storeId} (splitRanges=${splitRanges})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue Storefront bootstrap for store ${storeId}:`,
         error,
       );
       throw error;

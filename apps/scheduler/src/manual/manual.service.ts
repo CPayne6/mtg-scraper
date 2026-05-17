@@ -103,8 +103,12 @@ export class ManualService {
   /**
    * Trigger storefront extraction for one or all stores.
    * Routes based on store.platformType — currently only 'shopify_storefront'.
+   *
+   * @param opts.splitRanges  If > 1, enqueues a bootstrap job that splits the
+   *                          store's ID range into N parallel extraction jobs.
+   *                          Omit (or pass 1) for the default sequential paging.
    */
-  async triggerStorefrontExtraction(opts: { storeId?: number }) {
+  async triggerStorefrontExtraction(opts: { storeId?: number; splitRanges?: number }) {
     if (!opts.storeId) {
       throw new BadRequestException('storeId is required. Use trigger-all for all stores.');
     }
@@ -127,26 +131,39 @@ export class ManualService {
       );
     }
 
-    await this.queueService.enqueueStorefrontExtractionJob(store.id);
+    const splitRanges = opts.splitRanges && opts.splitRanges > 1 ? opts.splitRanges : 0;
+    if (splitRanges > 0) {
+      await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges);
+    } else {
+      await this.queueService.enqueueStorefrontExtractionJob(store.id);
+    }
 
-    this.logger.log(`Triggered storefront extraction for ${store.name}`);
+    this.logger.log(
+      `Triggered storefront extraction for ${store.name}` +
+        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)'),
+    );
 
     return {
       message: `Extraction triggered for ${store.name}`,
       storeId: store.id,
       platformType: store.platformType,
       scope,
+      mode: splitRanges > 0 ? `parallel-${splitRanges}` : 'sequential',
     };
   }
 
   /**
    * Trigger storefront extraction for all active stores.
+   *
+   * @param opts.splitRanges  Same as triggerStorefrontExtraction; applied to
+   *                          every store that's enqueued.
    */
-  async triggerAllStorefrontExtractions() {
+  async triggerAllStorefrontExtractions(opts: { splitRanges?: number } = {}) {
     const stores = await this.storeRepository.find({
       where: { isActive: true, platformType: 'shopify_storefront' as any },
     });
 
+    const splitRanges = opts.splitRanges && opts.splitRanges > 1 ? opts.splitRanges : 0;
     const results: { store: string; error?: string }[] = [];
 
     for (const store of stores) {
@@ -156,17 +173,23 @@ export class ManualService {
         continue;
       }
 
-      await this.queueService.enqueueStorefrontExtractionJob(store.id);
+      if (splitRanges > 0) {
+        await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges);
+      } else {
+        await this.queueService.enqueueStorefrontExtractionJob(store.id);
+      }
       results.push({ store: store.name });
     }
 
     this.logger.log(
-      `Triggered storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores`,
+      `Triggered storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores` +
+        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)'),
     );
 
     return {
       triggered: results.filter((r) => !r.error).length,
       total: stores.length,
+      mode: splitRanges > 0 ? `parallel-${splitRanges}` : 'sequential',
       results,
     };
   }

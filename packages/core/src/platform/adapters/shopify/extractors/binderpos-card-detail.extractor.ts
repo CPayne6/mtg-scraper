@@ -6,6 +6,7 @@ import type {
   TagsInfo,
   ImageInfo,
 } from '../card-detail-extractor.interface';
+import { CardDetailExtractor } from '../card-detail-extractor.decorator';
 
 /**
  * Card detail extractor for Binderpos stores (GameKnight, House of Cards, etc.).
@@ -19,6 +20,7 @@ import type {
  *
  * Tags include set name, foil status, rarity, colors, formats.
  */
+@CardDetailExtractor('binderpos')
 @Injectable()
 export class BinderposCardDetailExtractor implements ICardDetailExtractor {
   private static readonly NON_SET_TAGS = new Set([

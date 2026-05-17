@@ -36,7 +36,7 @@ export class Store {
   isActive: boolean;
 
   @Column({ name: 'scraper_type' })
-  scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos';
+  scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos' | 'cgrealm';
 
   @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
   scraperConfig?: {

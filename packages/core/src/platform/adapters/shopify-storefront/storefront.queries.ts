@@ -174,6 +174,35 @@ export const PRODUCTS_QUERY = `
   }
 `;
 
+/**
+ * Lightweight query returning only the product ID, sorted by ID.
+ * Used to bootstrap min/max ID discovery for range-split extraction.
+ * The `reverse: true` variant is requested via a separate query string.
+ */
+export const PRODUCT_ID_ASC_QUERY = `
+  query ProductIdAsc($query: String!) {
+    products(first: 1, query: $query, sortKey: ID) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
+export const PRODUCT_ID_DESC_QUERY = `
+  query ProductIdDesc($query: String!) {
+    products(first: 1, query: $query, sortKey: ID, reverse: true) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
 export const PRODUCT_BY_HANDLE_QUERY = `
   query ProductByHandle($handle: String!) {
     product(handle: $handle) {
