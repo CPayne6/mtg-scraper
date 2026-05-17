@@ -1,7 +1,7 @@
 import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Job, Queue } from 'bullmq';
 import {
   QUEUE_NAMES,
@@ -15,6 +15,7 @@ import {
   ProductUrl,
   MtgSinglesCollection,
   ShopifyProduct,
+  CardListing,
   PlatformAdapterFactory,
 } from '@scoutlgs/core';
 import type { ExtractedCardVariant } from '@scoutlgs/core';
@@ -48,6 +49,8 @@ export class StorefrontProcessor implements OnModuleInit {
     private readonly collectionRepository: Repository<MtgSinglesCollection>,
     @InjectRepository(ShopifyProduct)
     private readonly shopifyProductRepository: Repository<ShopifyProduct>,
+    @InjectRepository(CardListing)
+    private readonly cardListingRepository: Repository<CardListing>,
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
     private readonly storefrontQueue: Queue,
     private readonly dataSource: DataSource,
@@ -226,6 +229,7 @@ export class StorefrontProcessor implements OnModuleInit {
     return { storeId, rangesEnqueued: ranges.length, success: true };
   }
 
+
   // ---------------------------------------------------------------------------
   // Page processing with shopify_products lookup
   // ---------------------------------------------------------------------------
@@ -238,20 +242,13 @@ export class StorefrontProcessor implements OnModuleInit {
   ): Promise<{ processed: number; cards: number; errors: number }> {
     // Step 1: Bulk lookup shopify_products by PK
     const shopifyIds = products.map((p) => p.shopifyProductId);
-    const existingRows: {
-      shopify_product_id: string;
-      product_url_id: number | null;
-      card_listing_id: number | null;
-      match_status: string;
-    }[] = await this.dataSource.query(
-      `SELECT shopify_product_id, product_url_id, card_listing_id, match_status
-       FROM shopify_products
-       WHERE shopify_product_id = ANY($1)`,
-      [shopifyIds],
-    );
+    const existingRows = await this.shopifyProductRepository.find({
+      where: { shopifyProductId: In(shopifyIds) },
+      select: ['shopifyProductId', 'productUrlId', 'cardListingId', 'matchStatus'],
+    });
 
     const existingMap = new Map(
-      existingRows.map((r) => [r.shopify_product_id, r]),
+      existingRows.map((r) => [r.shopifyProductId, r]),
     );
 
     // Step 2: Separate known (already matched) vs new
@@ -263,10 +260,10 @@ export class StorefrontProcessor implements OnModuleInit {
 
     for (const product of products) {
       const existing = existingMap.get(product.shopifyProductId);
-      if (existing?.product_url_id && existing.match_status === 'matched') {
+      if (existing?.productUrlId && existing.matchStatus === 'matched') {
         knownProducts.push({
           product,
-          productUrlId: existing.product_url_id,
+          productUrlId: existing.productUrlId,
         });
       } else {
         newProducts.push(product);
@@ -348,11 +345,11 @@ export class StorefrontProcessor implements OnModuleInit {
               matchStatus = 'token';
             } else if (result.matchedPrintings > 0) {
               matchStatus = 'matched';
-              const listing = await this.dataSource.query(
-                `SELECT id FROM card_listings WHERE product_url_id = $1 LIMIT 1`,
-                [productUrlId],
-              );
-              cardListingId = listing[0]?.id ?? null;
+              const listing = await this.cardListingRepository.findOne({
+                where: { productUrlId },
+                select: ['id'],
+              });
+              cardListingId = listing?.id ?? null;
             }
 
             shopifyInserts.push({
@@ -426,10 +423,10 @@ export class StorefrontProcessor implements OnModuleInit {
     );
 
     const handles = products.map((p) => p.handle);
-    const rows: { id: number; handle: string }[] = await this.dataSource.query(
-      `SELECT id, handle FROM product_urls WHERE store_id = $1 AND handle = ANY($2)`,
-      [storeId, handles],
-    );
+    const rows = await this.productUrlRepository.find({
+      where: { storeId, handle: In(handles) },
+      select: ['id', 'handle'],
+    });
 
     const map = new Map<string, number>();
     for (const row of rows) {
@@ -486,24 +483,24 @@ export class StorefrontProcessor implements OnModuleInit {
     errorUpdates: { id: number; error: string }[],
   ): Promise<void> {
     if (successIds.length > 0) {
-      await this.dataSource.query(
-        `UPDATE product_urls
-         SET extraction_status = 'success',
-             last_extracted_at = NOW(),
-             extraction_error = NULL
-         WHERE id = ANY($1)`,
-        [successIds],
+      await this.productUrlRepository.update(
+        { id: In(successIds) },
+        {
+          extractionStatus: 'success',
+          lastExtractedAt: new Date(),
+          extractionError: null as unknown as string,
+        },
       );
     }
 
     for (const { id, error } of errorUpdates) {
-      await this.dataSource.query(
-        `UPDATE product_urls
-         SET extraction_status = 'error',
-             last_extracted_at = NOW(),
-             extraction_error = $1
-         WHERE id = $2`,
-        [error, id],
+      await this.productUrlRepository.update(
+        { id },
+        {
+          extractionStatus: 'error',
+          lastExtractedAt: new Date(),
+          extractionError: error,
+        },
       );
     }
   }
