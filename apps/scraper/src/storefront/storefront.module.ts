@@ -5,7 +5,6 @@ import { QUEUE_NAMES } from '@scoutlgs/shared';
 import {
   Store,
   ProductUrl,
-  MtgSinglesCollection,
   ShopifyProduct,
   UnmatchedCard,
   CardListing,
@@ -17,7 +16,7 @@ import { StorefrontProcessor } from './storefront.processor';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store, ProductUrl, MtgSinglesCollection, ShopifyProduct, UnmatchedCard, CardListing]),
+    TypeOrmModule.forFeature([Store, ProductUrl, ShopifyProduct, UnmatchedCard, CardListing]),
     QueueModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.STOREFRONT_EXTRACTION }),
     PlatformModule,

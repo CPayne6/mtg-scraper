@@ -15,7 +15,6 @@ import {
 import {
   Store,
   ProductUrl,
-  MtgSinglesCollection,
   ShopifyProduct,
   UnmatchedCard,
   CardListing,
@@ -49,8 +48,6 @@ export class StorefrontProcessor implements OnModuleInit {
     private readonly storeRepository: Repository<Store>,
     @InjectRepository(ProductUrl)
     private readonly productUrlRepository: Repository<ProductUrl>,
-    @InjectRepository(MtgSinglesCollection)
-    private readonly collectionRepository: Repository<MtgSinglesCollection>,
     @InjectRepository(ShopifyProduct)
     private readonly shopifyProductRepository: Repository<ShopifyProduct>,
     @InjectRepository(UnmatchedCard)
@@ -106,9 +103,6 @@ export class StorefrontProcessor implements OnModuleInit {
       store.platformType!,
     ) as StorefrontExtractionAdapter;
 
-    const collection = await this.getCollection(store);
-    const collectionId = collection?.id ?? 0;
-
     // Fetch one page (with optional upper bound for range-split jobs).
     // Wrapped to translate Shopify throttle errors into a delayed re-enqueue
     // rather than letting BullMQ run its fixed exponential backoff.
@@ -149,7 +143,6 @@ export class StorefrontProcessor implements OnModuleInit {
     const pageResult = await this.processPage(
       products,
       store.id,
-      collectionId,
       discoveryRunId,
     );
 
@@ -291,9 +284,6 @@ export class StorefrontProcessor implements OnModuleInit {
       store.platformType!,
     ) as StorefrontExtractionAdapter;
 
-    const collection = await this.getCollection(store);
-    const collectionId = collection?.id ?? 0;
-
     // Pull the unmatched Shopify product IDs for this store
     const unmatched = await this.shopifyProductRepository.find({
       where: { storeId, matchStatus: 'unmatched' },
@@ -356,7 +346,7 @@ export class StorefrontProcessor implements OnModuleInit {
         }
 
         // 3. Process: writes the fresh extraction's view to the DB
-        await this.processPage(products, store.id, collectionId);
+        await this.processPage(products, store.id);
       } catch (error) {
         // If Shopify throttled us, reschedule the whole job for after
         // the cooldown and stop processing the rest of the batches.
@@ -407,7 +397,6 @@ export class StorefrontProcessor implements OnModuleInit {
   private async processPage(
     products: ExtractedProduct[],
     storeId: number,
-    collectionId: number,
     discoveryRunId?: number,
   ): Promise<{ processed: number; cards: number; errors: number }> {
     // Step 1: Bulk lookup shopify_products by PK
@@ -469,7 +458,6 @@ export class StorefrontProcessor implements OnModuleInit {
     if (newProducts.length > 0) {
       const productUrlMap = await this.bulkUpsertProductUrls(
         storeId,
-        collectionId,
         newProducts,
       );
 
@@ -568,7 +556,6 @@ export class StorefrontProcessor implements OnModuleInit {
 
   private async bulkUpsertProductUrls(
     storeId: number,
-    collectionId: number,
     products: ExtractedProduct[],
   ): Promise<Map<string, number>> {
     if (products.length === 0) return new Map();
@@ -579,14 +566,14 @@ export class StorefrontProcessor implements OnModuleInit {
 
     for (const product of products) {
       values.push(
-        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, 'pending')`,
+        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, 'pending')`,
       );
-      params.push(storeId, collectionId, product.handle, product.updatedAt);
-      paramIdx += 4;
+      params.push(storeId, product.handle, product.updatedAt);
+      paramIdx += 3;
     }
 
     await this.dataSource.query(
-      `INSERT INTO product_urls (store_id, mtg_singles_collection_id, handle, sitemap_lastmod, extraction_status)
+      `INSERT INTO product_urls (store_id, handle, sitemap_lastmod, extraction_status)
        VALUES ${values.join(', ')}
        ON CONFLICT (store_id, handle) DO UPDATE SET sitemap_lastmod = EXCLUDED.sitemap_lastmod`,
       params,
@@ -678,18 +665,6 @@ export class StorefrontProcessor implements OnModuleInit {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-
-  private async getCollection(
-    store: Store,
-  ): Promise<MtgSinglesCollection | null> {
-    if (!store.discoveryConfig?.mtgSinglesCollectionId) {
-      return null;
-    }
-
-    return this.collectionRepository.findOne({
-      where: { id: store.discoveryConfig.mtgSinglesCollectionId },
-    });
-  }
 
   /**
    * If the error is a Shopify throttle (HTTP 429 or GraphQL THROTTLED) with

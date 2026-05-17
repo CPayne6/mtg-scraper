@@ -5,11 +5,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Generated,
-  ManyToOne,
-  JoinColumn,
 } from 'typeorm';
 import type { PlatformType, StoreDiscoveryConfig } from '@scoutlgs/shared';
-import { Platform } from './platform.entity';
 
 @Entity('stores')
 export class Store {
@@ -44,18 +41,9 @@ export class Store {
     shopifyUrl?: string;
     storefrontApiVersion?: string;
     storefrontAccessToken?: string;
-    /** Product type used to scope Storefront API searches to MTG singles */
-    mtgProductType?: string;
     /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
     storefrontScope?: string;
   };
-
-  @ManyToOne(() => Platform, { nullable: true })
-  @JoinColumn({ name: 'platform_id' })
-  platform?: Platform;
-
-  @Column({ name: 'platform_id', nullable: true })
-  platformId?: number;
 
   @Column({ name: 'platform_type', length: 50, nullable: true })
   platformType?: PlatformType;

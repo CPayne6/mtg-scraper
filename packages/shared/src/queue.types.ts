@@ -26,10 +26,11 @@ export const JOB_NAMES = {
 export type PlatformType = 'shopify' | 'shopify_storefront' | 'conduct_commerce';
 
 /**
- * Store discovery configuration stored in stores.discovery_config
+ * Per-store opt-in flag for scheduled extraction. Stored in
+ * stores.discovery_config (the column name is a leftover from the V2
+ * pipeline; the V3 storefront flow only uses `discoveryEnabled`).
  */
 export interface StoreDiscoveryConfig {
-  mtgSinglesCollectionId: number;
   discoveryEnabled: boolean;
   discoverySchedule?: string;
 }

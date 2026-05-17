@@ -1,8 +1,8 @@
 import { DataSource } from 'typeorm';
-import { Store, Platform, MtgSinglesCollection, CardCondition } from '@scoutlgs/core';
+import { Store, CardCondition } from '@scoutlgs/core';
 
 // Storefront API extraction is per-store: each store gets a Shopify search
-// query that scopes the catalog to MTG singles. The discovery cron in the
+// query that scopes the catalog to MTG singles. The extraction cron in the
 // scheduler enqueues a `storefront-extraction` job for every active store
 // where `discoveryConfig.discoveryEnabled === true`.
 //
@@ -20,6 +20,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       storefrontScope: 'product_type:Singles vendor:Magic',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: '401-games',
@@ -32,6 +33,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       storefrontScope: 'product_type:"Magic: The Gathering Singles"',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: 'hobbiesville',
@@ -44,6 +46,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       storefrontScope: 'product_type:Single tag:Brands_Magicthegathering',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: 'house-of-cards',
@@ -57,6 +60,7 @@ const stores: Partial<Store>[] = [
       shopifyUrl: 'house-of-cards-mtg.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: 'black-knight-games',
@@ -70,6 +74,7 @@ const stores: Partial<Store>[] = [
       shopifyUrl: 'black-knight-games.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: 'exor-games',
@@ -83,6 +88,7 @@ const stores: Partial<Store>[] = [
       shopifyUrl: 'most-wanted-ca.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: 'game-knight',
@@ -96,6 +102,7 @@ const stores: Partial<Store>[] = [
       shopifyUrl: 'gameknight-games.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
   {
     name: 'the-cg-realm',
@@ -109,19 +116,8 @@ const stores: Partial<Store>[] = [
       shopifyUrl: 'the-cg-realm.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
     },
+    discoveryConfig: { discoveryEnabled: true },
   },
-];
-
-// Collections are legacy cruft: product_urls.mtg_singles_collection_id is
-// still NOT NULL with an FK to mtg_singles_collections, even though the new
-// Storefront API pipeline scopes queries via scraperConfig.storefrontScope
-// instead. Until that column is dropped via migration, every store needs a
-// non-null collection id, so we seed a placeholder row per scope and link
-// stores to it.
-const mtgSinglesCollections: Partial<MtgSinglesCollection>[] = [
-  { slug: 'magic-the-gathering-singles', displayName: 'MTG Singles' },
-  { slug: 'mtg-singles-all-products', displayName: 'MTG Singles - All Products' },
-  { slug: 'magic-singles', displayName: 'Magic Singles' },
 ];
 
 const cardConditions: Partial<CardCondition>[] = [
@@ -133,17 +129,6 @@ const cardConditions: Partial<CardCondition>[] = [
   { code: 'unknown', displayName: 'Unknown', sortOrder: 6 },
 ];
 
-const storeCollectionMap: Record<string, string> = {
-  'face-to-face-games': 'magic-the-gathering-singles',
-  '401-games': 'magic-the-gathering-singles',
-  'hobbiesville': 'magic-singles',
-  'house-of-cards': 'mtg-singles-all-products',
-  'black-knight-games': 'mtg-singles-all-products',
-  'exor-games': 'magic-the-gathering-singles',
-  'game-knight': 'mtg-singles-all-products',
-  'the-cg-realm': 'mtg-singles-all-products',
-};
-
 async function seed() {
   const AppDataSource = new DataSource({
     type: 'postgres',
@@ -152,7 +137,7 @@ async function seed() {
     username: process.env.DATABASE_USER || 'postgres',
     password: process.env.DATABASE_PASSWORD || 'postgres',
     database: process.env.DATABASE_NAME || 'scoutlgs',
-    entities: [Store, Platform, MtgSinglesCollection, CardCondition],
+    entities: [Store, CardCondition],
     synchronize: false,
   });
 
@@ -161,7 +146,6 @@ async function seed() {
     console.log('Data Source has been initialized!');
 
     const storeRepository = AppDataSource.getRepository(Store);
-    const collectionRepository = AppDataSource.getRepository(MtgSinglesCollection);
     const conditionRepository = AppDataSource.getRepository(CardCondition);
 
     await conditionRepository.upsert(cardConditions, {
@@ -170,39 +154,11 @@ async function seed() {
     });
     console.log(`Upserted ${cardConditions.length} card conditions!`);
 
-    await collectionRepository.upsert(mtgSinglesCollections, {
-      conflictPaths: ['slug'],
-      skipUpdateIfNoValuesChanged: true,
-    });
-    console.log(`Upserted ${mtgSinglesCollections.length} MTG singles collections!`);
-
-    const collections = await collectionRepository.find();
-    const collectionBySlug = new Map(collections.map((c) => [c.slug, c]));
-
     await storeRepository.upsert(stores, {
       conflictPaths: ['name'],
       skipUpdateIfNoValuesChanged: true,
     });
     console.log(`Upserted ${stores.length} stores successfully!`);
-
-    // Set discoveryConfig per store. Done as a separate UPDATE so we can
-    // include the collection id that wasn't available at upsert time.
-    for (const store of stores) {
-      const collectionSlug = storeCollectionMap[store.name!];
-      const collection = collectionSlug ? collectionBySlug.get(collectionSlug) : undefined;
-      if (!collection) continue;
-
-      await storeRepository.update(
-        { name: store.name },
-        {
-          discoveryConfig: {
-            mtgSinglesCollectionId: collection.id,
-            discoveryEnabled: true,
-          },
-        },
-      );
-    }
-    console.log('Set discoveryConfig (discoveryEnabled=true) on all stores');
 
     await AppDataSource.destroy();
   } catch (error) {

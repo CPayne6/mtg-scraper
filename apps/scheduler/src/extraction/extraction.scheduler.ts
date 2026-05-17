@@ -15,15 +15,7 @@ export interface ExtractionJobStatus {
   trigger: string;
   skipExtraction: boolean;
   storesTotal: number;
-  storesCompleted: number;
-  storesFailed: number;
-  totalDiscovered: number;
-  totalNewProducts: number;
-  totalUpdatedProducts: number;
-  totalExtractionJobsQueued: number;
-  totalErrors: number;
   extractionsSucceeded: number;
-  extractionsFailed: number;
 }
 
 /** How long a run can stay 'running' before we consider it stale (6 hours). */
@@ -165,15 +157,7 @@ export class ExtractionScheduler implements OnModuleInit {
       trigger: run.trigger,
       skipExtraction: run.skipExtraction,
       storesTotal: run.storesTotal,
-      storesCompleted: run.storesCompleted,
-      storesFailed: run.storesFailed,
-      totalDiscovered: run.totalDiscovered,
-      totalNewProducts: run.totalNewProducts,
-      totalUpdatedProducts: run.totalUpdatedProducts,
-      totalExtractionJobsQueued: run.totalExtractionJobsQueued,
-      totalErrors: run.totalErrors,
       extractionsSucceeded: run.extractionsSucceeded,
-      extractionsFailed: run.extractionsFailed,
     };
   }
 

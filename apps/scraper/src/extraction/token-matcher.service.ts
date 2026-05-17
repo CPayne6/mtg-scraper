@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { TokenPrinting, ScryfallSet } from '@scoutlgs/core';
+import { TokenName, TokenPrinting, ScryfallSet } from '@scoutlgs/core';
 import { LRUCache } from 'lru-cache';
 
 export interface TokenMatchResult {
@@ -34,6 +34,8 @@ export class TokenMatcherService {
   constructor(
     @InjectRepository(TokenPrinting)
     private readonly tokenPrintingRepository: Repository<TokenPrinting>,
+    @InjectRepository(TokenName)
+    private readonly tokenNameRepository: Repository<TokenName>,
     @InjectRepository(ScryfallSet)
     private readonly setRepository: Repository<ScryfallSet>,
     private readonly dataSource: DataSource,
@@ -113,18 +115,19 @@ export class TokenMatcherService {
     if (cached !== undefined) return cached;
 
     // Step 1: Exact match
-    const exact = await this.dataSource.query(
-      `SELECT id FROM token_names WHERE normalized_name = $1 LIMIT 1`,
-      [normalizedName],
-    );
+    const exact = await this.tokenNameRepository.findOne({
+      where: { normalizedName },
+      select: ['id'],
+    });
 
-    if (exact.length > 0) {
-      const result: NameCacheEntry = { tokenNameId: Number(exact[0].id), confidence: 'exact' };
+    if (exact) {
+      const result: NameCacheEntry = { tokenNameId: exact.id, confidence: 'exact' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
 
-    // Step 2: Fuzzy match (trgm, threshold 0.7)
+    // Step 2: Fuzzy match — raw SQL because pg_trgm's `similarity()` has no
+    // first-class TypeORM equivalent.
     const fuzzy = await this.dataSource.query(
       `SELECT id FROM token_names
        WHERE similarity(normalized_name, $1) > 0.7

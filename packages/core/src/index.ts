@@ -2,8 +2,6 @@
 export {
   getDatabaseConfig,
   Store,
-  Platform,
-  MtgSinglesCollection,
   CardName,
   ProductUrl,
   ScryfallSet,
@@ -13,7 +11,6 @@ export {
   CardCondition,
   CardVariant,
   UnmatchedCard,
-  InvalidProductHandle,
   TokenName,
   TokenPrinting,
   TokenListing,

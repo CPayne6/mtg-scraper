@@ -142,75 +142,30 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     NO MAXVALUE
     CACHE 1`);
     await queryRunner.query(`ALTER SEQUENCE public.card_variants_id_seq OWNED BY public.card_variants.id`);
-    await queryRunner.query(`CREATE TABLE public.discovery_runs (
+    await queryRunner.query(`CREATE TABLE public.extraction_runs (
     id integer NOT NULL,
     status character varying(20) DEFAULT 'running'::character varying NOT NULL,
     trigger character varying(20) DEFAULT 'cron'::character varying NOT NULL,
     skip_extraction boolean DEFAULT false NOT NULL,
     stores_total integer DEFAULT 0 NOT NULL,
-    stores_completed integer DEFAULT 0 NOT NULL,
-    stores_failed integer DEFAULT 0 NOT NULL,
-    total_discovered integer DEFAULT 0 NOT NULL,
-    total_new_products integer DEFAULT 0 NOT NULL,
-    total_updated_products integer DEFAULT 0 NOT NULL,
-    total_extraction_jobs_queued integer DEFAULT 0 NOT NULL,
-    total_errors integer DEFAULT 0 NOT NULL,
     extractions_succeeded integer DEFAULT 0 NOT NULL,
-    extractions_failed integer DEFAULT 0 NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     started_at timestamp without time zone DEFAULT now() NOT NULL,
     completed_at timestamp without time zone
 )`);
-    await queryRunner.query(`CREATE SEQUENCE public.discovery_runs_id_seq
+    await queryRunner.query(`CREATE SEQUENCE public.extraction_runs_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
     CACHE 1`);
-    await queryRunner.query(`ALTER SEQUENCE public.discovery_runs_id_seq OWNED BY public.discovery_runs.id`);
-    await queryRunner.query(`CREATE TABLE public.invalid_product_handles (
-    store_id integer NOT NULL,
-    handle character varying(255) NOT NULL,
-    last_validated_at timestamp without time zone NOT NULL
-)`);
-    await queryRunner.query(`CREATE TABLE public.mtg_singles_collections (
-    id integer NOT NULL,
-    slug character varying(255) NOT NULL,
-    display_name character varying(255),
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-)`);
-    await queryRunner.query(`CREATE SEQUENCE public.mtg_singles_collections_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1`);
-    await queryRunner.query(`ALTER SEQUENCE public.mtg_singles_collections_id_seq OWNED BY public.mtg_singles_collections.id`);
-    await queryRunner.query(`CREATE TABLE public.platforms (
-    id integer NOT NULL,
-    name character varying(50) NOT NULL,
-    display_name character varying(100),
-    created_at timestamp without time zone DEFAULT now() NOT NULL
-)`);
-    await queryRunner.query(`CREATE SEQUENCE public.platforms_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1`);
-    await queryRunner.query(`ALTER SEQUENCE public.platforms_id_seq OWNED BY public.platforms.id`);
+    await queryRunner.query(`ALTER SEQUENCE public.extraction_runs_id_seq OWNED BY public.extraction_runs.id`);
     await queryRunner.query(`CREATE TABLE public.product_urls (
     id integer NOT NULL,
     store_id integer NOT NULL,
-    mtg_singles_collection_id integer NOT NULL,
     handle character varying(255) NOT NULL,
     sitemap_lastmod timestamp without time zone,
-    image_url text,
-    image_title text,
     discovered_at timestamp without time zone DEFAULT now() NOT NULL,
     last_extracted_at timestamp without time zone,
     extraction_status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
@@ -262,7 +217,6 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     is_active boolean DEFAULT true NOT NULL,
     scraper_type character varying NOT NULL,
     scraper_config jsonb,
-    platform_id integer,
     platform_type character varying(50),
     discovery_config jsonb,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -402,9 +356,7 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE ONLY public.card_names ALTER COLUMN id SET DEFAULT nextval('public.card_names_id_seq'::regclass)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_printings ALTER COLUMN id SET DEFAULT nextval('public.card_printings_id_seq'::regclass)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_variants ALTER COLUMN id SET DEFAULT nextval('public.card_variants_id_seq'::regclass)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.discovery_runs ALTER COLUMN id SET DEFAULT nextval('public.discovery_runs_id_seq'::regclass)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.mtg_singles_collections ALTER COLUMN id SET DEFAULT nextval('public.mtg_singles_collections_id_seq'::regclass)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.platforms ALTER COLUMN id SET DEFAULT nextval('public.platforms_id_seq'::regclass)`);
+    await queryRunner.query(`ALTER TABLE ONLY public.extraction_runs ALTER COLUMN id SET DEFAULT nextval('public.extraction_runs_id_seq'::regclass)`);
     await queryRunner.query(`ALTER TABLE ONLY public.product_urls ALTER COLUMN id SET DEFAULT nextval('public.product_urls_id_seq'::regclass)`);
     await queryRunner.query(`ALTER TABLE ONLY public.sets ALTER COLUMN id SET DEFAULT nextval('public.sets_id_seq'::regclass)`);
     await queryRunner.query(`ALTER TABLE ONLY public.stores ALTER COLUMN id SET DEFAULT nextval('public.stores_id_seq'::regclass)`);
@@ -419,12 +371,6 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT "PK_card_names" PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_printings
     ADD CONSTRAINT "PK_card_printings" PRIMARY KEY (id)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.invalid_product_handles
-    ADD CONSTRAINT "PK_invalid_product_handles" PRIMARY KEY (store_id, handle)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.mtg_singles_collections
-    ADD CONSTRAINT "PK_mtg_singles_collections" PRIMARY KEY (id)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.platforms
-    ADD CONSTRAINT "PK_platforms" PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.product_urls
     ADD CONSTRAINT "PK_product_urls" PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.sets
@@ -439,10 +385,6 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT "UQ_card_names_normalized" UNIQUE (normalized_name)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_names
     ADD CONSTRAINT "UQ_card_names_oracle_id" UNIQUE (oracle_id)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.mtg_singles_collections
-    ADD CONSTRAINT "UQ_mtg_singles_collections_slug" UNIQUE (slug)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.platforms
-    ADD CONSTRAINT "UQ_platforms_name" UNIQUE (name)`);
     await queryRunner.query(`ALTER TABLE ONLY public.sets
     ADD CONSTRAINT "UQ_sets_code" UNIQUE (code)`);
     await queryRunner.query(`ALTER TABLE ONLY public.stores
@@ -459,8 +401,8 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT card_lists_pkey PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_variants
     ADD CONSTRAINT card_variants_pkey PRIMARY KEY (id)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.discovery_runs
-    ADD CONSTRAINT discovery_runs_pkey PRIMARY KEY (id)`);
+    await queryRunner.query(`ALTER TABLE ONLY public.extraction_runs
+    ADD CONSTRAINT extraction_runs_pkey PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.token_listings
     ADD CONSTRAINT token_listings_pkey PRIMARY KEY (id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.token_names
@@ -478,8 +420,8 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "IDX_card_lists_expires_at" ON public.card_lists USING btree (expires_at)`);
     await queryRunner.query(`CREATE INDEX "IDX_card_lists_owner_cookie" ON public.card_lists USING btree (owner_cookie)`);
     await queryRunner.query(`CREATE UNIQUE INDEX "IDX_card_lists_uuid" ON public.card_lists USING btree (uuid)`);
-    await queryRunner.query(`CREATE INDEX "IDX_discovery_runs_started_at" ON public.discovery_runs USING btree (started_at DESC)`);
-    await queryRunner.query(`CREATE INDEX "IDX_discovery_runs_status" ON public.discovery_runs USING btree (status)`);
+    await queryRunner.query(`CREATE INDEX "IDX_extraction_runs_started_at" ON public.extraction_runs USING btree (started_at DESC)`);
+    await queryRunner.query(`CREATE INDEX "IDX_extraction_runs_status" ON public.extraction_runs USING btree (status)`);
     await queryRunner.query(`CREATE INDEX idx_card_listings_card_name ON public.card_listings USING btree (card_name_id)`);
     await queryRunner.query(`CREATE INDEX idx_card_listings_store_card_name ON public.card_listings USING btree (store_id, card_name_id)`);
     await queryRunner.query(`CREATE UNIQUE INDEX idx_card_listings_store_product_url ON public.card_listings USING btree (store_id, product_url_id)`);
@@ -492,7 +434,6 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE UNIQUE INDEX idx_card_variants_listing_condition_foil ON public.card_variants USING btree (card_listing_id, condition_id, foil)`);
     await queryRunner.query(`CREATE INDEX idx_card_variants_listing_price ON public.card_variants USING btree (card_listing_id, price)`);
     await queryRunner.query(`CREATE INDEX idx_card_variants_platform_variant ON public.card_variants USING btree (platform_variant_id)`);
-    await queryRunner.query(`CREATE INDEX idx_product_urls_collection ON public.product_urls USING btree (mtg_singles_collection_id)`);
     await queryRunner.query(`CREATE INDEX idx_product_urls_extraction ON public.product_urls USING btree (extraction_status, last_extracted_at)`);
     await queryRunner.query(`CREATE UNIQUE INDEX idx_product_urls_store_handle ON public.product_urls USING btree (store_id, handle)`);
     await queryRunner.query(`CREATE INDEX idx_product_urls_store_status ON public.product_urls USING btree (store_id, extraction_status)`);
@@ -529,10 +470,6 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT "FK_card_variants_card_listing_id" FOREIGN KEY (card_listing_id) REFERENCES public.card_listings(id) ON DELETE CASCADE`);
     await queryRunner.query(`ALTER TABLE ONLY public.card_variants
     ADD CONSTRAINT "FK_card_variants_condition" FOREIGN KEY (condition_id) REFERENCES public.card_conditions(id)`);
-    await queryRunner.query(`ALTER TABLE ONLY public.invalid_product_handles
-    ADD CONSTRAINT "FK_invalid_product_handles_store" FOREIGN KEY (store_id) REFERENCES public.stores(id) ON DELETE CASCADE`);
-    await queryRunner.query(`ALTER TABLE ONLY public.product_urls
-    ADD CONSTRAINT "FK_product_urls_collection" FOREIGN KEY (mtg_singles_collection_id) REFERENCES public.mtg_singles_collections(id) ON DELETE CASCADE`);
     await queryRunner.query(`ALTER TABLE ONLY public.product_urls
     ADD CONSTRAINT "FK_product_urls_store" FOREIGN KEY (store_id) REFERENCES public.stores(id) ON DELETE CASCADE`);
     await queryRunner.query(`ALTER TABLE ONLY public.shopify_products
@@ -541,8 +478,6 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     ADD CONSTRAINT "FK_shopify_products_product_url" FOREIGN KEY (product_url_id) REFERENCES public.product_urls(id) ON DELETE CASCADE`);
     await queryRunner.query(`ALTER TABLE ONLY public.shopify_products
     ADD CONSTRAINT "FK_shopify_products_store" FOREIGN KEY (store_id) REFERENCES public.stores(id) ON DELETE CASCADE`);
-    await queryRunner.query(`ALTER TABLE ONLY public.stores
-    ADD CONSTRAINT "FK_stores_platform" FOREIGN KEY (platform_id) REFERENCES public.platforms(id) ON DELETE SET NULL`);
     await queryRunner.query(`ALTER TABLE ONLY public.unmatched_cards
     ADD CONSTRAINT "FK_unmatched_cards_product_url_id" FOREIGN KEY (product_url_id) REFERENCES public.product_urls(id)`);
     await queryRunner.query(`ALTER TABLE ONLY public.unmatched_cards
@@ -587,13 +522,8 @@ export class InitialSchema1774000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS public.sets CASCADE`);
     await queryRunner.query(`DROP SEQUENCE IF EXISTS public.product_urls_id_seq CASCADE`);
     await queryRunner.query(`DROP TABLE IF EXISTS public.product_urls CASCADE`);
-    await queryRunner.query(`DROP SEQUENCE IF EXISTS public.platforms_id_seq CASCADE`);
-    await queryRunner.query(`DROP TABLE IF EXISTS public.platforms CASCADE`);
-    await queryRunner.query(`DROP SEQUENCE IF EXISTS public.mtg_singles_collections_id_seq CASCADE`);
-    await queryRunner.query(`DROP TABLE IF EXISTS public.mtg_singles_collections CASCADE`);
-    await queryRunner.query(`DROP TABLE IF EXISTS public.invalid_product_handles CASCADE`);
-    await queryRunner.query(`DROP SEQUENCE IF EXISTS public.discovery_runs_id_seq CASCADE`);
-    await queryRunner.query(`DROP TABLE IF EXISTS public.discovery_runs CASCADE`);
+    await queryRunner.query(`DROP SEQUENCE IF EXISTS public.extraction_runs_id_seq CASCADE`);
+    await queryRunner.query(`DROP TABLE IF EXISTS public.extraction_runs CASCADE`);
     await queryRunner.query(`DROP SEQUENCE IF EXISTS public.card_variants_id_seq CASCADE`);
     await queryRunner.query(`DROP TABLE IF EXISTS public.card_variants CASCADE`);
     await queryRunner.query(`DROP SEQUENCE IF EXISTS public.card_printings_id_seq CASCADE`);

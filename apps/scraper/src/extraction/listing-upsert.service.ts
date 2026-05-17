@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { CardCondition } from '@scoutlgs/core';
 
 export interface ListingRow {
   cardNameId: number | null;
@@ -48,16 +50,20 @@ export class ListingUpsertService implements OnModuleInit {
   /** Cached condition code → id mapping */
   private conditionMap = new Map<string, number>();
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(CardCondition)
+    private readonly cardConditionRepository: Repository<CardCondition>,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.loadConditions();
   }
 
   private async loadConditions(): Promise<void> {
-    const rows: Array<{ id: number; code: string }> = await this.dataSource.query(
-      `SELECT id, code FROM card_conditions`,
-    );
+    const rows = await this.cardConditionRepository.find({
+      select: ['id', 'code'],
+    });
     this.conditionMap.clear();
     for (const row of rows) {
       this.conditionMap.set(row.code, row.id);

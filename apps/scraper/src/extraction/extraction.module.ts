@@ -8,6 +8,7 @@ import {
   ProductUrl,
   ScryfallSet,
   CardPrinting,
+  CardName,
   UnmatchedCard,
   CardCondition,
   TokenName,
@@ -24,7 +25,7 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store, ProductUrl, ScryfallSet, CardPrinting, UnmatchedCard, CardCondition, TokenName, TokenPrinting]),
+    TypeOrmModule.forFeature([Store, ProductUrl, ScryfallSet, CardPrinting, CardName, UnmatchedCard, CardCondition, TokenName, TokenPrinting]),
     QueueModule,
     PlatformModule,
     CacheModule,

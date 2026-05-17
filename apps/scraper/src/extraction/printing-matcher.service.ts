@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { DataSource } from 'typeorm';
-import { CardPrinting, ScryfallSet } from '@scoutlgs/core';
+import { Repository, DataSource, Raw } from 'typeorm';
+import { CardPrinting, CardName, ScryfallSet } from '@scoutlgs/core';
 import { LRUCache } from 'lru-cache';
 
 export type NameMatchType = 'exact' | 'fuzzy' | 'frontface' | 'none';
@@ -77,6 +76,8 @@ export class PrintingMatcherService {
   constructor(
     @InjectRepository(CardPrinting)
     private readonly cardPrintingRepository: Repository<CardPrinting>,
+    @InjectRepository(CardName)
+    private readonly cardNameRepository: Repository<CardName>,
     @InjectRepository(ScryfallSet)
     private readonly setRepository: Repository<ScryfallSet>,
     private readonly dataSource: DataSource,
@@ -205,13 +206,13 @@ export class PrintingMatcherService {
     if (cached !== undefined) return cached;
 
     // Step 1: Exact match (fast, uses unique index)
-    const exact = await this.dataSource.query(
-      `SELECT id FROM card_names WHERE normalized_name = $1 LIMIT 1`,
-      [normalizedName],
-    );
+    const exact = await this.cardNameRepository.findOne({
+      where: { normalizedName },
+      select: ['id'],
+    });
 
-    if (exact.length > 0) {
-      const result: NameCacheEntry = { cardNameId: Number(exact[0].id), nameMatch: 'exact' };
+    if (exact) {
+      const result: NameCacheEntry = { cardNameId: exact.id, nameMatch: 'exact' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
@@ -219,20 +220,23 @@ export class PrintingMatcherService {
     // Step 1.5: Front-face match for double-faced cards
     // Stores list DFCs by front face only (e.g. "Neglected Heirloom")
     // but card_names stores full name ("Neglected Heirloom // Ashmouth Blade")
-    const frontFace = await this.dataSource.query(
-      `SELECT id FROM card_names
-       WHERE normalized_name LIKE $1 || ' // %'
-       LIMIT 1`,
-      [normalizedName],
-    );
+    const frontFace = await this.cardNameRepository.findOne({
+      where: {
+        normalizedName: Raw((alias) => `${alias} LIKE :p`, {
+          p: `${normalizedName} // %`,
+        }),
+      },
+      select: ['id'],
+    });
 
-    if (frontFace.length > 0) {
-      const result: NameCacheEntry = { cardNameId: Number(frontFace[0].id), nameMatch: 'frontface' };
+    if (frontFace) {
+      const result: NameCacheEntry = { cardNameId: frontFace.id, nameMatch: 'frontface' };
       this.nameCache.set(normalizedName, result);
       return result;
     }
 
-    // Step 2: Fuzzy match (trgm, only runs when exact fails)
+    // Step 2: Fuzzy match — raw SQL because pg_trgm's `similarity()` operator
+    // has no first-class TypeORM equivalent.
     const fuzzy = await this.dataSource.query(
       `SELECT id FROM card_names
        WHERE similarity(normalized_name, $1) > 0.8
@@ -423,20 +427,20 @@ export class PrintingMatcherService {
   private async doWarmCaches(): Promise<void> {
     this.logger.warn('Warming printing matcher caches...');
 
-    const names: { id: number; normalized_name: string }[] =
-      await this.dataSource.query(
-        `SELECT id, normalized_name FROM card_names`,
-      );
+    const names = await this.cardNameRepository.find({
+      select: ['id', 'normalizedName'],
+    });
     for (const row of names) {
-      this.nameCache.set(row.normalized_name, {
+      this.nameCache.set(row.normalizedName, {
         cardNameId: row.id,
         nameMatch: 'exact',
       });
     }
 
     // Cache format: "code|matchType" (see resolveSetCode).
-    const sets: { name: string; code: string }[] =
-      await this.dataSource.query(`SELECT name, code FROM sets`);
+    const sets = await this.setRepository.find({
+      select: ['name', 'code'],
+    });
     for (const row of sets) {
       this.setNameCache.set(row.name.toLowerCase(), `${row.code}|name_exact`);
     }

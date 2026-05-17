@@ -9,7 +9,6 @@ import {
   Index,
 } from 'typeorm';
 import { Store } from './store.entity';
-import { MtgSinglesCollection } from './mtg-singles-collection.entity';
 
 export type ExtractionStatus = 'pending' | 'success' | 'error';
 
@@ -17,7 +16,6 @@ export type ExtractionStatus = 'pending' | 'success' | 'error';
 @Index('idx_product_urls_store_handle', ['storeId', 'handle'], { unique: true })
 @Index('idx_product_urls_store_status', ['storeId', 'extractionStatus'])
 @Index('idx_product_urls_extraction', ['extractionStatus', 'lastExtractedAt'])
-@Index('idx_product_urls_collection', ['mtgSinglesCollectionId'])
 export class ProductUrl {
   @PrimaryGeneratedColumn('increment')
   id: number;
@@ -29,24 +27,11 @@ export class ProductUrl {
   @Column({ name: 'store_id' })
   storeId: number;
 
-  @ManyToOne(() => MtgSinglesCollection)
-  @JoinColumn({ name: 'mtg_singles_collection_id' })
-  mtgSinglesCollection: MtgSinglesCollection;
-
-  @Column({ name: 'mtg_singles_collection_id' })
-  mtgSinglesCollectionId: number;
-
   @Column({ length: 255 })
   handle: string;
 
   @Column({ name: 'sitemap_lastmod', type: 'timestamp', nullable: true })
   sitemapLastmod?: Date;
-
-  @Column({ name: 'image_url', type: 'text', nullable: true })
-  imageUrl?: string;
-
-  @Column({ name: 'image_title', type: 'text', nullable: true })
-  imageTitle?: string;
 
   @Column({ name: 'discovered_at', type: 'timestamp', default: () => 'NOW()' })
   discoveredAt: Date;

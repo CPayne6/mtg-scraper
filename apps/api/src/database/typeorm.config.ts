@@ -1,8 +1,6 @@
 import { DataSource } from 'typeorm';
 import {
   Store,
-  Platform,
-  MtgSinglesCollection,
   CardName,
   ProductUrl,
   ScryfallSet,
@@ -34,8 +32,6 @@ export default new DataSource({
   database: process.env.DATABASE_NAME || 'scoutlgs',
   entities: [
     Store,
-    Platform,
-    MtgSinglesCollection,
     CardName,
     ProductUrl,
     ScryfallSet,
