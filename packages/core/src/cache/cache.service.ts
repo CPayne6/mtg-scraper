@@ -807,6 +807,49 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
    * Check Redis health by pinging the connection
    * Returns status object for use in health checks
    */
+  // ---------------------------------------------------------------------------
+  // Storefront prefix cache
+  // ---------------------------------------------------------------------------
+
+  private readonly STOREFRONT_PREFIX_KEY = 'storefront:prefixes';
+  private readonly STOREFRONT_PREFIX_TTL = 86400; // 24 hours
+
+  /**
+   * Get cached storefront prefixes from Redis.
+   * Returns null if not cached.
+   */
+  async getStorefrontPrefixes(): Promise<{
+    alpha: string[];
+    hasNonAlpha: boolean;
+  } | null> {
+    try {
+      const cached = await this.redis.get(this.STOREFRONT_PREFIX_KEY);
+      if (!cached) return null;
+      return JSON.parse(cached);
+    } catch (error) {
+      this.logger.error('Error reading storefront prefixes from cache:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Cache storefront prefixes in Redis with 24-hour TTL.
+   */
+  async setStorefrontPrefixes(prefixes: {
+    alpha: string[];
+    hasNonAlpha: boolean;
+  }): Promise<void> {
+    try {
+      await this.redis.setex(
+        this.STOREFRONT_PREFIX_KEY,
+        this.STOREFRONT_PREFIX_TTL,
+        JSON.stringify(prefixes),
+      );
+    } catch (error) {
+      this.logger.error('Error caching storefront prefixes:', error);
+    }
+  }
+
   async checkHealth(): Promise<{ status: 'up' | 'down'; message?: string }> {
     try {
       const pong = await this.redis.ping();
