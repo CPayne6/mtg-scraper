@@ -50,6 +50,17 @@ export class PrintingMatcherService {
   // LRU cache: set name → set code (empty string = not found)
   private readonly setNameCache: LRUCache<string, string>;
 
+  /**
+   * Resolved when warmCaches() finishes its initial DB load.
+   * `match()` awaits this so jobs that get picked up during warm-up
+   * still see a populated cache instead of racing against the loader.
+   *
+   * This fixes a class of "card exists but matcher returns null" bugs
+   * where a job ran while the warm-cache DB query was mid-flight and
+   * the negative DB result got cached for that name.
+   */
+  private warmupComplete: Promise<void> = Promise.resolve();
+
   constructor(
     @InjectRepository(CardPrinting)
     private readonly cardPrintingRepository: Repository<CardPrinting>,
@@ -76,6 +87,12 @@ export class PrintingMatcherService {
     collectorNumber?: string,
     setName?: string,
   ): Promise<MatchResult> {
+    // Block until the warm-cache load is complete. Without this, jobs picked
+    // up by BullMQ during startup hit a partially-populated cache and the
+    // matcher's negative-result caching makes the miss sticky for the rest
+    // of the run.
+    await this.warmupComplete;
+
     // Normalize collector number: strip leading zeros (e.g. "016" → "16")
     if (collectorNumber) {
       collectorNumber = collectorNumber.replace(/^0+/, '') || '0';
@@ -353,9 +370,16 @@ export class PrintingMatcherService {
    * This avoids per-product DB queries for the first encounter of each name.
    */
   async warmCaches(): Promise<void> {
-    this.logger.log('Warming printing matcher caches...');
+    // Expose a promise that match() awaits, so callers that race the load
+    // (e.g. BullMQ workers processing queued jobs during startup) wait
+    // instead of seeing an empty cache and caching a negative DB result.
+    this.warmupComplete = this.doWarmCaches();
+    await this.warmupComplete;
+  }
 
-    // Load all card names into the name cache
+  private async doWarmCaches(): Promise<void> {
+    this.logger.warn('Warming printing matcher caches...');
+
     const names: { id: number; normalized_name: string }[] =
       await this.dataSource.query(
         `SELECT id, normalized_name FROM card_names`,
@@ -367,7 +391,6 @@ export class PrintingMatcherService {
       });
     }
 
-    // Load all set names → codes into the set name cache.
     // Cache format: "code|matchType" (see resolveSetCode).
     const sets: { name: string; code: string }[] =
       await this.dataSource.query(`SELECT name, code FROM sets`);
@@ -375,7 +398,7 @@ export class PrintingMatcherService {
       this.setNameCache.set(row.name.toLowerCase(), `${row.code}|name_exact`);
     }
 
-    this.logger.log(
+    this.logger.warn(
       `Caches warmed: ${names.length} card names, ${sets.length} sets`,
     );
   }

@@ -27,6 +27,21 @@ export class ManualController {
     return this.manualService.getStorefrontExtractionStatus()
   }
 
+  // Generic extraction operations (platform-agnostic)
+
+  @Put('extraction/retry-unmatched')
+  putRetryUnmatched(
+    @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    return this.manualService.retryUnmatched({ storeId, limit })
+  }
+
+  @Get('extraction/unmatched-stats')
+  getUnmatchedStats() {
+    return this.manualService.getUnmatchedStats()
+  }
+
   // Popular cards scrape (V1)
 
   @Put('trigger')

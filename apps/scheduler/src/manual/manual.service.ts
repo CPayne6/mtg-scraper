@@ -212,4 +212,53 @@ export class ManualService {
       ORDER BY s.id
     `);
   }
+
+  // ---------------------------------------------------------------------------
+  // Generic extraction operations (platform-agnostic)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Enqueue a retry-unmatched job. The scraper processes it using the
+   * warm matcher cache, promoting any newly-matchable products to
+   * card_listings.
+   */
+  async retryUnmatched(opts: { storeId?: number; limit?: number }) {
+    if (opts.storeId) {
+      const store = await this.storeRepository.findOne({ where: { id: opts.storeId } });
+      if (!store) {
+        throw new NotFoundException(`Store ${opts.storeId} not found`);
+      }
+    }
+
+    await this.queueService.enqueueRetryUnmatchedJob({
+      storeId: opts.storeId,
+      limit: opts.limit,
+    });
+
+    return {
+      message: 'Retry-unmatched job enqueued',
+      storeId: opts.storeId ?? 'all',
+      limit: opts.limit ?? 5000,
+    };
+  }
+
+  /**
+   * Per-store breakdown of unmatched_cards. Useful for picking targets
+   * to retry or to inspect for matching improvements.
+   */
+  async getUnmatchedStats() {
+    return this.dataSource.query(`
+      SELECT s.name AS store_name, s.id AS store_id,
+        COUNT(DISTINCT uc.product_url_id) AS unmatched_products,
+        COUNT(*) AS unmatched_variants,
+        COUNT(*) FILTER (WHERE cn.id IS NOT NULL) AS has_card_name,
+        COUNT(*) FILTER (WHERE cn.id IS NULL) AS no_card_name,
+        COUNT(*) FILTER (WHERE uc.retry_count > 0) AS already_retried
+      FROM unmatched_cards uc
+      JOIN stores s ON s.id = uc.store_id
+      LEFT JOIN card_names cn ON cn.normalized_name = uc.normalized_name
+      GROUP BY s.id, s.name
+      ORDER BY unmatched_products DESC
+    `);
+  }
 }

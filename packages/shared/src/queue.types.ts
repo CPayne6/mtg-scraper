@@ -10,6 +10,12 @@ export const JOB_NAMES = {
    * instead of being serially chained by `lastId`.
    */
   BOOTSTRAP_STOREFRONT_EXTRACTION: 'bootstrap-storefront-extraction',
+  /**
+   * Re-runs the matcher against unmatched_cards rows and promotes any that
+   * now match (with the warm cache populated, with better extractors, etc.).
+   * Platform-agnostic — works for any extraction backend.
+   */
+  RETRY_UNMATCHED: 'retry-unmatched',
 } as const;
 
 /**
@@ -60,6 +66,27 @@ export interface StorefrontBootstrapJobData {
   scope?: string;
   discoveryRunId?: number;
   maxCardsAdded?: number;
+}
+
+/**
+ * Job data for retrying matches on unmatched_cards rows.
+ * Scoped per-store; the worker loads the store's unmatched_cards in batches
+ * and re-runs the matcher (which has the warm cache populated by now).
+ */
+export interface RetryUnmatchedJobData {
+  /** Optional — if omitted, retries all stores in one job. */
+  storeId?: number;
+  /** Max products to retry in this job. Default 5000. */
+  limit?: number;
+}
+
+export interface RetryUnmatchedJobResult {
+  storeId: number | null;
+  attempted: number;
+  matched: number;
+  stillUnmatched: number;
+  errors: number;
+  success: boolean;
 }
 
 /**

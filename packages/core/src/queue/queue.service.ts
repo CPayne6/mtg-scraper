@@ -6,6 +6,7 @@ import {
   JOB_NAMES,
   StorefrontExtractionJobData,
   StorefrontBootstrapJobData,
+  RetryUnmatchedJobData,
 } from '@scoutlgs/shared';
 
 @Injectable()
@@ -18,7 +19,9 @@ export class QueueService {
   constructor(
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
     private readonly storefrontExtractionQueue: Queue<
-      StorefrontExtractionJobData | StorefrontBootstrapJobData
+      | StorefrontExtractionJobData
+      | StorefrontBootstrapJobData
+      | RetryUnmatchedJobData
     >,
   ) {
     this.queues = new Map<string, Queue>([
@@ -124,6 +127,35 @@ export class QueueService {
         `Failed to enqueue Storefront bootstrap for store ${storeId}:`,
         error,
       );
+      throw error;
+    }
+  }
+
+  /**
+   * Enqueue a retry-unmatched job. The worker loads unmatched_cards for the
+   * given store (or all stores), re-runs the matcher, and promotes any that
+   * now match to card_listings.
+   */
+  async enqueueRetryUnmatchedJob(
+    opts: { storeId?: number; limit?: number } = {},
+  ): Promise<void> {
+    try {
+      await this.storefrontExtractionQueue.add(
+        JOB_NAMES.RETRY_UNMATCHED,
+        opts satisfies RetryUnmatchedJobData,
+        {
+          priority: 1,
+          removeOnComplete: 50,
+          removeOnFail: 100,
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      );
+      this.logger.log(
+        `Enqueued retry-unmatched job (storeId=${opts.storeId ?? 'all'}, limit=${opts.limit ?? 'default'})`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to enqueue retry-unmatched job:', error);
       throw error;
     }
   }
