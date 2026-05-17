@@ -1,17 +1,18 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "module": "nodenext",
-    "target": "esnext",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2021",
     "types": [],
     "strict": true,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx",
-    "verbatimModuleSyntax": true,
-    "noUncheckedSideEffectImports": true,
-    "moduleDetection": "force",
+    "verbatimModuleSyntax": false,
+    "moduleDetection": "auto",
+    "esModuleInterop": true,
     "incremental": false
   }
 }
