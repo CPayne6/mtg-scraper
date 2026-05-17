@@ -13,6 +13,7 @@ import {
   CardCondition,
   TokenName,
   TokenPrinting,
+  ExtractionRun,
 } from '@scoutlgs/core';
 import { ExtractionService } from './extraction.service';
 import { PrintingMatcherService } from './printing-matcher.service';
@@ -25,7 +26,7 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store, ProductUrl, ScryfallSet, CardPrinting, CardName, UnmatchedCard, CardCondition, TokenName, TokenPrinting]),
+    TypeOrmModule.forFeature([Store, ProductUrl, ScryfallSet, CardPrinting, CardName, UnmatchedCard, CardCondition, TokenName, TokenPrinting, ExtractionRun]),
     QueueModule,
     PlatformModule,
     CacheModule,

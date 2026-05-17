@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { CardCondition } from '@scoutlgs/core';
+import { CardCondition, ExtractionRun } from '@scoutlgs/core';
 
 export interface ListingRow {
   cardNameId: number | null;
@@ -54,6 +54,8 @@ export class ListingUpsertService implements OnModuleInit {
     private readonly dataSource: DataSource,
     @InjectRepository(CardCondition)
     private readonly cardConditionRepository: Repository<CardCondition>,
+    @InjectRepository(ExtractionRun)
+    private readonly extractionRunRepository: Repository<ExtractionRun>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -260,18 +262,14 @@ export class ListingUpsertService implements OnModuleInit {
   }
 
   /**
-   * Delete variants for a product URL that are no longer in stock.
-   * If inStockVariantIds is empty, deletes ALL variants for listings under the product URL.
-   * Otherwise, deletes variants whose platform_variant_id is NOT in the given set.
-   */
-  /**
-   * Increment extractions_succeeded counter on a discovery run.
+   * Increment extractions_succeeded counter on an extraction run.
    * Called once per batch flush (~every 500 items).
    */
   async incrementRunExtractions(runId: number, count: number): Promise<void> {
-    await this.dataSource.query(
-      'UPDATE discovery_runs SET extractions_succeeded = extractions_succeeded + $1 WHERE id = $2',
-      [count, runId],
+    await this.extractionRunRepository.increment(
+      { id: runId },
+      'extractionsSucceeded',
+      count,
     );
   }
 
