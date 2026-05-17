@@ -90,10 +90,15 @@ export class PrintingMatcherService {
   /**
    * Match an extracted variant to a card_printing record.
    * Strategy:
-   *   1. Exact: set_code + collector_number via sets join → returns both IDs
-   *   2. Set name → set_code resolution (when set_code missing but setName provided)
-   *   3. Stage 1: Resolve card name (exact → trgm 0.8 fallback)
-   *   4. Stage 2: Find best printing for that card name
+   *   1. Resolve card name from the extracted title (exact → frontface → trgm 0.8)
+   *   2. Try exact set + collector lookup, but ONLY accept the result when its
+   *      card_name matches the name resolved in step 1. This rejects the case
+   *      where a product's SKU encodes a set+collector that happens to point
+   *      at a different card than the title says — e.g. CG Realm's
+   *      "Spirit Token (003)" SKU `MTG-IMA-3-...` shouldn't get attached to
+   *      Abzan Falconer just because Abzan Falconer is IMA #3.
+   *   3. If set_code is missing, try resolving from set name and retry step 2.
+   *   4. Fall back to name-based printing match (set + collector → set-only → any).
    */
   async match(
     cardName: string,
@@ -115,37 +120,45 @@ export class PrintingMatcherService {
     // Track how we obtained the set code — populated below.
     let setMatch: SetMatchType = setCode ? 'code_provided' : 'none';
 
-    // Try exact match by set_code + collector_number
-    if (setCode && collectorNumber) {
+    // Resolve extracted card name first — used both for name-based matching
+    // and to validate any SKU-based match.
+    const normalizedName = this.stripParentheticals(this.normalizeCardName(cardName));
+    const nameResult = await this.resolveCardName(normalizedName);
+
+    // Try exact match by set_code + collector_number.
+    // Accepted only if the printing's card_name matches the extracted title;
+    // otherwise we treat the SKU as untrustworthy and fall through to the
+    // name-based path (or to unmatched if the name doesn't resolve).
+    if (setCode && collectorNumber && nameResult.cardNameId !== null) {
       const entry = await this.findBySetAndNumber(setCode, collectorNumber);
-      if (entry) {
+      if (entry && entry.cardNameId === nameResult.cardNameId) {
         return {
           cardPrintingId: entry.cardPrintingId,
           cardNameId: entry.cardNameId,
           confidence: 'exact',
-          nameMatch: 'exact',
+          nameMatch: nameResult.nameMatch,
           setMatch,
           printingMatch: 'set_and_number',
         };
       }
     }
 
-    // If no set_code but we have a set name, resolve it
+    // If no set_code but we have a set name, resolve it and retry the
+    // SKU lookup with the same name-agreement guard.
     if (!setCode && setName) {
       const resolved = await this.resolveSetCode(setName);
       if (resolved.code) {
         setCode = resolved.code;
         setMatch = resolved.matchType;
 
-        // Try exact match again with resolved set code
-        if (collectorNumber) {
+        if (collectorNumber && nameResult.cardNameId !== null) {
           const entry = await this.findBySetAndNumber(resolved.code, collectorNumber);
-          if (entry) {
+          if (entry && entry.cardNameId === nameResult.cardNameId) {
             return {
               cardPrintingId: entry.cardPrintingId,
               cardNameId: entry.cardNameId,
               confidence: 'exact',
-              nameMatch: 'exact',
+              nameMatch: nameResult.nameMatch,
               setMatch,
               printingMatch: 'set_and_number',
             };
@@ -153,11 +166,6 @@ export class PrintingMatcherService {
         }
       }
     }
-
-    // Stage 1: Resolve card name — strip parenthetical suffixes first
-    // e.g. "Shadowborn Apostle (Borderless)" → "shadowborn apostle"
-    const normalizedName = this.stripParentheticals(this.normalizeCardName(cardName));
-    const nameResult = await this.resolveCardName(normalizedName);
 
     if (nameResult.cardNameId === null) {
       return {

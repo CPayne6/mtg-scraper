@@ -62,7 +62,11 @@ function mapResults(results: V1ListingResult[]): CardWithStore[] {
   return results.map((r) => ({
     title: r.cardName,
     store: r.store,
-    image: r.imageUri ?? r.imageUrl ?? '',
+    // Prefer the store's product photo over the canonical Scryfall art —
+    // it reflects the actual variant being sold (foils, alt arts, etc.) and
+    // makes matching errors visible (e.g. a mis-matched spirit token shows up
+    // as a spirit token image rather than the printing it got attached to).
+    image: r.imageUrl ?? r.imageUri ?? '',
     price: r.price,
     condition: (r.condition as Condition) || Condition.UNKNOWN,
     foil: r.foil,
