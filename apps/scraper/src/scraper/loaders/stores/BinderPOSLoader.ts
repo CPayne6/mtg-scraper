@@ -1,17 +1,22 @@
-import * as undici from 'undici';
-import { ProxyService } from '@/scraper/proxy/proxy.service';
 import { APILoader, searchReplace } from '../APILoader';
+import { GetProxyAgentFn } from '../HTTPLoader';
 
 export class BinderPOSLoader extends APILoader {
   static create(
     storeURL: string,
     page: string,
-    proxyService: ProxyService,
+    getProxyAgent?: GetProxyAgentFn,
+    shopifyUrl?: string,
   ): BinderPOSLoader {
-    return new BinderPOSLoader(storeURL, page, proxyService.getProxyAgent());
+    return new BinderPOSLoader(storeURL, page, getProxyAgent, shopifyUrl);
   }
 
-  constructor(storeURL: string, page: string, proxyAgent?: undici.ProxyAgent) {
+  constructor(
+    storeURL: string,
+    page: string,
+    getProxyAgent?: GetProxyAgentFn,
+    shopifyUrl?: string,
+  ) {
     super({
       initial: {
         baseUrl: storeURL,
@@ -40,12 +45,18 @@ export class BinderPOSLoader extends APILoader {
               },
             ],
           ],
-          ['storeUrl', /Shopify.shop = "(.+)";/],
+          // Use provided shopifyUrl if available, otherwise extract from page
+          ['storeUrl', shopifyUrl ?? /Shopify.shop = "(.+)";/],
           ['title', searchReplace],
         ],
         method: 'POST',
       },
-      proxyAgent,
+      getProxyAgent,
     });
+
+    // If shopifyUrl is provided, pre-populate the cache to skip initial page fetch
+    if (shopifyUrl) {
+      this.cacheApiPage(`Shopify.shop = "${shopifyUrl}";`);
+    }
   }
 }

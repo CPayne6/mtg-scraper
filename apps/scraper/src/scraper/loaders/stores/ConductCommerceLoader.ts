@@ -1,7 +1,5 @@
-import * as undici from 'undici';
 import { randomUUID } from 'crypto';
-import { ProxyService } from '@/scraper/proxy/proxy.service';
-import { HTTPLoader } from '../HTTPLoader';
+import { HTTPLoader, GetProxyAgentFn } from '../HTTPLoader';
 import { ScrapeErrorType } from '../../errors';
 
 const CONDUCT_COMMERCE_API_URL =
@@ -44,16 +42,16 @@ export interface ConductCommerceLoaderConfig {
 export class ConductCommerceLoader extends HTTPLoader {
   static create(
     config: ConductCommerceLoaderConfig,
-    proxyService: ProxyService,
+    getProxyAgent?: GetProxyAgentFn,
   ): ConductCommerceLoader {
-    return new ConductCommerceLoader(config, proxyService.getProxyAgent());
+    return new ConductCommerceLoader(config, getProxyAgent);
   }
 
   constructor(
     protected config: ConductCommerceLoaderConfig,
-    proxyAgent?: undici.ProxyAgent,
+    getProxyAgent?: GetProxyAgentFn,
   ) {
-    super(proxyAgent);
+    super(getProxyAgent);
   }
 
   async search(

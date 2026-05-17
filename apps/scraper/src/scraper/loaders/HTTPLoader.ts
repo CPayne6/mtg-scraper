@@ -11,53 +11,74 @@ export interface LoadPageResult {
   error?: ScrapeError;
 }
 
+/** Function that returns a rotating proxy agent for each request */
+export type GetProxyAgentFn = () => Promise<undici.ProxyAgent | undefined>;
+
 export abstract class HTTPLoader {
   private static readonly REQUEST_TIMEOUT_MS = 10000;
   protected readonly logger = new Logger(this.constructor.name);
 
-  constructor(protected readonly proxyAgent?: undici.ProxyAgent) {}
+  constructor(protected readonly getProxyAgent?: GetProxyAgentFn) {}
 
   /**
-   * Attempt to fetch with retries for network errors only.
-   * HTTP errors (4xx, 5xx) are not retried - they're returned for classification.
+   * Truncate response body for logging (avoid huge log entries).
    */
-  private async fetchWithRetry(
-    input: undici.RequestInfo,
-    options?: undici.RequestInit,
-    retries = 1,
-  ): Promise<undici.Response> {
-    try {
-      const res = await undici.fetch(input, {
-        ...options,
-        dispatcher: this.proxyAgent,
-        signal: AbortSignal.timeout(HTTPLoader.REQUEST_TIMEOUT_MS),
-      });
-      return res;
-    } catch (error) {
-      if (retries > 0) {
-        this.logger.warn(
-          `Network error for ${input}. Retrying... (${retries} retries left)`,
-        );
-        return this.fetchWithRetry(input, options, retries - 1);
-      } else {
-        this.logger.error(`Network error for ${input}. No more retries left.`);
-        throw error;
-      }
+  private truncateForLog(body: string, maxLength = 500): string {
+    if (body.length <= maxLength) return body;
+    return body.substring(0, maxLength) + `... [truncated, total ${body.length} chars]`;
+  }
+
+  /**
+   * Extract useful headers for debugging.
+   */
+  private extractDebugHeaders(headers: Headers): Record<string, string> {
+    const debugHeaders: Record<string, string> = {};
+    const interestingHeaders = [
+      'cf-ray', 'cf-cache-status', 'retry-after', 'x-ratelimit-remaining',
+      'x-ratelimit-limit', 'x-ratelimit-reset', 'server', 'content-type'
+    ];
+    for (const name of interestingHeaders) {
+      const value = headers.get(name);
+      if (value) debugHeaders[name] = value;
+    }
+    return debugHeaders;
+  }
+
+  /**
+   * Log detailed error information for debugging.
+   */
+  private logErrorDetails(
+    level: 'warn' | 'error',
+    url: string,
+    status: number,
+    errorType: ScrapeErrorType,
+    message: string,
+    headers?: Record<string, string>,
+    bodySnippet?: string,
+  ): void {
+    const details = {
+      url,
+      status,
+      errorType,
+      message,
+      ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+      ...(bodySnippet ? { bodySnippet } : {}),
+    };
+
+    if (level === 'error') {
+      this.logger.error(`Request failed: ${JSON.stringify(details)}`);
+    } else {
+      this.logger.warn(`Request failed: ${JSON.stringify(details)}`);
     }
   }
 
   /**
-   * Detects if an HTML response indicates an error page (Cloudflare block, etc.)
+   * Detects Cloudflare error pages specifically.
+   * We only check for Cloudflare error codes which are reliable indicators.
+   * All other error detection relies on HTTP status codes.
    */
-  private detectHtmlError(body: string, status: number): ScrapeError | null {
-    const bodyLower = body.toLowerCase();
-
-    // Check for HTML error pages
-    if (!bodyLower.includes('<!doctype') && !bodyLower.includes('<html')) {
-      return null;
-    }
-
-    // Cloudflare error detection
+  private detectCloudflareError(body: string, status: number): ScrapeError | null {
+    // Cloudflare error detection - these have a specific format
     const cfErrorMatch = body.match(/error code[:\s]+(\d+)/i);
     if (cfErrorMatch) {
       const cfCode = parseInt(cfErrorMatch[1], 10);
@@ -76,43 +97,6 @@ export abstract class HTTPLoader {
       );
     }
 
-    // Generic blocking indicators
-    if (
-      bodyLower.includes('rate limit') ||
-      bodyLower.includes('too many requests')
-    ) {
-      return new ScrapeError(
-        `Rate limited (detected in response body)`,
-        ScrapeErrorType.RATE_LIMITED,
-        { statusCode: status },
-      );
-    }
-
-    if (
-      bodyLower.includes('blocked') ||
-      bodyLower.includes('access denied') ||
-      bodyLower.includes('forbidden')
-    ) {
-      return new ScrapeError(
-        `Blocked (detected in response body)`,
-        ScrapeErrorType.FORBIDDEN,
-        { statusCode: status },
-      );
-    }
-
-    // 502/503/504 Bad Gateway pages
-    if (
-      bodyLower.includes('bad gateway') ||
-      bodyLower.includes('service unavailable') ||
-      bodyLower.includes('gateway timeout')
-    ) {
-      return new ScrapeError(
-        `Bad gateway (detected in response body)`,
-        ScrapeErrorType.BAD_GATEWAY,
-        { statusCode: status },
-      );
-    }
-
     return null;
   }
 
@@ -125,9 +109,16 @@ export abstract class HTTPLoader {
     method?: string,
   ): Promise<LoadPageResult> {
     try {
-      const res = await this.fetchWithRetry(url, {
+      // Get rotating proxy agent for this request (if proxy is configured)
+      const proxyAgent = this.getProxyAgent
+        ? await this.getProxyAgent()
+        : undefined;
+
+      const res = await undici.fetch(url, {
         method,
         body,
+        dispatcher: proxyAgent,
+        signal: AbortSignal.timeout(HTTPLoader.REQUEST_TIMEOUT_MS),
         headers:
           typeof body === 'string'
             ? new Headers({ 'content-type': 'application/json;' })
@@ -135,6 +126,8 @@ export abstract class HTTPLoader {
       });
 
       const responseBody = await res.text();
+
+      const debugHeaders = this.extractDebugHeaders(res.headers);
 
       // Check for HTTP error status
       if (!res.ok) {
@@ -147,15 +140,34 @@ export abstract class HTTPLoader {
           url,
           responseBody,
         );
-        this.logger.warn(`HTTP error ${res.status} for ${url}: ${error.message}`);
+
+        this.logErrorDetails(
+          'warn',
+          url,
+          res.status,
+          error.type,
+          error.message,
+          debugHeaders,
+          this.truncateForLog(responseBody),
+        );
+
         return { body: responseBody, status: res.status, error };
       }
 
-      // Check for HTML error pages even on 200 OK (some services return 200 with error HTML)
-      const htmlError = this.detectHtmlError(responseBody, res.status);
-      if (htmlError) {
-        this.logger.warn(`HTML error detected for ${url}: ${htmlError.message}`);
-        return { body: responseBody, status: res.status, error: htmlError };
+      // Check for Cloudflare error pages (they sometimes return 200 with error HTML)
+      const cfError = this.detectCloudflareError(responseBody, res.status);
+      if (cfError) {
+        this.logErrorDetails(
+          'warn',
+          url,
+          res.status,
+          cfError.type,
+          cfError.message,
+          debugHeaders,
+          this.truncateForLog(responseBody),
+        );
+
+        return { body: responseBody, status: res.status, error: cfError };
       }
 
       return { body: responseBody, status: res.status };
@@ -165,7 +177,15 @@ export abstract class HTTPLoader {
         error instanceof Error ? error : new Error(String(error)),
         url,
       );
-      this.logger.error(`Network error for ${url}: ${scrapeError.message}`);
+
+      this.logErrorDetails(
+        'error',
+        url,
+        0,
+        scrapeError.type,
+        scrapeError.message,
+      );
+
       return { body: '', status: 0, error: scrapeError };
     }
   }
@@ -192,5 +212,7 @@ export abstract class HTTPLoader {
     error?: string;
     errorType?: ScrapeErrorType;
     retryable?: boolean;
+    /** Server-provided retry-after value in seconds (from 429 responses) */
+    retryAfter?: number;
   }>;
 }

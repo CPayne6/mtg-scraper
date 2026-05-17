@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common';
-import * as undici from 'undici';
-import { HTTPLoader } from '../HTTPLoader';
+import { HTTPLoader, GetProxyAgentFn } from '../HTTPLoader';
 import { ScrapeError, ScrapeErrorType } from '../../errors';
 
 // 1 day cache timeout
@@ -20,7 +19,7 @@ export interface APILoaderConfig {
     body?: RegExp | [string, any | RegExp][];
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   };
-  proxyAgent?: undici.ProxyAgent;
+  getProxyAgent?: GetProxyAgentFn;
   cacheTimeout?: number;
 }
 
@@ -37,6 +36,8 @@ export interface SearchResult {
   errorType?: ScrapeErrorType;
   /** Whether this error is potentially recoverable with retries */
   retryable?: boolean;
+  /** Server-provided retry-after value in seconds (from 429 responses) */
+  retryAfter?: number;
 }
 
 export const searchReplace = '{{search_term}}';
@@ -46,7 +47,7 @@ export class APILoader extends HTTPLoader {
   cacheTimestamp: number;
 
   constructor(protected apiConfig: APILoaderConfig) {
-    super(apiConfig.proxyAgent);
+    super(apiConfig.getProxyAgent);
     this.cacheTimestamp = 0;
     this.cachedPage = '';
   }
@@ -169,6 +170,7 @@ export class APILoader extends HTTPLoader {
           error: initialResult.error.message,
           errorType: initialResult.error.type,
           retryable: initialResult.error.isRetryable(),
+          retryAfter: initialResult.error.retryAfter,
         };
       }
 
@@ -227,6 +229,7 @@ export class APILoader extends HTTPLoader {
         error: result.error.message,
         errorType: result.error.type,
         retryable: result.error.isRetryable(),
+        retryAfter: result.error.retryAfter,
       };
     }
 
