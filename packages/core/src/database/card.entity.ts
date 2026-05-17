@@ -75,6 +75,7 @@ export class CardListing {
     | 'set_and_number'
     | 'set_only'
     | 'any'
+    | 'ambiguous'
     | 'none'
     | 'unknown';
 

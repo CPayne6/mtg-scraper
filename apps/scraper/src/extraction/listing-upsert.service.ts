@@ -14,7 +14,12 @@ export interface ListingRow {
   /** How the set was resolved from extractor input. */
   setMatch: 'code_provided' | 'name_exact' | 'name_fuzzy' | 'none';
   /** How the printing was selected for the resolved card. */
-  printingMatch: 'set_and_number' | 'set_only' | 'any' | 'none';
+  printingMatch:
+    | 'set_and_number'
+    | 'set_only'
+    | 'any'
+    | 'ambiguous'
+    | 'none';
 }
 
 export interface VariantRow {

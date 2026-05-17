@@ -6,7 +6,20 @@ import { CardPrinting, ScryfallSet } from '@scoutlgs/core';
 import { LRUCache } from 'lru-cache';
 
 export type NameMatchType = 'exact' | 'fuzzy' | 'frontface' | 'none';
-export type PrintingMatchType = 'set_and_number' | 'set_only' | 'any' | 'none';
+/**
+ * How the printing was selected.
+ *   set_and_number — exact set + collector match
+ *   set_only       — only one printing in the given set, no collector needed
+ *   any            — no set info, picked the first printing
+ *   ambiguous      — set matched but multiple printings exist; refuse to guess
+ *   none           — no card_name resolved, no printing
+ */
+export type PrintingMatchType =
+  | 'set_and_number'
+  | 'set_only'
+  | 'any'
+  | 'ambiguous'
+  | 'none';
 /**
  * How we arrived at the set code used during matching.
  *   code_provided — extractor gave us a setCode directly (highest confidence)
@@ -159,6 +172,20 @@ export class PrintingMatcherService {
     // Stage 2: Find best printing for the resolved card name
     const printingResult = await this.resolvePrinting(nameResult.cardNameId, setCode, collectorNumber);
 
+    // Ambiguous: set matched but multiple printings exist and we have no
+    // collector number to disambiguate. Treat as unmatched rather than
+    // silently picking the wrong art variant.
+    if (printingResult.matchType === 'ambiguous') {
+      return {
+        cardPrintingId: null,
+        cardNameId: nameResult.cardNameId,
+        confidence: 'none',
+        nameMatch: nameResult.nameMatch,
+        setMatch,
+        printingMatch: 'ambiguous',
+      };
+    }
+
     return {
       cardPrintingId: printingResult.printingId,
       cardNameId: nameResult.cardNameId,
@@ -237,6 +264,10 @@ export class PrintingMatcherService {
   ): Promise<{ printingId: number | null; matchType: PrintingMatchType }> {
     const setCodeLower = setCode?.toLowerCase() ?? null;
 
+    // LIMIT 2 so we can detect ambiguity at priority 2 (set-only with
+    // multiple printings in the same set — different art variants, etc.).
+    // Priority 1 (set+number) is unique by design (sets have a unique
+    // (set_id, collector_number) constraint), so no ambiguity check there.
     const rows = await this.dataSource.query(
       `SELECT cp.id AS printing_id,
         CASE
@@ -249,15 +280,27 @@ export class PrintingMatcherService {
       JOIN sets s ON s.id = cp.set_id
       WHERE cp.card_name_id = $1
       ORDER BY priority, cp.id
-      LIMIT 1`,
+      LIMIT 2`,
       [cardNameId, setCodeLower, collectorNumber],
     );
 
     if (rows.length === 0) return { printingId: null, matchType: 'none' };
 
-    const priority = Number(rows[0].priority);
+    const topPriority = Number(rows[0].priority);
+
+    // Set matched but multiple printings exist for this card in that set
+    // (e.g. basic land arts, showcase variants). Refuse to pick one — the
+    // caller treats 'ambiguous' as unmatched so we don't silently mis-match.
+    if (
+      topPriority === 2 &&
+      rows.length > 1 &&
+      Number(rows[1].priority) === 2
+    ) {
+      return { printingId: null, matchType: 'ambiguous' };
+    }
+
     const matchType: PrintingMatchType =
-      priority === 1 ? 'set_and_number' : priority === 2 ? 'set_only' : 'any';
+      topPriority === 1 ? 'set_and_number' : topPriority === 2 ? 'set_only' : 'any';
 
     return { printingId: Number(rows[0].printing_id), matchType };
   }
