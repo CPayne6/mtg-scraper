@@ -1,10 +1,10 @@
-import { CardWithStore, CardSearchResponse } from '@scoutlgs/shared';
+import { CardWithStore, CardSearchResponse, Condition } from '@scoutlgs/shared';
 
 export const mockCardWithStore: CardWithStore = {
   title: 'Black Lotus',
   set: 'Limited Edition Alpha',
   price: 150000,
-  condition: 'nm',
+  condition: Condition.NM,
   currency: 'CAD',
   link: 'https://example.com/product/black-lotus',
   image: 'https://example.com/black-lotus.jpg',
