@@ -78,7 +78,6 @@ export interface ExtractProductJobResult {
  */
 export interface StorefrontExtractionJobData {
   storeId: number;
-  collectionHandle: string;
   priority?: number;
   /** ID of the discovery_runs row tracking this run. */
   discoveryRunId?: number;
@@ -90,7 +89,10 @@ export interface StorefrontExtractionJobData {
 export interface StorefrontExtractionJobResult {
   storeId: number;
   collectionHandle: string;
-  productsExtracted: number;
+  productsAttempted: number;
+  productsProcessed: number;
+  productsSkipped: number;
+  errors: number;
   variantsExtracted: number;
   success: boolean;
   error?: string;

@@ -20,7 +20,9 @@ export type {
 export {
   StorefrontClient,
   StorefrontExtractionAdapter,
+  DEFAULT_STOREFRONT_API_VERSION,
   STOREFRONT_API_VERSION,
+  getStorefrontApiVersion,
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
 } from './adapters/shopify-storefront';

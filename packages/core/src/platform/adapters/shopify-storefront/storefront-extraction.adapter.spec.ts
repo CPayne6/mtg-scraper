@@ -68,7 +68,6 @@ function createMockProduct(overrides: Partial<StorefrontProduct> = {}): Storefro
             title: 'NM',
             sku: 'M11-123',
             availableForSale: true,
-            quantityAvailable: 5,
             price: { amount: '2.50', currencyCode: 'CAD' },
             selectedOptions: [
               { name: 'Condition', value: 'NM' },
@@ -111,7 +110,6 @@ describe('StorefrontExtractionAdapter', () => {
                 title: 'NM',
                 sku: null,
                 availableForSale: true,
-                quantityAvailable: 3,
                 price: { amount: '2.50', currencyCode: 'CAD' },
                 selectedOptions: [{ name: 'Condition', value: 'NM' }],
               },
@@ -138,7 +136,6 @@ describe('StorefrontExtractionAdapter', () => {
                 title: 'Near Mint Foil',
                 sku: null,
                 availableForSale: true,
-                quantityAvailable: 1,
                 price: { amount: '5.00', currencyCode: 'CAD' },
                 selectedOptions: [
                   { name: 'Condition', value: 'Near Mint' },
@@ -170,7 +167,6 @@ describe('StorefrontExtractionAdapter', () => {
                 title: 'NM',
                 sku: null,
                 availableForSale: true,
-                quantityAvailable: 2,
                 price: { amount: '1.00', currencyCode: 'CAD' },
                 selectedOptions: [{ name: 'Condition', value: 'NM' }],
               },
@@ -184,6 +180,37 @@ describe('StorefrontExtractionAdapter', () => {
       const variants = await adapter.extractProduct(store, 'test-handle');
 
       expect(variants[0].platformVariantId).toBe('12345');
+    });
+
+    it('treats Storefront quantity as unsupported and leaves quantity undefined', async () => {
+      const product = createMockProduct({
+        tags: ['Magic 2011', 'Normal'],
+        variants: {
+          edges: [
+            {
+              node: {
+                id: 'gid://shopify/ProductVariant/12345',
+                title: 'NM',
+                sku: 'M11-123',
+                availableForSale: true,
+                price: { amount: '1.00', currencyCode: 'CAD' },
+                selectedOptions: [{ name: 'Condition', value: 'NM' }],
+              },
+            },
+          ],
+        },
+      });
+      mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
+
+      const store = createMockStore();
+      const variants = await adapter.extractProduct(store, 'test-handle');
+
+      expect(variants[0].inStock).toBe(true);
+      expect(variants[0].quantity).toBeUndefined();
+      expect(mockExtractor.parseTags).toHaveBeenCalledWith([
+        'Magic 2011',
+        'Normal',
+      ]);
     });
 
     it('throws ExtractionHttpError with status 404 when product is null', async () => {

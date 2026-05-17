@@ -6,6 +6,7 @@ export class WebBotAuthService implements OnModuleInit {
   private readonly logger = new Logger(WebBotAuthService.name);
   private keyPairs = new Map<number, { privateKey: crypto.KeyObject; keyId: string }>();
   private enabled = false;
+  private signatureAgent: string | null = null;
 
   async onModuleInit() {
     this.enabled = process.env.WEB_BOT_AUTH_ENABLED === 'true';
@@ -21,15 +22,33 @@ export class WebBotAuthService implements OnModuleInit {
       return;
     }
 
-    const proxyCount = parseInt(process.env.PROXY_COUNT || '100', 10);
-    await this.generateKeyPairs(seed, proxyCount);
-    this.logger.log(`Web Bot Auth initialized with ${proxyCount} key pairs`);
+    const signatureAgentUrl =
+      process.env.WEB_BOT_AUTH_SIGNATURE_AGENT ||
+      process.env.WEB_BOT_AUTH_KEY_DIRECTORY_URL;
+    if (!signatureAgentUrl || !this.isValidSignatureAgent(signatureAgentUrl)) {
+      this.logger.warn(
+        'WEB_BOT_AUTH_SIGNATURE_AGENT must be an https:// key-directory URL; Web Bot Auth disabled',
+      );
+      this.enabled = false;
+      return;
+    }
+    this.signatureAgent = `"${signatureAgentUrl}"`;
+
+    const keyCount = parseInt(
+      process.env.WEB_BOT_AUTH_KEY_COUNT ||
+        process.env.WEBSHARE_IP_COUNT ||
+        '1',
+      10,
+    );
+    await this.generateKeyPairs(seed, keyCount);
+    this.logger.log(`Web Bot Auth initialized with ${keyCount} signing key(s)`);
   }
 
   /**
    * Generate deterministic Ed25519 key pairs from seed + proxy index.
-   * Each proxy IP gets its own key pair so Shopify treats each as a
-   * separate legitimate bot with its own rate-limit allowance.
+   * Multiple keys are supported for key rotation or explicit publication in
+   * the configured Web Bot Auth key directory. They do not create separate
+   * bot identities by themselves.
    *
    * The 32-byte SHA-256 of `${seed}:proxy:${i}` is used directly as
    * the Ed25519 private key seed (clamped internally by the Ed25519
@@ -67,6 +86,15 @@ export class WebBotAuthService implements OnModuleInit {
     }
   }
 
+  private isValidSignatureAgent(value: string): boolean {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Sign an HTTP request using RFC 9421 HTTP Message Signatures with
    * the key pair assigned to a specific proxy number.
@@ -94,7 +122,7 @@ export class WebBotAuthService implements OnModuleInit {
     const expires = created + 300;
     const nonce = crypto.randomBytes(16).toString('base64url');
 
-    const signatureAgent = 'ScoutLGS/1.0';
+    if (!this.signatureAgent) return null;
 
     // Covered components list for the Signature-Input structured field
     const coveredComponents = '"@method" "@authority" "@path" "signature-agent"';
@@ -111,7 +139,7 @@ export class WebBotAuthService implements OnModuleInit {
       `"@method": ${method.toUpperCase()}`,
       `"@authority": ${parsedUrl.host}`,
       `"@path": ${parsedUrl.pathname}`,
-      `"signature-agent": ${signatureAgent}`,
+      `"signature-agent": ${this.signatureAgent}`,
       `"@signature-params": ${signatureParams}`,
     ].join('\n');
 
@@ -122,7 +150,7 @@ export class WebBotAuthService implements OnModuleInit {
     return {
       'Signature-Input': `sig=${signatureParams}`,
       Signature: `sig=:${signatureB64}:`,
-      'Signature-Agent': signatureAgent,
+      'Signature-Agent': this.signatureAgent,
     };
   }
 

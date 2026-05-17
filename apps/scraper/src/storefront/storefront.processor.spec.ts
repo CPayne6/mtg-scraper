@@ -16,6 +16,7 @@ function createMockStore(overrides: Partial<Record<string, unknown>> = {}) {
     name: 'test-store',
     platformType: 'shopify_storefront',
     baseUrl: 'https://test-store.com',
+    discoveryConfig: { mtgSinglesCollectionId: 10 },
     ...overrides,
   };
 }
@@ -136,7 +137,6 @@ describe('StorefrontProcessor', () => {
   describe('process', () => {
     const defaultJobData: StorefrontExtractionJobData = {
       storeId: 1,
-      collectionHandle: 'mtg-singles',
       discoveryRunId: 42,
     };
 
@@ -165,7 +165,10 @@ describe('StorefrontProcessor', () => {
         const result = await processor.process(job);
 
         expect(result.success).toBe(true);
-        expect(result.productsExtracted).toBe(3);
+        expect(result.productsAttempted).toBe(3);
+        expect(result.productsProcessed).toBe(3);
+        expect(result.productsSkipped).toBe(0);
+        expect(result.errors).toBe(0);
         expect(result.variantsExtracted).toBe(3); // 1 variant per product
         expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(3);
 
@@ -181,7 +184,7 @@ describe('StorefrontProcessor', () => {
     });
 
     describe('staleness skipping', () => {
-      it('should skip products that were recently extracted', async () => {
+      it('should skip products whose last extraction is current with Shopify updatedAt', async () => {
         const store = createMockStore();
         const collection = createMockCollection();
         const products = [
@@ -195,22 +198,21 @@ describe('StorefrontProcessor', () => {
         collectionRepository.findOne.mockResolvedValue(collection);
         platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
 
-        // fresh-product: recently extracted (within 24 hours)
-        const recentDate = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours ago
+        const currentDate = new Date('2025-01-02');
         productUrlRepository.findOne
           .mockResolvedValueOnce(createMockProductUrl({
             handle: 'fresh-product',
-            lastExtractedAt: recentDate,
+            lastExtractedAt: currentDate,
             extractionStatus: 'success',
           }))
           .mockResolvedValueOnce(createMockProductUrl({
             handle: 'stale-product',
-            lastExtractedAt: null,
-            extractionStatus: 'pending',
+            lastExtractedAt: new Date('2024-12-31'),
+            extractionStatus: 'success',
           }))
           .mockResolvedValueOnce(createMockProductUrl({
             handle: 'another-fresh-product',
-            lastExtractedAt: recentDate,
+            lastExtractedAt: currentDate,
             extractionStatus: 'success',
           }));
 
@@ -223,7 +225,9 @@ describe('StorefrontProcessor', () => {
         const result = await processor.process(job);
 
         expect(result.success).toBe(true);
-        expect(result.productsExtracted).toBe(3); // all counted as extracted
+        expect(result.productsAttempted).toBe(3);
+        expect(result.productsProcessed).toBe(1);
+        expect(result.productsSkipped).toBe(2);
         // Only the stale product should have processExtractedVariants called
         expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(1);
         expect(extractionService.processExtractedVariants.mock.calls[0][2]).toBe('stale-product');
@@ -257,6 +261,7 @@ describe('StorefrontProcessor', () => {
         const result = await processor.process(job);
 
         expect(result.success).toBe(true);
+        expect(result.productsProcessed).toBe(1);
         expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(1);
       });
     });
@@ -286,7 +291,9 @@ describe('StorefrontProcessor', () => {
         const result = await processor.process(job);
 
         expect(result.success).toBe(true);
-        expect(result.productsExtracted).toBe(2); // 1st and 3rd succeeded
+        expect(result.productsAttempted).toBe(3);
+        expect(result.productsProcessed).toBe(2); // 1st and 3rd succeeded
+        expect(result.errors).toBe(1);
         expect(result.variantsExtracted).toBe(2); // 1 + 0 (error) + 1
         expect(extractionService.processExtractedVariants).toHaveBeenCalledTimes(3);
       });
@@ -314,8 +321,34 @@ describe('StorefrontProcessor', () => {
 
         // The result still reports success for the overall job
         expect(result.success).toBe(true);
-        expect(result.productsExtracted).toBe(1);
+        expect(result.productsAttempted).toBe(2);
+        expect(result.productsProcessed).toBe(1);
+        expect(result.errors).toBe(1);
         expect(result.variantsExtracted).toBe(3);
+      });
+
+      it('should fail the job when every attempted product fails', async () => {
+        const store = createMockStore();
+        const collection = createMockCollection();
+        const products = [
+          createMockProduct('bad-product-a'),
+          createMockProduct('bad-product-b'),
+        ];
+        const adapter = createMockAdapter(products);
+
+        storeRepository.findOne.mockResolvedValue(store);
+        collectionRepository.findOne.mockResolvedValue(collection);
+        platformAdapterFactory.getExtractionAdapter.mockReturnValue(adapter);
+        productUrlRepository.findOne.mockResolvedValue(null);
+        extractionService.processExtractedVariants.mockRejectedValue(
+          new Error('Bad product'),
+        );
+
+        const job = createMockJob(defaultJobData);
+
+        await expect(processor.process(job)).rejects.toThrow(
+          'all 2 attempted products failed',
+        );
       });
     });
 
@@ -323,7 +356,7 @@ describe('StorefrontProcessor', () => {
       it('should throw when storeId does not exist', async () => {
         storeRepository.findOne.mockResolvedValue(null);
 
-        const job = createMockJob({ storeId: 999, collectionHandle: 'mtg-singles' });
+        const job = createMockJob({ storeId: 999 });
 
         await expect(processor.process(job)).rejects.toThrow('Store 999 not found');
         expect(collectionRepository.findOne).not.toHaveBeenCalled();
@@ -331,18 +364,27 @@ describe('StorefrontProcessor', () => {
     });
 
     describe('collection not found', () => {
-      it('should throw when collection does not exist for the store', async () => {
+      it('should throw when collection is not configured for the store', async () => {
+        const store = createMockStore({ discoveryConfig: null });
+        storeRepository.findOne.mockResolvedValue(store);
+
+        const job = createMockJob({ storeId: 1 });
+
+        await expect(processor.process(job)).rejects.toThrow(
+          'No MTG singles collection configured for test-store',
+        );
+        expect(collectionRepository.findOne).not.toHaveBeenCalled();
+      });
+
+      it('should throw when configured collection does not exist', async () => {
         const store = createMockStore();
         storeRepository.findOne.mockResolvedValue(store);
         collectionRepository.findOne.mockResolvedValue(null);
 
-        const job = createMockJob({
-          storeId: 1,
-          collectionHandle: 'nonexistent-collection',
-        });
+        const job = createMockJob({ storeId: 1 });
 
         await expect(processor.process(job)).rejects.toThrow(
-          'No MTG singles collection found for test-store (handle: nonexistent-collection)',
+          'No MTG singles collection configured for test-store',
         );
       });
     });
@@ -433,7 +475,10 @@ describe('StorefrontProcessor', () => {
         // updateProgress should have been called at product 100
         expect(job.updateProgress).toHaveBeenCalledTimes(1);
         expect(job.updateProgress).toHaveBeenCalledWith({
-          productsExtracted: 100,
+          productsAttempted: 100,
+          productsProcessed: 100,
+          productsSkipped: 0,
+          errors: 0,
           variantsExtracted: 100,
         });
       });
@@ -461,7 +506,10 @@ describe('StorefrontProcessor', () => {
         expect(result).toEqual({
           storeId: 1,
           collectionHandle: 'mtg-singles',
-          productsExtracted: 1,
+          productsAttempted: 1,
+          productsProcessed: 1,
+          productsSkipped: 0,
+          errors: 0,
           variantsExtracted: 5,
           success: true,
         });
@@ -482,7 +530,10 @@ describe('StorefrontProcessor', () => {
         expect(result).toEqual({
           storeId: 1,
           collectionHandle: 'mtg-singles',
-          productsExtracted: 0,
+          productsAttempted: 0,
+          productsProcessed: 0,
+          productsSkipped: 0,
+          errors: 0,
           variantsExtracted: 0,
           success: true,
         });

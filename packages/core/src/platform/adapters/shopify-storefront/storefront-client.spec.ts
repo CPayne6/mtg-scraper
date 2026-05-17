@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorefrontClient } from './storefront-client';
 import { ExtractionHttpError } from '../shopify/shopify-extraction.adapter';
-import { STOREFRONT_API_VERSION } from './storefront.queries';
+import { DEFAULT_STOREFRONT_API_VERSION } from './storefront.queries';
 import type { Store } from '../../../database/store.entity';
 
 // Mock undici.fetch
@@ -93,7 +93,7 @@ describe('StorefrontClient', () => {
       });
       const url = client.getEndpointUrl(store);
       expect(url).toBe(
-        `https://custom-store.myshopify.com/api/${STOREFRONT_API_VERSION}/graphql.json`,
+        `https://custom-store.myshopify.com/api/${DEFAULT_STOREFRONT_API_VERSION}/graphql.json`,
       );
     });
 
@@ -104,7 +104,17 @@ describe('StorefrontClient', () => {
       });
       const url = client.getEndpointUrl(store);
       expect(url).toBe(
-        `https://example-store.com/api/${STOREFRONT_API_VERSION}/graphql.json`,
+        `https://example-store.com/api/${DEFAULT_STOREFRONT_API_VERSION}/graphql.json`,
+      );
+    });
+
+    it('uses per-store Storefront API version override when present', () => {
+      const store = createMockStore({
+        scraperConfig: { storefrontApiVersion: '2026-01' },
+      });
+      const url = client.getEndpointUrl(store);
+      expect(url).toBe(
+        'https://test-store.myshopify.com/api/2026-01/graphql.json',
       );
     });
   });
@@ -122,24 +132,7 @@ describe('StorefrontClient', () => {
       expect(result).toEqual(data);
     });
 
-    it('sets X-Shopify-Storefront-Access-Token header when storefrontAccessToken exists', async () => {
-      const storeWithToken = createMockStore({
-        scraperConfig: { storefrontAccessToken: 'secret-token-123' },
-      });
-      mockFetch.mockResolvedValue(
-        mockResponse(200, { data: { product: null } }) as any,
-      );
-
-      await client.query(storeWithToken, gql, variables);
-
-      const callArgs = mockFetch.mock.calls[0];
-      const fetchOptions = callArgs[1] as any;
-      expect(fetchOptions.headers['X-Shopify-Storefront-Access-Token']).toBe(
-        'secret-token-123',
-      );
-    });
-
-    it('does not set storefront access token header when token is absent', async () => {
+    it('does not set Storefront access token headers for tokenless mode', async () => {
       mockFetch.mockResolvedValue(
         mockResponse(200, { data: { product: null } }) as any,
       );
@@ -151,6 +144,29 @@ describe('StorefrontClient', () => {
       expect(
         fetchOptions.headers['X-Shopify-Storefront-Access-Token'],
       ).toBeUndefined();
+      expect(fetchOptions.headers['Shopify-Storefront-Private-Token']).toBeUndefined();
+    });
+
+    it('merges Web Bot Auth headers when enabled', async () => {
+      const deps = createMockDeps();
+      (deps.webBotAuth as any).isEnabled = () => true;
+      deps.webBotAuth.signRequest.mockResolvedValue({
+        'Signature-Input': 'sig=("@authority" "signature-agent")',
+        Signature: 'sig=:abc123:',
+        'Signature-Agent': '"https://bot.example/.well-known/http-message-signatures-directory"',
+      });
+      client = createClient(deps);
+      mockFetch.mockResolvedValue(
+        mockResponse(200, { data: { product: null } }) as any,
+      );
+
+      await client.query(store, gql, variables);
+
+      const fetchOptions = mockFetch.mock.calls[0][1] as any;
+      expect(fetchOptions.headers['Signature-Agent']).toBe(
+        '"https://bot.example/.well-known/http-message-signatures-directory"',
+      );
+      expect(fetchOptions.headers.Signature).toBe('sig=:abc123:');
     });
 
     it('throws ExtractionHttpError with retryAfter on HTTP 429', async () => {

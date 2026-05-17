@@ -21,6 +21,7 @@ import { QueueService } from './queue.service';
       { name: QUEUE_NAMES.CARD_SCRAPE },
       { name: QUEUE_NAMES.PRODUCT_DISCOVERY },
       { name: QUEUE_NAMES.PRODUCT_EXTRACTION },
+      { name: QUEUE_NAMES.STOREFRONT_EXTRACTION },
     ),
   ],
   providers: [QueueService],

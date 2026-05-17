@@ -47,7 +47,7 @@ const STORES = {
   },
 };
 
-const API_VERSION = '2025-07';
+const API_VERSION = process.env.SHOPIFY_STOREFRONT_API_VERSION || '2026-04';
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -325,7 +325,7 @@ async function testCollectionQuery() {
       for (const v of node.variants?.edges || []) {
         const vn = v.node;
         console.log(
-          `    variant: "${vn.title}" | $${vn.price?.amount} ${vn.price?.currencyCode} | sku=${vn.sku || '(none)'} | qty=${vn.quantityAvailable ?? '?'}`,
+          `    variant: "${vn.title}" | $${vn.price?.amount} ${vn.price?.currencyCode} | sku=${vn.sku || '(none)'} | available=${vn.availableForSale}`,
         );
         if (vn.selectedOptions?.length) {
           console.log(`      options: ${vn.selectedOptions.map((o) => `${o.name}=${o.value}`).join(', ')}`);
@@ -495,8 +495,7 @@ function printSummary(results) {
     console.log(`SKU populated: ${sampleVariant.sku ? 'YES' : 'NO'}`);
   }
 
-  // Note about quantityAvailable
-  console.log(`quantityAvailable: BLOCKED - requires unauthenticated_read_product_inventory scope`);
+  console.log('Inventory detail: tokenless mode uses availableForSale only');
 
   // Cost / throttling
   const costData =
