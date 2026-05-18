@@ -64,7 +64,7 @@ function ListsRoute() {
             variant="contained"
             color="primary"
             startIcon={<Add />}
-            onClick={() => navigate({ to: '/' })}
+            onClick={() => navigate({ to: '/', search: { mode: 'deck' } })}
           >
             New List
           </Button>
@@ -76,7 +76,7 @@ function ListsRoute() {
           title="No lists yet"
           description="Upload a list or paste one from Arena / MTGO and we'll scout every card across all 7 stores."
           action={
-            <Button variant="outlined" color="primary" onClick={() => navigate({ to: '/' })}>
+            <Button variant="outlined" color="primary" onClick={() => navigate({ to: '/', search: { mode: 'deck' } })}>
               Upload a List
             </Button>
           }

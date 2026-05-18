@@ -15,6 +15,7 @@ import { ProductTile } from '@/components/results/ProductTile';
 import { StaleNotice } from '@/components/results/StaleNotice';
 import { STORE_FACETS } from '@/data/sample';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useRecentSearches } from '@/hooks/useRecentSearches';
 
 export const Route = createFileRoute('/card/$name')({
   component: CardRoute,
@@ -34,6 +35,7 @@ function CardRoute() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const { push: pushRecent } = useRecentSearches();
 
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [conditions, setConditions] = useState<string[]>([]);
@@ -50,6 +52,10 @@ function CardRoute() {
       .then((data) => {
         if (controller.signal.aborted) return;
         setResponse(data);
+        if (data.results.length > 0) {
+          const cheapest = [...data.results].sort((a, b) => a.price - b.price)[0];
+          pushRecent(cheapest);
+        }
       })
       .catch((err: Error) => {
         if (err.name === 'AbortError') return;
@@ -59,7 +65,7 @@ function CardRoute() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [decoded, reloadKey]);
+  }, [decoded, reloadKey, pushRecent]);
 
   const stores: StoreInfo[] = useMemo(() => {
     if (response?.stores?.length) return response.stores;

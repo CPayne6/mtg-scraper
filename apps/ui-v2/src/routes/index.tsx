@@ -8,68 +8,31 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import SearchIcon from '@mui/icons-material/Search';
-import type { CardWithStore, Condition } from '@scoutlgs/shared';
+import { useSnackbar } from 'notistack';
 import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
 import { SavedListsMenu } from '@/components/lists/SavedListsMenu';
 import { ProductTile } from '@/components/results/ProductTile';
 import { Tip } from '@/components/feedback/Tip';
 import { useLists } from '@/components/lists/ListsContext';
+import { useRecentSearches } from '@/hooks/useRecentSearches';
+import { parseDeckList } from '@/utils/parseDeckList';
+
+type HomeSearch = { mode?: 'card' | 'deck' };
 
 export const Route = createFileRoute('/')({
   component: HomeRoute,
+  validateSearch: (search: Record<string, unknown>): HomeSearch => ({
+    mode: search.mode === 'deck' || search.mode === 'card' ? search.mode : undefined,
+  }),
 });
-
-const RECENT_CARDS: CardWithStore[] = [
-  {
-    title: 'Sol Ring',
-    store: 'Black Knight',
-    set: 'Commander 2021',
-    price: 2.25,
-    condition: 'nm' as Condition,
-    image: '',
-    currency: 'CAD',
-    link: '',
-    card_number: '',
-  },
-  {
-    title: 'Lightning Bolt',
-    store: 'Face to Face',
-    set: 'Magic 2010',
-    price: 1.75,
-    condition: 'nm' as Condition,
-    image: '',
-    currency: 'CAD',
-    link: '',
-    card_number: '',
-  },
-  {
-    title: 'Doubling Season',
-    store: 'Hobbiesville',
-    set: 'Battlebond',
-    price: 64.0,
-    condition: 'nm' as Condition,
-    image: '',
-    currency: 'CAD',
-    link: '',
-    card_number: '',
-  },
-  {
-    title: 'Esper Sentinel',
-    store: 'Exor Games',
-    set: 'Modern Horizons 2',
-    price: 28.99,
-    condition: 'nm' as Condition,
-    image: '',
-    currency: 'CAD',
-    link: '',
-    card_number: '',
-  },
-];
 
 function HomeRoute() {
   const navigate = useNavigate();
+  const { mode: initialMode } = Route.useSearch();
   const { count, save } = useLists();
-  const [mode, setMode] = useState<'card' | 'deck'>('card');
+  const { recents, clear: clearRecents } = useRecentSearches();
+  const { enqueueSnackbar } = useSnackbar();
+  const [mode, setMode] = useState<'card' | 'deck'>(initialMode ?? 'card');
   const [cardName, setCardName] = useState('');
   const [deckText, setDeckText] = useState('');
 
@@ -79,13 +42,12 @@ function HomeRoute() {
   };
 
   const handleScoutDeck = () => {
-    const cards = deckText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => line.replace(/^\d+\s+/, ''));
-    if (cards.length === 0) return;
-    const listName = `List${count + 1}`;
+    const cards = parseDeckList(deckText);
+    if (cards.length === 0) {
+      enqueueSnackbar("Couldn't find any cards in that list", { variant: 'warning' });
+      return;
+    }
+    const listName = `CardList${count + 1}`;
     const key = save(listName, cards);
     navigate({ to: '/list/$listName', params: { listName: key } });
   };
@@ -261,23 +223,27 @@ function HomeRoute() {
         )}
       </Paper>
 
-      <Box sx={{ mt: 7 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h3">Recently scouted</Typography>
-          <Button color="primary">See all →</Button>
+      {recents.length > 0 && (
+        <Box sx={{ mt: 7 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h3">Recently scouted</Typography>
+            <Button color="primary" onClick={clearRecents}>
+              Clear
+            </Button>
+          </Box>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: 2,
+            }}
+          >
+            {recents.map((c) => (
+              <ProductTile key={`${c.title}-${c.store}-${c.set}`} card={c} />
+            ))}
+          </Box>
         </Box>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-            gap: 2,
-          }}
-        >
-          {RECENT_CARDS.map((c) => (
-            <ProductTile key={c.title} card={c} />
-          ))}
-        </Box>
-      </Box>
+      )}
     </Container>
   );
 }

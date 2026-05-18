@@ -42,6 +42,33 @@ export function CartDrawer() {
   const storeKeys = Object.keys(byStore);
   const total = items.reduce((s, c) => s + (c.price ?? 0), 0);
 
+  const openAllStores = () => {
+    const opened = new Set<string>();
+    let openedCount = 0;
+    for (const store of storeKeys) {
+      const candidate = byStore[store].find((c) => c.link && c.link.trim().length > 0);
+      if (!candidate || opened.has(candidate.link)) continue;
+      const win = window.open(candidate.link, '_blank', 'noopener,noreferrer');
+      if (win) {
+        opened.add(candidate.link);
+        openedCount += 1;
+      }
+    }
+    if (openedCount === 0) {
+      enqueueSnackbar(
+        'No store links available yet — try again once prices have loaded.',
+        { variant: 'warning' },
+      );
+    } else {
+      enqueueSnackbar(
+        `Opening ${openedCount} ${openedCount === 1 ? 'store' : 'stores'}…`,
+        { variant: 'success' },
+      );
+    }
+  };
+
+  const hasAnyLink = items.some((c) => c.link && c.link.trim().length > 0);
+
   return (
     <Drawer
       anchor="right"
@@ -155,9 +182,14 @@ export function CartDrawer() {
                       <IconButton
                         size="small"
                         aria-label="View at store"
-                        onClick={() =>
-                          enqueueSnackbar(`Opening ${c.title} at ${c.store}`, { variant: 'default' })
-                        }
+                        disabled={!c.link}
+                        onClick={() => {
+                          if (c.link) {
+                            window.open(c.link, '_blank', 'noopener,noreferrer');
+                          } else {
+                            enqueueSnackbar(`No store link for ${c.title}`, { variant: 'warning' });
+                          }
+                        }}
                         sx={{ width: 28, height: 28 }}
                       >
                         <OpenInNew sx={{ fontSize: 14 }} />
@@ -206,11 +238,8 @@ export function CartDrawer() {
               variant="contained"
               color="primary"
               sx={{ flex: 1 }}
-              onClick={() =>
-                enqueueSnackbar(`Opening ${storeKeys.length} store${storeKeys.length === 1 ? '' : 's'}`, {
-                  variant: 'default',
-                })
-              }
+              disabled={!hasAnyLink}
+              onClick={openAllStores}
             >
               Open All Stores ({storeKeys.length})
             </Button>
