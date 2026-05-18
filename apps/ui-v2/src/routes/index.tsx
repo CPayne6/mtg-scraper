@@ -1,0 +1,283 @@
+import { useState } from 'react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import Box from '@mui/material/Box';
+import Container from '@mui/material/Container';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import SearchIcon from '@mui/icons-material/Search';
+import type { CardWithStore, Condition } from '@scoutlgs/shared';
+import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
+import { SavedListsMenu } from '@/components/lists/SavedListsMenu';
+import { ProductTile } from '@/components/results/ProductTile';
+import { Tip } from '@/components/feedback/Tip';
+import { useLists } from '@/components/lists/ListsContext';
+
+export const Route = createFileRoute('/')({
+  component: HomeRoute,
+});
+
+const RECENT_CARDS: CardWithStore[] = [
+  {
+    title: 'Sol Ring',
+    store: 'Black Knight',
+    set: 'Commander 2021',
+    price: 2.25,
+    condition: 'nm' as Condition,
+    image: '',
+    currency: 'CAD',
+    link: '',
+    card_number: '',
+  },
+  {
+    title: 'Lightning Bolt',
+    store: 'Face to Face',
+    set: 'Magic 2010',
+    price: 1.75,
+    condition: 'nm' as Condition,
+    image: '',
+    currency: 'CAD',
+    link: '',
+    card_number: '',
+  },
+  {
+    title: 'Doubling Season',
+    store: 'Hobbiesville',
+    set: 'Battlebond',
+    price: 64.0,
+    condition: 'nm' as Condition,
+    image: '',
+    currency: 'CAD',
+    link: '',
+    card_number: '',
+  },
+  {
+    title: 'Esper Sentinel',
+    store: 'Exor Games',
+    set: 'Modern Horizons 2',
+    price: 28.99,
+    condition: 'nm' as Condition,
+    image: '',
+    currency: 'CAD',
+    link: '',
+    card_number: '',
+  },
+];
+
+function HomeRoute() {
+  const navigate = useNavigate();
+  const { count, save } = useLists();
+  const [mode, setMode] = useState<'card' | 'deck'>('card');
+  const [cardName, setCardName] = useState('');
+  const [deckText, setDeckText] = useState('');
+
+  const handleScoutCard = (name: string) => {
+    if (!name.trim()) return;
+    navigate({ to: '/card/$name', params: { name: name.trim() } });
+  };
+
+  const handleScoutDeck = () => {
+    const cards = deckText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replace(/^\d+\s+/, ''));
+    if (cards.length === 0) return;
+    const listName = `List${count + 1}`;
+    const key = save(listName, cards);
+    navigate({ to: '/list/$listName', params: { listName: key } });
+  };
+
+  return (
+    <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
+      <Box sx={{ textAlign: 'center', py: { xs: 7, md: 8 } }}>
+        <Typography
+          component="h1"
+          sx={{
+            fontSize: { xs: '2.5rem', md: '3rem', lg: '4rem' },
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            lineHeight: 1.05,
+          }}
+        >
+          Find the cheapest copy at your LGS.
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: '1.125rem',
+            color: 'text.secondary',
+            mt: 2,
+            mx: 'auto',
+            maxWidth: 600,
+            lineHeight: 1.5,
+          }}
+        >
+          Paste a card or a card list. We'll check seven Greater Toronto game stores in seconds.
+        </Typography>
+        <Box sx={{ mt: 2.5, display: 'inline-flex', position: 'relative' }}>
+          <SavedListsMenu />
+        </Box>
+      </Box>
+
+      <Paper
+        sx={{
+          borderRadius: 3,
+          boxShadow: 2,
+          p: { xs: 3, md: 4 },
+          mt: 3,
+        }}
+      >
+        <Stack direction="row" spacing={0.5} sx={{ mb: 1.75 }}>
+          <Button
+            disableRipple
+            onClick={() => setMode('card')}
+            sx={(theme) => ({
+              px: 1.75,
+              py: 1,
+              borderRadius: 1,
+              fontSize: 14,
+              fontWeight: 500,
+              minWidth: 0,
+              color: mode === 'card' ? 'primary.main' : 'text.secondary',
+              bgcolor:
+                mode === 'card'
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(36,135,33,0.18)'
+                    : 'rgba(74,103,65,0.12)'
+                  : 'transparent',
+              '&:hover': {
+                bgcolor:
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(36,135,33,0.14)'
+                    : 'rgba(74,103,65,0.06)',
+                color: 'text.primary',
+              },
+            })}
+          >
+            Single card
+          </Button>
+          <Button
+            disableRipple
+            onClick={() => setMode('deck')}
+            sx={(theme) => ({
+              px: 1.75,
+              py: 1,
+              borderRadius: 1,
+              fontSize: 14,
+              fontWeight: 500,
+              minWidth: 0,
+              color: mode === 'deck' ? 'primary.main' : 'text.secondary',
+              bgcolor:
+                mode === 'deck'
+                  ? theme.palette.mode === 'dark'
+                    ? 'rgba(36,135,33,0.18)'
+                    : 'rgba(74,103,65,0.12)'
+                  : 'transparent',
+              '&:hover': {
+                bgcolor:
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(36,135,33,0.14)'
+                    : 'rgba(74,103,65,0.06)',
+                color: 'text.primary',
+              },
+            })}
+          >
+            Card list
+          </Button>
+        </Stack>
+
+        {mode === 'card' ? (
+          <>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr auto' },
+                gap: 1.5,
+                alignItems: 'stretch',
+              }}
+            >
+              <SkryfallAutocomplete
+                placeholder="e.g., Lightning Bolt, Black Lotus"
+                onSelect={(name) => {
+                  setCardName(name);
+                  handleScoutCard(name);
+                }}
+                onSubmit={(name) => {
+                  setCardName(name);
+                  handleScoutCard(name);
+                }}
+              />
+              <Button
+                variant="contained"
+                size="large"
+                color="primary"
+                startIcon={<SearchIcon />}
+                onClick={() => handleScoutCard(cardName || 'Atraxa, Grand Unifier')}
+              >
+                Scout Prices
+              </Button>
+            </Box>
+            <Box sx={{ mt: 1.75 }}>
+              <Tip>Try "Atraxa, Grand Unifier", "Sol Ring", or paste a Commander list.</Tip>
+            </Box>
+          </>
+        ) : (
+          <>
+            <TextField
+              fullWidth
+              multiline
+              rows={6}
+              placeholder={`1 Atraxa, Grand Unifier\n4 Lightning Bolt\n1 Sol Ring\n…`}
+              value={deckText}
+              onChange={(e) => setDeckText(e.target.value)}
+              slotProps={{
+                input: {
+                  sx: {
+                    fontFamily: '"JetBrains Mono", Menlo, monospace',
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  },
+                },
+              }}
+            />
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mt: 2,
+                gap: 2,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Tip>Arena, MTGO, or plain — we'll figure out the format.</Tip>
+              <Button variant="contained" size="large" color="primary" onClick={handleScoutDeck}>
+                Scout Deck
+              </Button>
+            </Box>
+          </>
+        )}
+      </Paper>
+
+      <Box sx={{ mt: 7 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h3">Recently scouted</Typography>
+          <Button color="primary">See all →</Button>
+        </Box>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 2,
+          }}
+        >
+          {RECENT_CARDS.map((c) => (
+            <ProductTile key={c.title} card={c} />
+          ))}
+        </Box>
+      </Box>
+    </Container>
+  );
+}
