@@ -1,4 +1,4 @@
-import { InjectQueue, Process, Processor } from '@nestjs/bull';
+import { InjectQueue, OnQueueFailed, Process, Processor } from '@nestjs/bull';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
@@ -33,6 +33,16 @@ interface ExtractedProduct {
   variants: ExtractedCardVariant[];
 }
 
+// Pagination jobs re-enqueue themselves for the next page. Without explicit
+// attempts/backoff they default to 1 try, so any transient `fetch failed`
+// from undici (proxy IP drop, TLS hiccup) permanently fails that page.
+const STOREFRONT_JOB_OPTS = {
+  removeOnComplete: 100,
+  removeOnFail: 500,
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5000 },
+};
+
 /**
  * Processes one page (250 products) per job.
  * After processing, enqueues the next page back into the queue.
@@ -65,6 +75,7 @@ export class StorefrontProcessor implements OnModuleInit {
   }
 
   async onModuleInit() {
+    this.printingMatcher.subscribeToCardDataChanges();
     await this.printingMatcher.warmCaches();
   }
 
@@ -168,10 +179,7 @@ export class StorefrontProcessor implements OnModuleInit {
           updatedSince,
           discoveryRunId,
         } as StorefrontExtractionJobData,
-        {
-          removeOnComplete: 100,
-          removeOnFail: 500,
-        },
+        STOREFRONT_JOB_OPTS,
       );
     }
 
@@ -248,7 +256,7 @@ export class StorefrontProcessor implements OnModuleInit {
           updatedSince,
           discoveryRunId,
         } as StorefrontExtractionJobData,
-        { removeOnComplete: 100, removeOnFail: 500 },
+        STOREFRONT_JOB_OPTS,
       );
     }
 
@@ -652,6 +660,106 @@ export class StorefrontProcessor implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------------------
+  // Failure recovery
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fires once a pagination job has exhausted its BullMQ retry budget.
+   *
+   * Without this handler, a single permanently-failed page terminates the
+   * chain for that store — every product with an id greater than the failed
+   * `lastId` is silently abandoned until the next scheduled run. That's what
+   * caused General Ferrous Rokiric (and many others) to be missing from prod.
+   *
+   * Recovery: probe for the very next product after the failed `lastId` via
+   * a one-row `id:>lastId` query, then enqueue a fresh pagination job
+   * starting from that id. `recoveryDepth` caps the loop so a genuinely
+   * broken store can't spin forever.
+   */
+  @OnQueueFailed()
+  async onPaginationFailed(job: Job, err: Error): Promise<void> {
+    if (job.name !== JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION) return;
+    if (job.attemptsMade < (job.opts.attempts ?? 1)) return; // not the final try
+
+    const data = job.data as StorefrontExtractionJobData;
+    const depth = data.recoveryDepth ?? 0;
+    const MAX_DEPTH = 5;
+
+    if (depth >= MAX_DEPTH) {
+      this.logger.error(
+        `storefront chain permanently abandoned: storeId=${data.storeId} lastId=${data.lastId} (recoveryDepth=${depth}): ${err.message}`,
+      );
+      return;
+    }
+
+    const store = await this.storeRepository.findOne({
+      where: { id: data.storeId },
+    });
+    if (!store) return;
+    const scope = data.scope ?? store.scraperConfig?.storefrontScope;
+    if (!scope || !data.lastId) {
+      // No anchor to probe from — fall back to delayed retry of the same job.
+      await this.storefrontQueue.add(
+        job.name,
+        { ...data, recoveryDepth: depth + 1 } satisfies StorefrontExtractionJobData,
+        { ...STOREFRONT_JOB_OPTS, delay: 60_000 },
+      );
+      return;
+    }
+
+    const adapter = this.platformAdapterFactory.getExtractionAdapter(
+      store.platformType!,
+    ) as StorefrontExtractionAdapter;
+
+    try {
+      const nextId = await adapter.findNextProductId(
+        store,
+        scope,
+        data.lastId,
+        data.updatedSince ?? null,
+      );
+
+      if (!nextId) {
+        this.logger.warn(
+          `storefront skip-ahead: storeId=${data.storeId} reached end of catalog past lastId=${data.lastId}`,
+        );
+        return;
+      }
+
+      // Resume from one id below the discovered next product so that product
+      // is included in the next fetch (the next-page query uses `id:>lastId`).
+      // Shopify ids are sparse 64-bit ints; subtracting 1 lands on an invalid
+      // id which the filter simply doesn't match.
+      const resumeFrom = (BigInt(nextId) - 1n).toString();
+
+      this.logger.warn(
+        `storefront skip-ahead: storeId=${data.storeId} jumping from lastId=${data.lastId} to lastId=${resumeFrom} (next valid id=${nextId}, depth=${depth})`,
+      );
+
+      await this.storefrontQueue.add(
+        job.name,
+        {
+          ...data,
+          lastId: resumeFrom,
+          recoveryDepth: depth + 1,
+        } satisfies StorefrontExtractionJobData,
+        { ...STOREFRONT_JOB_OPTS, delay: 30_000 },
+      );
+    } catch (probeErr) {
+      this.logger.error(
+        `storefront skip-ahead probe failed for storeId=${data.storeId} at lastId=${data.lastId}: ${(probeErr as Error).message}`,
+      );
+      // Probe itself failed — fall back to a plain delayed retry of the
+      // original job so we don't drop the chain entirely.
+      await this.storefrontQueue.add(
+        job.name,
+        { ...data, recoveryDepth: depth + 1 } satisfies StorefrontExtractionJobData,
+        { ...STOREFRONT_JOB_OPTS, delay: 120_000 },
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
@@ -684,9 +792,8 @@ export class StorefrontProcessor implements OnModuleInit {
     );
 
     await this.storefrontQueue.add(job.name, job.data, {
+      ...STOREFRONT_JOB_OPTS,
       delay: jittered,
-      removeOnComplete: 100,
-      removeOnFail: 500,
     });
     return true;
   }

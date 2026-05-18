@@ -5,6 +5,8 @@ import { pipeline } from 'stream/promises';
 import { parser } from 'stream-json';
 import { streamArray } from 'stream-json/streamers/StreamArray';
 import { chain } from 'stream-chain';
+import Redis from 'ioredis';
+import { PUBSUB_CHANNELS } from '@scoutlgs/shared';
 
 const PLAYABLE_LAYOUTS = new Set([
   'normal',
@@ -504,8 +506,29 @@ async function seedScryfall() {
     console.log(`  Printings: ${printingCount.rows[0].count}`);
     console.log(`  Token Names: ${tokenNameCount.rows[0].count}`);
     console.log(`  Token Printings: ${tokenPrintingCount.rows[0].count}`);
+
+    await notifyCardDataChanged();
   } finally {
     await client.end();
+  }
+}
+
+async function notifyCardDataChanged(): Promise<void> {
+  const pub = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD,
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+  });
+  try {
+    await pub.connect();
+    await pub.publish(PUBSUB_CHANNELS.CARD_DATA_CHANGED, 'all');
+    console.log(`Published cache-invalidation on ${PUBSUB_CHANNELS.CARD_DATA_CHANGED}`);
+  } catch (err) {
+    console.warn('Failed to publish cache-invalidation (scrapers will need a manual restart):', err);
+  } finally {
+    pub.disconnect();
   }
 }
 

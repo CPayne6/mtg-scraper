@@ -1,4 +1,6 @@
 import { Client } from 'pg';
+import Redis from 'ioredis';
+import { PUBSUB_CHANNELS } from '@scoutlgs/shared';
 
 const PLAYABLE_LAYOUTS = new Set([
   'normal',
@@ -295,8 +297,29 @@ async function seedSet(setCode: string) {
     console.log(
       `\nSet ${setCode} complete: ${printingCount.rows[0].count} printings, ${tokenPrintingCount.rows[0].count} token printings`,
     );
+
+    await notifyCardDataChanged(setCode);
   } finally {
     await client.end();
+  }
+}
+
+async function notifyCardDataChanged(setCode: string): Promise<void> {
+  const pub = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD,
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+  });
+  try {
+    await pub.connect();
+    await pub.publish(PUBSUB_CHANNELS.CARD_DATA_CHANGED, `set:${setCode}`);
+    console.log(`Published cache-invalidation on ${PUBSUB_CHANNELS.CARD_DATA_CHANGED}`);
+  } catch (err) {
+    console.warn('Failed to publish cache-invalidation (scrapers will need a manual restart):', err);
+  } finally {
+    pub.disconnect();
   }
 }
 

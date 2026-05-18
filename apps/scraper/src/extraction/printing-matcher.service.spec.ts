@@ -135,11 +135,16 @@ describe('PrintingMatcherService', () => {
       }),
     };
 
+    const mockConfigService = {
+      get: (_key: string, defaultValue?: unknown) => defaultValue,
+    };
+
     service = new PrintingMatcherService(
       mockPrintingRepo as Repository<CardPrinting>,
       mockCardNameRepo as Repository<CardName>,
       mockSetRepo as Repository<ScryfallSet>,
       mockDataSource as DataSource,
+      mockConfigService as never,
     );
   });
 
