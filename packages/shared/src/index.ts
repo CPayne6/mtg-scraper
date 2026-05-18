@@ -20,4 +20,4 @@ export type {
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
 } from './queue.types';
-export { QUEUE_NAMES, JOB_NAMES } from './queue.types';
+export { QUEUE_NAMES, JOB_NAMES, PUBSUB_CHANNELS } from './queue.types';

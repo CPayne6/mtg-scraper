@@ -2,6 +2,10 @@ export const QUEUE_NAMES = {
   STOREFRONT_EXTRACTION: 'storefront-extraction',
 } as const;
 
+export const PUBSUB_CHANNELS = {
+  CARD_DATA_CHANGED: 'scoutlgs:card-data-changed',
+} as const;
+
 export const JOB_NAMES = {
   EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
   /**
@@ -62,6 +66,12 @@ export interface StorefrontExtractionJobData {
   priority?: number;
   discoveryRunId?: number;
   maxCardsAdded?: number;
+  /**
+   * Bumped by the @OnQueueFailed recovery handler each time a permanent
+   * failure auto-re-enqueues this job. Caps the recovery loop so a
+   * genuinely-broken page doesn't spin forever.
+   */
+  recoveryDepth?: number;
 }
 
 /**

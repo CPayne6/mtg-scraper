@@ -188,6 +188,32 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   }
 
   /**
+   * Find the next product strictly greater than `afterId` for this scope.
+   * Used by the @OnQueueFailed recovery handler to skip past a page that
+   * permanently failed all retries — returns the first product on the
+   * next page, so pagination can resume from there.
+   *
+   * Returns `null` if there is no product after `afterId` (genuine end of catalog).
+   */
+  async findNextProductId(
+    store: Store,
+    scope: string,
+    afterId: string,
+    updatedSince?: string | null,
+  ): Promise<string | null> {
+    const parts = [scope, `id:>${afterId}`];
+    if (updatedSince) parts.push(`updated_at:>'${updatedSince}'`);
+    const query = parts.join(' ');
+
+    const data = await this.storefrontClient.query<{
+      products: { edges: { node: { id: string } }[] };
+    }>(store, PRODUCT_ID_ASC_QUERY, { query });
+
+    const edge = data.products.edges[0]?.node.id;
+    return edge ? edge.split('/').pop() ?? null : null;
+  }
+
+  /**
    * Get the lowest and highest Shopify product IDs for the given scope.
    * Two cheap single-product queries (sorted by ID asc / desc).
    *

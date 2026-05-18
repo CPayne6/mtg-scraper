@@ -74,13 +74,28 @@ export class StorefrontClient {
       }
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ query: gql, variables }),
-      ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
-      signal: AbortSignal.timeout(15000),
-    });
+    // Undici wraps the real network error in `err.cause` and BullMQ only
+    // serializes the top-level message. Rethrow with the cause flattened so
+    // "fetch failed" failures show the actual reason (ECONNRESET, timeout,
+    // proxy disconnect, etc.) in logs and the Redis failure record.
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: gql, variables }),
+        ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (err) {
+      const cause = (err as { cause?: { code?: string; message?: string } })
+        .cause;
+      const reason =
+        cause?.code ?? cause?.message ?? (err as Error).message;
+      throw new Error(
+        `fetch failed for ${store.name} via proxy ${proxyNumber}: ${reason}`,
+      );
+    }
 
     // Handle HTTP-level errors
     if (!response.ok) {

@@ -1,8 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Raw } from 'typeorm';
 import { CardPrinting, CardName, ScryfallSet } from '@scoutlgs/core';
 import { LRUCache } from 'lru-cache';
+import Redis from 'ioredis';
+import { PUBSUB_CHANNELS } from '@scoutlgs/shared';
 
 export type NameMatchType = 'exact' | 'fuzzy' | 'frontface' | 'none';
 /**
@@ -52,7 +55,7 @@ interface NameCacheEntry {
 }
 
 @Injectable()
-export class PrintingMatcherService {
+export class PrintingMatcherService implements OnModuleDestroy {
   private readonly logger = new Logger(PrintingMatcherService.name);
 
   // LRU cache: "setCode:collectorNumber" → { cardPrintingId, cardNameId }
@@ -73,6 +76,8 @@ export class PrintingMatcherService {
    */
   private warmupComplete: Promise<void> = Promise.resolve();
 
+  private subscriber?: Redis;
+
   constructor(
     @InjectRepository(CardPrinting)
     private readonly cardPrintingRepository: Repository<CardPrinting>,
@@ -81,10 +86,63 @@ export class PrintingMatcherService {
     @InjectRepository(ScryfallSet)
     private readonly setRepository: Repository<ScryfallSet>,
     private readonly dataSource: DataSource,
+    private readonly configService: ConfigService,
   ) {
     this.printingCache = new LRUCache({ max: 100000 });
     this.nameCache = new LRUCache({ max: 50000 });
     this.setNameCache = new LRUCache({ max: 2000 });
+  }
+
+  /**
+   * Listens for card-data-changed notifications from the Scryfall seed
+   * scripts. When the seed publishes, we flush the in-memory caches and
+   * re-warm from the now-populated card_names/sets tables so a fresh seed
+   * doesn't require restarting the scraper.
+   */
+  subscribeToCardDataChanges(): void {
+    if (this.subscriber) return;
+
+    this.subscriber = new Redis({
+      host: this.configService.get<string>('REDIS_HOST', 'localhost'),
+      port: this.configService.get<number>('REDIS_PORT', 6379),
+      password: this.configService.get<string>('REDIS_PASSWORD'),
+      maxRetriesPerRequest: null,
+    });
+
+    this.subscriber.on('error', (err) => {
+      this.logger.error('card-data-changed subscriber error:', err);
+    });
+
+    this.subscriber.subscribe(PUBSUB_CHANNELS.CARD_DATA_CHANGED, (err) => {
+      if (err) {
+        this.logger.error(
+          `Failed to subscribe to ${PUBSUB_CHANNELS.CARD_DATA_CHANGED}:`,
+          err,
+        );
+      } else {
+        this.logger.log(
+          `Subscribed to ${PUBSUB_CHANNELS.CARD_DATA_CHANGED}`,
+        );
+      }
+    });
+
+    this.subscriber.on('message', (channel, message) => {
+      if (channel !== PUBSUB_CHANNELS.CARD_DATA_CHANGED) return;
+      this.logger.warn(
+        `card-data-changed received (scope=${message}); flushing caches and re-warming`,
+      );
+      this.printingCache.clear();
+      this.nameCache.clear();
+      this.setNameCache.clear();
+      void this.warmCaches();
+    });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.subscriber) {
+      this.subscriber.disconnect();
+      this.subscriber = undefined;
+    }
   }
 
   /**
