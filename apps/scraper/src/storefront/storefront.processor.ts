@@ -47,10 +47,13 @@ const STOREFRONT_JOB_OPTS = {
   backoff: { type: 'exponential' as const, delay: 5000 },
 };
 
-// Cap recursive bucket splitting. A year → ~6mo → ~3mo → ~6wk → ~3wk → ~10d
-// covers any LGS catalog we'd plausibly see. Hitting 25K at depth 5 means
-// the store has >800K products in a 10-day window — log and abandon.
-const MAX_BUCKET_DEPTH = 5;
+// Cap recursive bucket splitting. F2F's empirical worst case was a single
+// 10-day migration window with >25K products (Shopify catalog import on
+// 2025-01-20/21 brought in ~50K cards at once). Yearly bucket → 6mo → 3mo →
+// 6wk → 3wk → 10d → 5d → 2.5d → ~30hr covers that without abandonment.
+// Hitting 25K at depth 8 means >800K products in a ~30hr window — that's a
+// genuine outlier and surfacing it as an error is the right move.
+const MAX_BUCKET_DEPTH = 8;
 
 /**
  * Processes one page (250 products) per job.
