@@ -143,7 +143,11 @@ services:
       - USE_DOCKER_SECRETS=true
       - EXTRACTION_ENABLED=true
       - EXTRACTION_CRON_TIME=0 1 * * *
-      - INCREMENTAL_EXTRACTION_ENABLED=true
+      # Hourly incremental disabled — updated_at clusters tightly (stores'
+      # price-sync jobs touch every product daily), so the `updated_at:>cutoff`
+      # filter doesn't actually narrow the result set. The bucket flow's full
+      # nightly run handles freshness adequately.
+      - INCREMENTAL_EXTRACTION_ENABLED=false
       - INCREMENTAL_EXTRACTION_CRON_TIME=0 9-21 * * *
       - SCHEDULE_TIMEZONE=America/Toronto
       - LOG_LEVEL=log,warn,error,fatal
