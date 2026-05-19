@@ -6,6 +6,7 @@ import {
   JOB_NAMES,
   StorefrontExtractionJobData,
   StorefrontBootstrapJobData,
+  StorefrontPlanJobData,
   ReextractUnmatchedJobData,
 } from '@scoutlgs/shared';
 
@@ -21,6 +22,7 @@ export class QueueService {
     private readonly storefrontExtractionQueue: Queue<
       | StorefrontExtractionJobData
       | StorefrontBootstrapJobData
+      | StorefrontPlanJobData
       | ReextractUnmatchedJobData
     >,
   ) {
@@ -127,6 +129,42 @@ export class QueueService {
     } catch (error) {
       this.logger.error(
         `Failed to enqueue Storefront bootstrap for store ${storeId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Enqueue a per-store plan job. The plan probes the store's `created_at`
+   * range and fans out one bucket job per year. Each bucket job
+   * cursor-paginates within its date range and recursively splits if it
+   * hits Shopify's 25K depth limit.
+   *
+   * This is the replacement for `enqueueStorefrontExtractionJob` —
+   * id-based chained pagination silently dropped products because Shopify
+   * doesn't actually support `id:>X` as a filter on the Storefront API.
+   */
+  async enqueueStorefrontPlanJob(
+    storeId: number,
+    options: { discoveryRunId?: number } = {},
+  ): Promise<void> {
+    try {
+      await this.storefrontExtractionQueue.add(
+        JOB_NAMES.STOREFRONT_PLAN,
+        { storeId, ...options } satisfies StorefrontPlanJobData,
+        {
+          priority: 1,
+          removeOnComplete: 50,
+          removeOnFail: 100,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      );
+      this.logger.log(`Enqueued storefront plan for store ${storeId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue storefront plan for store ${storeId}:`,
         error,
       );
       throw error;

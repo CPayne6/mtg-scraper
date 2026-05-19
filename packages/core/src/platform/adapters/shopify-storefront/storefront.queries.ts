@@ -120,12 +120,82 @@ export const SEARCH_PRODUCTS_QUERY = `
 
 /**
  * Root products query with full variant details, sorted by ID.
- * Used for ID-based pagination via products(query: "scope id:>lastId").
- * Variables: $query (filter string including id:>X), $first
+ * Used by the legacy `id:>X` pagination path. Being replaced by the
+ * created_at + cursor strategy in PRODUCTS_BY_CREATED_AT_QUERY — once
+ * the migration is done this whole query can go.
+ *
+ * Variables: $query (filter string including id:>X), $first.
  */
 export const PRODUCTS_QUERY = `
   query ProductsByQuery($query: String!, $first: Int!) {
     products(first: $first, query: $query, sortKey: ID) {
+      edges {
+        node {
+          id
+          handle
+          title
+          vendor
+          productType
+          descriptionHtml
+          availableForSale
+          updatedAt
+          tags
+          onlineStoreUrl
+          images(first: 10) {
+            edges {
+              node {
+                url
+                altText
+              }
+            }
+          }
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                title
+                sku
+                availableForSale
+                price {
+                  amount
+                  currencyCode
+                }
+                selectedOptions {
+                  name
+                  value
+                }
+              }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
+/**
+ * Cursor-paginated products query for the date-bucket strategy.
+ *
+ * `sortKey: CREATED_AT` matches the bucketing dimension, so cursor pagination
+ * stays consistent across pages within the bucket. `after: $after` is the
+ * opaque cursor returned by Shopify in `pageInfo.endCursor` — server-side
+ * stateful, exhaustive within the snapshot (unlike the legacy `id:>X` filter
+ * which is partially-ignored undocumented behaviour).
+ *
+ * Hitting Shopify's 25K cursor depth returns a GraphQL error
+ * "Platform limit for pagination (25000 items) exceeded by 250 items." —
+ * the adapter translates that into `StorefrontPaginationLimitError` and the
+ * processor splits the bucket's date range in two.
+ *
+ * Variables: $query (scope + created_at:>='X' created_at:<'Y'), $first, $after.
+ */
+export const PRODUCTS_BY_CREATED_AT_QUERY = `
+  query ProductsByCreatedAt($query: String!, $first: Int!, $after: String) {
+    products(first: $first, query: $query, sortKey: CREATED_AT, after: $after) {
       edges {
         node {
           id
@@ -194,6 +264,55 @@ export const PRODUCT_ID_ASC_QUERY = `
 export const PRODUCT_ID_DESC_QUERY = `
   query ProductIdDesc($query: String!) {
     products(first: 1, query: $query, sortKey: ID, reverse: true) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Lightweight query returning the oldest matching product's `createdAt`.
+ * Used to find the lower bound for date-range bucketing — answers
+ * "when does this store's catalog start?" without paginating.
+ */
+export const PRODUCT_CREATED_AT_ASC_QUERY = `
+  query ProductCreatedAtAsc($query: String!) {
+    products(first: 1, query: $query, sortKey: CREATED_AT) {
+      edges {
+        node {
+          createdAt
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Lightweight query returning the newest matching product's `createdAt`.
+ * Used to find the upper bound for date-range bucketing.
+ */
+export const PRODUCT_CREATED_AT_DESC_QUERY = `
+  query ProductCreatedAtDesc($query: String!) {
+    products(first: 1, query: $query, sortKey: CREATED_AT, reverse: true) {
+      edges {
+        node {
+          createdAt
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Cheap "does this bucket have anything?" probe. Used by date-range bucket
+ * jobs to skip empty windows without doing a full first:250 fetch.
+ */
+export const PRODUCT_BUCKET_PROBE_QUERY = `
+  query ProductBucketProbe($query: String!) {
+    products(first: 1, query: $query, sortKey: CREATED_AT) {
       edges {
         node {
           id

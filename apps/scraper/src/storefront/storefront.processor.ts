@@ -9,6 +9,9 @@ import {
   StorefrontExtractionJobData,
   StorefrontExtractionJobResult,
   StorefrontBootstrapJobData,
+  StorefrontPlanJobData,
+  StorefrontBucketJobData,
+  StorefrontBucketJobResult,
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
 } from '@scoutlgs/shared';
@@ -20,6 +23,7 @@ import {
   CardListing,
   ExtractionHttpError,
   PlatformAdapterFactory,
+  StorefrontPaginationLimitError,
 } from '@scoutlgs/core';
 import type { ExtractedCardVariant } from '@scoutlgs/core';
 import type { StorefrontExtractionAdapter } from '@scoutlgs/core';
@@ -42,6 +46,14 @@ const STOREFRONT_JOB_OPTS = {
   attempts: 3,
   backoff: { type: 'exponential' as const, delay: 5000 },
 };
+
+// Cap recursive bucket splitting. F2F's empirical worst case was a single
+// 10-day migration window with >25K products (Shopify catalog import on
+// 2025-01-20/21 brought in ~50K cards at once). Yearly bucket → 6mo → 3mo →
+// 6wk → 3wk → 10d → 5d → 2.5d → ~30hr covers that without abandonment.
+// Hitting 25K at depth 8 means >800K products in a ~30hr window — that's a
+// genuine outlier and surfacing it as an error is the right move.
+const MAX_BUCKET_DEPTH = 8;
 
 /**
  * Processes one page (250 products) per job.
@@ -261,6 +273,262 @@ export class StorefrontProcessor implements OnModuleInit {
     }
 
     return { storeId, rangesEnqueued: ranges.length, success: true };
+  }
+
+  /**
+   * Per-store plan job (V2 entrypoint).
+   *
+   * Probes the store's `created_at` range and enqueues one bucket job per
+   * year between the min and max. Each bucket then cursor-paginates within
+   * its date range, recursively splitting if it hits Shopify's 25K limit.
+   *
+   * Replaces the id-based bootstrap. The reason `created_at` instead of `id`:
+   * Shopify's `products(query: "id:>X")` filter is undocumented and partially
+   * ignored — pages came back with non-deterministic gaps and we silently
+   * lost ~50% of large catalogs. `created_at` is a documented filter and
+   * cursor pagination is documented to be exhaustive within a snapshot.
+   */
+  @Process({
+    name: JOB_NAMES.STOREFRONT_PLAN,
+    concurrency: 5,
+  })
+  async plan(
+    job: Job<StorefrontPlanJobData>,
+  ): Promise<{ storeId: number; bucketsEnqueued: number; success: boolean }> {
+    const { storeId, discoveryRunId } = job.data;
+
+    const store = await this.storeRepository.findOne({ where: { id: storeId } });
+    if (!store) throw new Error(`Store ${storeId} not found`);
+
+    const scope = store.scraperConfig?.storefrontScope;
+    if (!scope) {
+      throw new Error(
+        `Store ${store.name} (${storeId}) is missing storefrontScope`,
+      );
+    }
+
+    const adapter = this.platformAdapterFactory.getExtractionAdapter(
+      store.platformType!,
+    ) as StorefrontExtractionAdapter;
+
+    let minCreatedAt: string | null;
+    let maxCreatedAt: string | null;
+    try {
+      ({ minCreatedAt, maxCreatedAt } = await adapter.findCreatedAtRange(
+        store,
+        scope,
+      ));
+    } catch (error) {
+      if (await this.rescheduleIfThrottled(job, error)) {
+        return { storeId, bucketsEnqueued: 0, success: true };
+      }
+      throw error;
+    }
+
+    if (!minCreatedAt || !maxCreatedAt) {
+      this.logger.warn(`${store.name}: plan found no products`);
+      return { storeId, bucketsEnqueued: 0, success: true };
+    }
+
+    const buckets = generateYearlyBuckets(minCreatedAt, maxCreatedAt);
+    this.logger.warn(
+      `${store.name}: plan [${minCreatedAt}..${maxCreatedAt}] → ${buckets.length} yearly buckets`,
+    );
+
+    for (const { start, end } of buckets) {
+      await this.storefrontQueue.add(
+        JOB_NAMES.STOREFRONT_BUCKET,
+        {
+          storeId,
+          scope,
+          createdAtStart: start,
+          createdAtEnd: end,
+          cursor: null,
+          bucketDepth: 0,
+          discoveryRunId,
+        } satisfies StorefrontBucketJobData,
+        STOREFRONT_JOB_OPTS,
+      );
+    }
+
+    return { storeId, bucketsEnqueued: buckets.length, success: true };
+  }
+
+  /**
+   * Per-date-range bucket job. Cursor-paginates products within
+   * `[createdAtStart, createdAtEnd)` until either:
+   *   - `hasNextPage: false` → the bucket is fully drained
+   *   - `StorefrontPaginationLimitError` (Shopify's documented 25K cap) →
+   *     halves the date range and enqueues two child buckets at depth+1
+   *
+   * Cap at MAX_BUCKET_DEPTH so a genuinely pathological store can't recurse
+   * forever — log and abandon at the cap.
+   */
+  @Process({
+    name: JOB_NAMES.STOREFRONT_BUCKET,
+    concurrency: 5,
+  })
+  async bucket(
+    job: Job<StorefrontBucketJobData>,
+  ): Promise<StorefrontBucketJobResult> {
+    const {
+      storeId,
+      scope,
+      createdAtStart,
+      createdAtEnd,
+      cursor,
+      bucketDepth,
+      discoveryRunId,
+    } = job.data;
+
+    const store = await this.storeRepository.findOne({ where: { id: storeId } });
+    if (!store) throw new Error(`Store ${storeId} not found`);
+
+    const adapter = this.platformAdapterFactory.getExtractionAdapter(
+      store.platformType!,
+    ) as StorefrontExtractionAdapter;
+
+    let products: ExtractedProduct[];
+    let nextCursor: string | null;
+    try {
+      const result = await adapter.fetchPageByCursor(
+        store,
+        scope,
+        createdAtStart,
+        createdAtEnd,
+        cursor,
+      );
+      products = result.products;
+      nextCursor = result.nextCursor;
+    } catch (error) {
+      if (error instanceof StorefrontPaginationLimitError) {
+        if (bucketDepth >= MAX_BUCKET_DEPTH) {
+          this.logger.error(
+            `${store.name}: bucket [${createdAtStart}..${createdAtEnd}) hit 25K at max depth ${bucketDepth} — abandoning`,
+          );
+          return {
+            storeId,
+            createdAtStart,
+            createdAtEnd,
+            productsProcessed: 0,
+            cardsAdded: 0,
+            errors: 0,
+            isBucketComplete: false,
+            wasSplit: false,
+            success: false,
+            error: 'Max bucket depth exceeded',
+          };
+        }
+
+        const [left, right] = halveDateRange(createdAtStart, createdAtEnd);
+        this.logger.warn(
+          `${store.name}: bucket [${createdAtStart}..${createdAtEnd}) hit 25K — splitting into [${left.end}) + [${right.start}..)`,
+        );
+
+        await Promise.all([
+          this.storefrontQueue.add(
+            JOB_NAMES.STOREFRONT_BUCKET,
+            {
+              storeId,
+              scope,
+              createdAtStart: left.start,
+              createdAtEnd: left.end,
+              cursor: null,
+              bucketDepth: bucketDepth + 1,
+              discoveryRunId,
+            } satisfies StorefrontBucketJobData,
+            STOREFRONT_JOB_OPTS,
+          ),
+          this.storefrontQueue.add(
+            JOB_NAMES.STOREFRONT_BUCKET,
+            {
+              storeId,
+              scope,
+              createdAtStart: right.start,
+              createdAtEnd: right.end,
+              cursor: null,
+              bucketDepth: bucketDepth + 1,
+              discoveryRunId,
+            } satisfies StorefrontBucketJobData,
+            STOREFRONT_JOB_OPTS,
+          ),
+        ]);
+
+        return {
+          storeId,
+          createdAtStart,
+          createdAtEnd,
+          productsProcessed: 0,
+          cardsAdded: 0,
+          errors: 0,
+          isBucketComplete: false,
+          wasSplit: true,
+          success: true,
+        };
+      }
+      if (await this.rescheduleIfThrottled(job, error)) {
+        return {
+          storeId,
+          createdAtStart,
+          createdAtEnd,
+          productsProcessed: 0,
+          cardsAdded: 0,
+          errors: 0,
+          isBucketComplete: false,
+          wasSplit: false,
+          success: true,
+        };
+      }
+      throw error;
+    }
+
+    let cardsAdded = 0;
+    let errors = 0;
+    if (products.length > 0) {
+      const pageResult = await this.processPage(
+        products,
+        store.id,
+        discoveryRunId,
+      );
+      cardsAdded = pageResult.cards;
+      errors = pageResult.errors;
+    }
+
+    const isBucketComplete = nextCursor === null;
+
+    this.logger.warn(
+      `${store.name} [${createdAtStart}..${createdAtEnd}) d=${bucketDepth}: ${products.length} products, ${cardsAdded} cards, ${errors} errors${
+        isBucketComplete ? ' (bucket complete)' : ' (next page)'
+      }`,
+    );
+
+    if (!isBucketComplete) {
+      await this.storefrontQueue.add(
+        JOB_NAMES.STOREFRONT_BUCKET,
+        {
+          storeId,
+          scope,
+          createdAtStart,
+          createdAtEnd,
+          cursor: nextCursor,
+          bucketDepth,
+          discoveryRunId,
+        } satisfies StorefrontBucketJobData,
+        STOREFRONT_JOB_OPTS,
+      );
+    }
+
+    return {
+      storeId,
+      createdAtStart,
+      createdAtEnd,
+      productsProcessed: products.length,
+      cardsAdded,
+      errors,
+      isBucketComplete,
+      wasSplit: false,
+      success: true,
+    };
   }
 
   /**
@@ -836,4 +1104,49 @@ export function splitIdRange(
     cursor = upper;
   }
   return ranges;
+}
+
+/**
+ * Split [minCreatedAt, maxCreatedAt] into yearly buckets aligned to Jan 1
+ * UTC boundaries. The first bucket starts at the actual `minCreatedAt`
+ * (not the year start) so the catalog's true earliest product is included.
+ * The last bucket ends one second past `maxCreatedAt` so the most recent
+ * product is included (created_at filter is exclusive on the upper bound).
+ */
+export function generateYearlyBuckets(
+  minCreatedAt: string,
+  maxCreatedAt: string,
+): { start: string; end: string }[] {
+  const min = new Date(minCreatedAt);
+  const max = new Date(maxCreatedAt);
+  if (min > max) return [];
+
+  const buckets: { start: string; end: string }[] = [];
+  let cursor = min;
+  while (cursor <= max) {
+    const nextYear = new Date(Date.UTC(cursor.getUTCFullYear() + 1, 0, 1));
+    const end = nextYear > max ? new Date(max.getTime() + 1000) : nextYear;
+    buckets.push({ start: cursor.toISOString(), end: end.toISOString() });
+    cursor = nextYear;
+  }
+  return buckets;
+}
+
+/**
+ * Split a date range in two at its midpoint. Used by the bucket processor
+ * when a query hits Shopify's 25K pagination cap — each half becomes its
+ * own bucket job at bucketDepth + 1.
+ */
+export function halveDateRange(
+  start: string,
+  end: string,
+): [{ start: string; end: string }, { start: string; end: string }] {
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  const midMs = startMs + Math.floor((endMs - startMs) / 2);
+  const mid = new Date(midMs).toISOString();
+  return [
+    { start, end: mid },
+    { start: mid, end },
+  ];
 }
