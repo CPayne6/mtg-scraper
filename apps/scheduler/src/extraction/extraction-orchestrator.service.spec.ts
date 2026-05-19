@@ -24,7 +24,7 @@ describe('Scheduler ExtractionOrchestrator', () => {
     findOne: ReturnType<typeof vi.fn>;
   };
   let queueService: {
-    enqueueStorefrontExtractionJob: ReturnType<typeof vi.fn>;
+    enqueueStorefrontPlanJob: ReturnType<typeof vi.fn>;
   };
   let service: ExtractionOrchestrator;
 
@@ -39,7 +39,7 @@ describe('Scheduler ExtractionOrchestrator', () => {
       findOne: vi.fn().mockResolvedValue(null),
     };
     queueService = {
-      enqueueStorefrontExtractionJob: vi.fn().mockResolvedValue(undefined),
+      enqueueStorefrontPlanJob: vi.fn().mockResolvedValue(undefined),
     };
 
     service = new ExtractionOrchestrator(
@@ -67,12 +67,9 @@ describe('Scheduler ExtractionOrchestrator', () => {
       skipExtraction: false,
       storesTotal: 1,
     });
-    expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledWith(
-      2,
-      7,
-      42,
-      undefined,
-    );
+    expect(queueService.enqueueStorefrontPlanJob).toHaveBeenCalledWith(2, {
+      discoveryRunId: 42,
+    });
     expect(extractionRunRepository.update).toHaveBeenCalledWith(42, {
       status: 'completed',
       completedAt: expect.any(Date),
@@ -100,7 +97,7 @@ describe('Scheduler ExtractionOrchestrator', () => {
       skipExtraction: true,
       storesTotal: 0,
     });
-    expect(queueService.enqueueStorefrontExtractionJob).not.toHaveBeenCalled();
+    expect(queueService.enqueueStorefrontPlanJob).not.toHaveBeenCalled();
   });
 
   it('ignores non-storefront stores', async () => {
@@ -117,7 +114,7 @@ describe('Scheduler ExtractionOrchestrator', () => {
 
     expect(result.storesQueued).toBe(1);
     expect(result.storeNames).toEqual(['storefront-store']);
-    expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledTimes(1);
+    expect(queueService.enqueueStorefrontPlanJob).toHaveBeenCalledTimes(1);
   });
 
   it('passes updatedSince to enqueued jobs when incremental is requested', async () => {
@@ -136,12 +133,11 @@ describe('Scheduler ExtractionOrchestrator', () => {
     });
 
     expect(result.updatedSince).toBe(cutoff.toISOString());
-    expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledWith(
-      9,
-      1,
-      42,
-      cutoff.toISOString(),
-    );
+    // Bucket flow currently runs full extraction per bucket; the orchestrator
+    // logs but doesn't propagate updatedSince to plan jobs yet (follow-up).
+    expect(queueService.enqueueStorefrontPlanJob).toHaveBeenCalledWith(9, {
+      discoveryRunId: 42,
+    });
   });
 
   it('falls back to a full crawl when incremental is requested but no prior run exists', async () => {
@@ -156,11 +152,8 @@ describe('Scheduler ExtractionOrchestrator', () => {
     });
 
     expect(result.updatedSince).toBeNull();
-    expect(queueService.enqueueStorefrontExtractionJob).toHaveBeenCalledWith(
-      9,
-      1,
-      42,
-      undefined,
-    );
+    expect(queueService.enqueueStorefrontPlanJob).toHaveBeenCalledWith(9, {
+      discoveryRunId: 42,
+    });
   });
 });

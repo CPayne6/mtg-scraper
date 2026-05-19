@@ -94,14 +94,21 @@ export class ExtractionOrchestrator {
     this.logger.log(`Created extraction run #${savedRun.id} (trigger: ${savedRun.trigger})`);
 
     for (const store of targetStores) {
-      await this.queueService.enqueueStorefrontExtractionJob(
-        store.id,
-        priority,
-        savedRun.id,
-        updatedSince ?? undefined,
-      );
+      // V2: enqueue a per-store plan job. The plan probes the store's
+      // created_at range and fans out one bucket job per year. This replaces
+      // the legacy single-chain id-pagination model which silently lost
+      // products due to Shopify's undocumented `id:>X` filter behaviour.
+      await this.queueService.enqueueStorefrontPlanJob(store.id, {
+        discoveryRunId: savedRun.id,
+      });
       this.logger.log(
-        `Enqueued Storefront extraction job for store: ${store.name} (ID: ${store.id})`,
+        `Enqueued storefront plan for store: ${store.name} (ID: ${store.id})`,
+      );
+    }
+
+    if (updatedSince) {
+      this.logger.warn(
+        `Incremental mode requested (updatedSince=${updatedSince}) but the bucket flow currently runs full extraction per bucket; incremental filtering is a follow-up.`,
       );
     }
 
