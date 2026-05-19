@@ -15,8 +15,8 @@ export type {
   StorefrontExtractionJobResult,
   StorefrontBootstrapJobData,
   StorefrontPlanJobData,
-  StorefrontPrefixJobData,
-  StorefrontPrefixJobResult,
+  StorefrontBucketJobData,
+  StorefrontBucketJobResult,
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
 } from './queue.types';

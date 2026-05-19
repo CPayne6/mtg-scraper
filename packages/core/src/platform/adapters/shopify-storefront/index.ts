@@ -1,5 +1,6 @@
 export { StorefrontClient } from './storefront-client';
 export { StorefrontExtractionAdapter } from './storefront-extraction.adapter';
+export { StorefrontPaginationLimitError } from './pagination-limit-error';
 export type {
   StorefrontGraphQLResponse,
   StorefrontGraphQLError,

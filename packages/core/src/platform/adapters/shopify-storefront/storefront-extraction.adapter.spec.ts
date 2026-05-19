@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorefrontExtractionAdapter } from './storefront-extraction.adapter';
+import { StorefrontPaginationLimitError } from './pagination-limit-error';
 import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { Condition } from '@scoutlgs/shared';
 import type { Store } from '../../../database/store.entity';
-import type { StorefrontProduct, ProductByHandleData, CollectionProductsData } from './storefront.types';
+import type { StorefrontProduct, ProductByHandleData, CollectionProductsData, ProductsQueryData } from './storefront.types';
 import type { ICardDetailExtractor } from '../shopify/card-detail-extractor.interface';
 
 function createMockStore(overrides: Partial<Store> = {}): Store {
@@ -316,6 +317,174 @@ describe('StorefrontExtractionAdapter', () => {
       }
 
       expect(results).toHaveLength(0);
+    });
+  });
+
+  describe('fetchPageByCursor', () => {
+    it('builds the query with the scope and date range and forwards the cursor', async () => {
+      const product = createMockProduct();
+      mockClient.query.mockResolvedValue({
+        products: {
+          edges: [{ node: product }],
+          pageInfo: { hasNextPage: true, endCursor: 'next-cursor' },
+        },
+      } as ProductsQueryData);
+
+      const store = createMockStore({ scraperType: 'binderpos' });
+      const result = await adapter.fetchPageByCursor(
+        store,
+        'product_type:"MTG Single"',
+        '2025-01-01T00:00:00Z',
+        '2025-04-01T00:00:00Z',
+        'prev-cursor',
+      );
+
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      const [, , vars] = mockClient.query.mock.calls[0];
+      expect(vars.query).toBe(
+        `product_type:"MTG Single" created_at:>='2025-01-01T00:00:00Z' created_at:<'2025-04-01T00:00:00Z'`,
+      );
+      expect(vars.first).toBe(250);
+      expect(vars.after).toBe('prev-cursor');
+
+      expect(result.products).toHaveLength(1);
+      expect(result.products[0].handle).toBe(product.handle);
+      expect(result.nextCursor).toBe('next-cursor');
+    });
+
+    it('returns nextCursor=null when hasNextPage is false', async () => {
+      mockClient.query.mockResolvedValue({
+        products: {
+          edges: [{ node: createMockProduct() }],
+          pageInfo: { hasNextPage: false, endCursor: 'end' },
+        },
+      } as ProductsQueryData);
+
+      const result = await adapter.fetchPageByCursor(
+        createMockStore(),
+        'scope',
+        '2025-01-01T00:00:00Z',
+        '2025-04-01T00:00:00Z',
+        null,
+      );
+
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('passes null cursor through unchanged for the first page', async () => {
+      mockClient.query.mockResolvedValue({
+        products: {
+          edges: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      } as ProductsQueryData);
+
+      await adapter.fetchPageByCursor(
+        createMockStore(),
+        'scope',
+        '2025-01-01T00:00:00Z',
+        '2025-04-01T00:00:00Z',
+        null,
+      );
+
+      const [, , vars] = mockClient.query.mock.calls[0];
+      expect(vars.after).toBeNull();
+    });
+
+    it('translates the 25K depth error into StorefrontPaginationLimitError', async () => {
+      mockClient.query.mockRejectedValue(
+        new Error(
+          'GraphQL errors from test-store: Platform limit for pagination (25000 items) exceeded by 250 items.',
+        ),
+      );
+
+      const store = createMockStore({ name: 'test-store' });
+      await expect(
+        adapter.fetchPageByCursor(
+          store,
+          'scope',
+          '2025-01-01T00:00:00Z',
+          '2025-04-01T00:00:00Z',
+          'some-cursor',
+        ),
+      ).rejects.toBeInstanceOf(StorefrontPaginationLimitError);
+    });
+
+    it('re-throws non-pagination errors unchanged', async () => {
+      const networkErr = new Error('fetch failed via proxy 5: ECONNRESET');
+      mockClient.query.mockRejectedValue(networkErr);
+
+      await expect(
+        adapter.fetchPageByCursor(
+          createMockStore(),
+          'scope',
+          '2025-01-01T00:00:00Z',
+          '2025-04-01T00:00:00Z',
+          null,
+        ),
+      ).rejects.toBe(networkErr);
+    });
+  });
+
+  describe('findCreatedAtRange', () => {
+    it('returns the oldest and newest createdAt for the scope', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({
+          products: { edges: [{ node: { createdAt: '2024-03-01T00:00:00Z' } }] },
+        })
+        .mockResolvedValueOnce({
+          products: { edges: [{ node: { createdAt: '2026-05-01T00:00:00Z' } }] },
+        });
+
+      const result = await adapter.findCreatedAtRange(
+        createMockStore(),
+        'product_type:"MTG Single"',
+      );
+
+      expect(result.minCreatedAt).toBe('2024-03-01T00:00:00Z');
+      expect(result.maxCreatedAt).toBe('2026-05-01T00:00:00Z');
+    });
+
+    it('returns nulls when the scope matches nothing', async () => {
+      mockClient.query.mockResolvedValue({ products: { edges: [] } });
+
+      const result = await adapter.findCreatedAtRange(
+        createMockStore(),
+        'product_type:Nonexistent',
+      );
+
+      expect(result.minCreatedAt).toBeNull();
+      expect(result.maxCreatedAt).toBeNull();
+    });
+  });
+
+  describe('probeBucketHasProducts', () => {
+    it('returns true when the bucket has at least one product', async () => {
+      mockClient.query.mockResolvedValue({
+        products: { edges: [{ node: { id: 'gid://shopify/Product/1' } }] },
+      });
+
+      const result = await adapter.probeBucketHasProducts(
+        createMockStore(),
+        'product_type:"MTG Single"',
+        '2025-01-01T00:00:00Z',
+        '2025-02-01T00:00:00Z',
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when the bucket is empty', async () => {
+      mockClient.query.mockResolvedValue({ products: { edges: [] } });
+
+      const result = await adapter.probeBucketHasProducts(
+        createMockStore(),
+        'product_type:"MTG Single"',
+        '2020-01-01T00:00:00Z',
+        '2020-02-01T00:00:00Z',
+      );
+
+      expect(result).toBe(false);
     });
   });
 });

@@ -7,13 +7,21 @@ export const PUBSUB_CHANNELS = {
 } as const;
 
 export const JOB_NAMES = {
+  /** @deprecated id:>X chained pagination — replaced by the bucket flow. */
   EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
-  /**
-   * Bootstrap job: fetches min/max product IDs for a store and enqueues N
-   * range-bounded extraction jobs. Lets a single store's pages run in parallel
-   * instead of being serially chained by `lastId`.
-   */
+  /** @deprecated id-range bootstrap — replaced by STOREFRONT_PLAN. */
   BOOTSTRAP_STOREFRONT_EXTRACTION: 'bootstrap-storefront-extraction',
+  /**
+   * Per-store plan job: probes the store's `created_at` range and fans out
+   * one bucket job per year. Replaces the legacy id-based bootstrap.
+   */
+  STOREFRONT_PLAN: 'storefront-plan',
+  /**
+   * Per-date-range bucket job. Cursor-paginates products matching
+   * `scope created_at:>='start' created_at:<'end'`. On 25K depth-limit hit,
+   * splits the date range in half and enqueues two child bucket jobs.
+   */
+  STOREFRONT_BUCKET: 'storefront-bucket',
   /**
    * Re-fetches unmatched products from the upstream Shopify Storefront API
    * and runs them through the current extraction pipeline. Use this to
@@ -128,37 +136,55 @@ export interface StorefrontExtractionJobResult {
 }
 
 /**
- * Job data for planning storefront extraction (Phase 1).
- * Queries card_names for prefixes and enqueues prefix jobs.
+ * Per-store plan job. Probes the store's `created_at` range and fans out
+ * one bucket job per year between the min and max. The bucket jobs then
+ * cursor-paginate within their date range.
+ *
+ * Replaces the legacy chained-pagination model (which silently lost
+ * products due to Shopify's undocumented `id:>X` behaviour).
  */
 export interface StorefrontPlanJobData {
   storeId: number;
   discoveryRunId?: number;
-  maxCardsAdded?: number;
 }
 
 /**
- * Job data for extracting products matching a title prefix (Phase 2).
- * Paginates products(query: "scope title:prefix*").
- * If 25K limit is hit, splits into sub-prefix jobs.
+ * Job data for cursor-paginating one date bucket.
+ *
+ * Lifecycle:
+ *   1. Plan job creates the initial bucket with `cursor: null` and a year-wide
+ *      date range.
+ *   2. The processor fetches one page and, if `nextCursor` is non-null,
+ *      re-enqueues the same bucket with `cursor: nextCursor`.
+ *   3. If Shopify returns the 25K depth error, the processor halves the
+ *      date range and enqueues two child buckets with `bucketDepth + 1`.
+ *
+ * `bucketDepth` caps the recursive splitting (year → ~6mo → ~3mo → ~1mo → ~2wk).
  */
-export interface StorefrontPrefixJobData {
+export interface StorefrontBucketJobData {
   storeId: number;
-  prefix: string;
   scope: string;
+  /** Inclusive ISO-8601 lower bound on created_at. */
+  createdAtStart: string;
+  /** Exclusive ISO-8601 upper bound on created_at. */
+  createdAtEnd: string;
+  /** Opaque Shopify pageInfo.endCursor. Null for the first page of the bucket. */
+  cursor: string | null;
+  /** 0 for year-wide buckets created by the plan job; +1 per recursive split. */
+  bucketDepth: number;
   discoveryRunId?: number;
-  maxCardsAdded?: number;
-  /** Recursion depth: 1=single letter, 2=two letters, 3=three letters */
-  depth: number;
 }
 
-export interface StorefrontPrefixJobResult {
+export interface StorefrontBucketJobResult {
   storeId: number;
-  prefix: string;
+  createdAtStart: string;
+  createdAtEnd: string;
   productsProcessed: number;
   cardsAdded: number;
   errors: number;
-  /** True if this prefix hit 25K and was split into sub-prefixes */
+  /** True if `nextCursor === null` — bucket fully drained. */
+  isBucketComplete: boolean;
+  /** True if this job hit the 25K wall and spawned two child buckets. */
   wasSplit: boolean;
   success: boolean;
   error?: string;
