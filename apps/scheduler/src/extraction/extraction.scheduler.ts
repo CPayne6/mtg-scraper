@@ -4,7 +4,7 @@ import { Repository, LessThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import { CacheService, ExtractionRun } from '@scoutlgs/core';
+import { CacheService, ExtractionRun, QueueService } from '@scoutlgs/core';
 import { ExtractionOrchestrator, ExtractionRunResult } from './extraction-orchestrator.service';
 
 export interface ExtractionJobStatus {
@@ -30,6 +30,7 @@ export class ExtractionScheduler implements OnModuleInit {
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly queueService: QueueService,
     @InjectRepository(ExtractionRun)
     private readonly extractionRunRepository: Repository<ExtractionRun>,
   ) {}
@@ -60,6 +61,26 @@ export class ExtractionScheduler implements OnModuleInit {
     });
     this.schedulerRegistry.addCronJob('extraction-full', fullJob);
     fullJob.start();
+
+    // Failed-bucket sweeper. Bucket pagination occasionally exhausts its
+    // 5-attempt budget on persistent proxy issues for a specific cursor;
+    // those products would otherwise stay stale forever. Run hourly and
+    // re-enqueue any bucket job that's been in the failed list >30 min.
+    // The sweeper caps re-enqueues per bucket via SWEEPER_MAX_ATTEMPTS so
+    // a chronically-broken bucket can't cycle forever.
+    const sweeperJob = CronJob.from({
+      cronTime: '0 * * * *',
+      timeZone: timezone,
+      onTick: () => {
+        this.queueService
+          .sweepFailedStorefrontJobs()
+          .catch((error) => this.logger.error('Storefront sweeper failed:', error));
+      },
+      start: true,
+    });
+    this.schedulerRegistry.addCronJob('storefront-failed-sweeper', sweeperJob);
+    sweeperJob.start();
+    this.logger.log('Failed-bucket sweeper scheduled hourly');
 
     // Hourly incremental refresh
     const incrementalEnabled =

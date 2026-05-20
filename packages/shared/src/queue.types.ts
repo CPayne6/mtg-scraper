@@ -173,6 +173,13 @@ export interface StorefrontBucketJobData {
   /** 0 for year-wide buckets created by the plan job; +1 per recursive split. */
   bucketDepth: number;
   discoveryRunId?: number;
+  /**
+   * Number of times the failed-bucket cron sweeper has re-enqueued this job
+   * after it permanently failed. Capped by the sweeper so a chronically-
+   * broken bucket (e.g. one Shopify can no longer serve at all) doesn't
+   * cycle forever between failed and wait.
+   */
+  sweeperAttempts?: number;
 }
 
 export interface StorefrontBucketJobResult {

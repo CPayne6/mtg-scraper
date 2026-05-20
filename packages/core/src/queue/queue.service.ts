@@ -204,6 +204,97 @@ export class QueueService {
   }
 
   /**
+   * Sweep permanently-failed jobs out of the storefront-extraction queue
+   * and re-enqueue them as fresh jobs.
+   *
+   * Use case: bucket pagination occasionally exhausts all retries due to
+   * sustained proxy/DNS issues on the cursor it was sitting on. Those
+   * jobs sit in the failed list forever — the products inside them
+   * never get refreshed. This periodically sweeps them back into wait.
+   *
+   * On re-enqueue the cursor is reset to null so the bucket restarts from
+   * its first page (cleanest invariant; the cursor we had on failure may
+   * be stale anyway since cursors are tied to a snapshot Shopify may have
+   * since invalidated). Upserts dedupe so re-walking is cheap.
+   *
+   * `sweeperAttempts` on the job data tracks how many times the sweeper
+   * has re-enqueued this bucket. Past {@link SWEEPER_MAX_ATTEMPTS} the
+   * bucket is left in the failed list permanently — the next full
+   * extraction run will rebuild fresh buckets anyway, so we don't lose
+   * coverage forever, just stop the infinite-retry loop.
+   *
+   * @param olderThanMs - only sweep jobs that failed at least this long ago
+   *                      (default 30 min — gives in-flight extractions time
+   *                      to NOT race against the sweeper)
+   * @returns number of jobs re-enqueued
+   */
+  async sweepFailedStorefrontJobs(
+    olderThanMs: number = 30 * 60 * 1000,
+  ): Promise<number> {
+    const failed = await this.storefrontExtractionQueue.getFailed(0, 1000);
+    const cutoff = Date.now() - olderThanMs;
+    let reenqueued = 0;
+    let abandoned = 0;
+
+    for (const job of failed) {
+      if (!job.failedReason) continue;
+      const finishedOn = job.finishedOn ?? job.timestamp;
+      if (finishedOn > cutoff) continue;
+
+      // Only re-enqueue bucket jobs — plan/bootstrap/reextract jobs that
+      // fail are typically unrecoverable config issues, not transient.
+      if (job.name !== JOB_NAMES.STOREFRONT_BUCKET) continue;
+
+      // STOREFRONT_BUCKET-shaped data; cast through unknown because the
+      // Queue's union type doesn't directly assign back.
+      const data = job.data as unknown as Record<string, unknown>;
+      const sweeperAttempts =
+        (data.sweeperAttempts as number | undefined) ?? 0;
+
+      if (sweeperAttempts >= QueueService.SWEEPER_MAX_ATTEMPTS) {
+        this.logger.error(
+          `Storefront sweeper: abandoning bucket after ${sweeperAttempts} sweeper attempts: ${JSON.stringify(data)}`,
+        );
+        abandoned++;
+        continue;
+      }
+
+      await this.storefrontExtractionQueue.add(
+        JOB_NAMES.STOREFRONT_BUCKET,
+        {
+          ...data,
+          cursor: null,
+          sweeperAttempts: sweeperAttempts + 1,
+        } as unknown as StorefrontExtractionJobData,
+        {
+          priority: 1,
+          removeOnComplete: 100,
+          removeOnFail: 500,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      );
+      await job.remove();
+      reenqueued++;
+    }
+
+    if (reenqueued > 0 || abandoned > 0) {
+      this.logger.warn(
+        `Storefront sweeper: re-enqueued=${reenqueued} abandoned=${abandoned} (max sweeper attempts=${QueueService.SWEEPER_MAX_ATTEMPTS})`,
+      );
+    }
+    return reenqueued;
+  }
+
+  /**
+   * Hard cap on how many times the cron sweeper will re-enqueue a single
+   * failed bucket. Past this the bucket is left in failed and surfaces as
+   * an error log line; the next full extraction run will rebuild fresh
+   * buckets anyway.
+   */
+  static readonly SWEEPER_MAX_ATTEMPTS = 5;
+
+  /**
    * Get stats for the Storefront extraction queue
    */
   async getStorefrontExtractionQueueStats() {
