@@ -40,10 +40,17 @@ interface ExtractedProduct {
 // Pagination jobs re-enqueue themselves for the next page. Without explicit
 // attempts/backoff they default to 1 try, so any transient `fetch failed`
 // from undici (proxy IP drop, TLS hiccup) permanently fails that page.
+//
+// 5 attempts gives ~2 minutes of exponential backoff (5s, 10s, 20s, 40s) to
+// recover from a single flaky proxy IP — empirically the EAI_AGAIN /
+// UND_ERR_CONNECT_TIMEOUT errors we see are usually transient on individual
+// IPs in the Webshare rotation, so a fresh proxy on the next attempt
+// typically succeeds. Rate-limit errors (429 / THROTTLED) take a different
+// path via rescheduleIfThrottled — they're not counted against this budget.
 const STOREFRONT_JOB_OPTS = {
   removeOnComplete: 100,
   removeOnFail: 500,
-  attempts: 3,
+  attempts: 5,
   backoff: { type: 'exponential' as const, delay: 5000 },
 };
 

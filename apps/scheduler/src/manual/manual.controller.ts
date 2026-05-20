@@ -72,4 +72,15 @@ export class ManualController {
   ) {
     return this.manualService.getExtractionRun(id)
   }
+
+  // Drain permanently-failed storefront bucket jobs back into the queue.
+  // Same logic as the cron sweeper, but immediate. Pass ?olderThanMs=0 to
+  // sweep everything (including jobs that just failed).
+  @Put('extraction/sweep-failed')
+  putSweepFailed(
+    @Query('olderThanMs', new ParseIntPipe({ optional: true }))
+    olderThanMs?: number,
+  ) {
+    return this.manualService.sweepFailedStorefrontJobs(olderThanMs)
+  }
 }

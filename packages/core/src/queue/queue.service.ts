@@ -204,6 +204,67 @@ export class QueueService {
   }
 
   /**
+   * Sweep permanently-failed jobs out of the storefront-extraction queue
+   * and re-enqueue them as fresh jobs.
+   *
+   * Use case: bucket pagination occasionally exhausts all retries due to
+   * sustained proxy/DNS issues on the cursor it was sitting on. Those
+   * jobs sit in the failed list forever — the products inside them
+   * never get refreshed. This periodically sweeps them back into wait.
+   *
+   * On re-enqueue the cursor is reset to null so the bucket restarts from
+   * its first page (cleanest invariant; the cursor we had on failure may
+   * be stale anyway since cursors are tied to a snapshot Shopify may have
+   * since invalidated). Upserts dedupe so re-walking is cheap.
+   *
+   * @param olderThanMs - only sweep jobs that failed at least this long ago
+   *                      (default 30 min — gives in-flight extractions time
+   *                      to NOT race against the sweeper)
+   * @returns number of jobs re-enqueued
+   */
+  async sweepFailedStorefrontJobs(
+    olderThanMs: number = 30 * 60 * 1000,
+  ): Promise<number> {
+    const failed = await this.storefrontExtractionQueue.getFailed(0, 1000);
+    const cutoff = Date.now() - olderThanMs;
+    let reenqueued = 0;
+
+    for (const job of failed) {
+      if (!job.failedReason) continue;
+      const finishedOn = job.finishedOn ?? job.timestamp;
+      if (finishedOn > cutoff) continue;
+
+      // Only re-enqueue bucket jobs — plan/bootstrap/reextract jobs that
+      // fail are typically unrecoverable config issues, not transient.
+      if (job.name !== JOB_NAMES.STOREFRONT_BUCKET) continue;
+
+      // STOREFRONT_BUCKET-shaped data; cast through unknown because the
+      // Queue's union type doesn't directly assign back.
+      const data = job.data as unknown as Record<string, unknown>;
+      await this.storefrontExtractionQueue.add(
+        JOB_NAMES.STOREFRONT_BUCKET,
+        { ...data, cursor: null } as unknown as StorefrontExtractionJobData,
+        {
+          priority: 1,
+          removeOnComplete: 100,
+          removeOnFail: 500,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      );
+      await job.remove();
+      reenqueued++;
+    }
+
+    if (reenqueued > 0) {
+      this.logger.warn(
+        `Storefront sweeper: re-enqueued ${reenqueued} previously-failed bucket jobs`,
+      );
+    }
+    return reenqueued;
+  }
+
+  /**
    * Get stats for the Storefront extraction queue
    */
   async getStorefrontExtractionQueueStats() {
