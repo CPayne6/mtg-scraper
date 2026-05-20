@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import AddIcon from '@mui/icons-material/Add';
 import { CardListRow } from './CardListRow';
 import { SortByMenu, type SortBy } from './SortByMenu';
+import { AddCardPopover } from './AddCardPopover';
+import { HistoryPopover } from './HistoryPopover';
 import { useCart } from '@/components/cart/CartContext';
 import type { PriceLookupState } from '@/hooks/useListPrices';
+import type { ListHistoryEntry } from '@/hooks/useListEditor';
 
 type Props = {
   entries: { name: string; qty: number }[];
@@ -12,6 +16,11 @@ type Props = {
   onSelect: (name: string) => void;
   results: Record<string, PriceLookupState>;
   inCartByName: (name: string) => boolean;
+  history: ListHistoryEntry[];
+  existingNames: string[];
+  onAddCard: (name: string) => void;
+  onRemoveCard: (name: string) => void;
+  onUndoHistory: (id: string) => void;
 };
 
 export function CardListPanel({
@@ -20,8 +29,18 @@ export function CardListPanel({
   onSelect,
   results,
   inCartByName,
+  history,
+  existingNames,
+  onAddCard,
+  onRemoveCard,
+  onUndoHistory,
 }: Props) {
   const [sortBy, setSortBy] = useState<SortBy>('name');
+  const [addOpen, setAddOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const addAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const historyAnchorRef = useRef<HTMLButtonElement | null>(null);
+
   const { count, total, isOpen, open, close, items } = useCart();
   const cartStoreCount = useMemo(
     () => new Set(items.map((i) => i.store)).size,
@@ -66,12 +85,11 @@ export function CardListPanel({
           borderBottom: `1px solid ${theme.palette.divider}`,
         })}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Typography
             sx={{
               fontSize: '15px',
               fontWeight: 700,
-              flex: 1,
               letterSpacing: '-0.01em',
             }}
           >
@@ -89,6 +107,139 @@ export function CardListPanel({
               {entries.length}
             </Box>{' '}
             {entries.length === 1 ? 'card' : 'cards'}
+          </Box>
+          <Box
+            sx={{
+              ml: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            {/* History icon button */}
+            <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+              <Box
+                component="button"
+                ref={historyAnchorRef}
+                onClick={() => {
+                  setHistoryOpen((o) => !o);
+                  setAddOpen(false);
+                }}
+                aria-label="Recent activity"
+                aria-expanded={historyOpen}
+                title="Recent activity"
+                sx={(theme) => ({
+                  position: 'relative',
+                  width: 30,
+                  height: 30,
+                  borderRadius: '8px',
+                  border: `1px solid ${
+                    historyOpen
+                      ? theme.palette.mode === 'dark'
+                        ? 'rgba(36,135,33,0.5)'
+                        : 'rgba(74,103,65,0.35)'
+                      : theme.palette.divider
+                  }`,
+                  background: historyOpen
+                    ? theme.palette.background.default
+                    : theme.palette.background.paper,
+                  color: historyOpen
+                    ? theme.palette.text.primary
+                    : theme.palette.text.secondary,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  padding: 0,
+                  transition:
+                    'background 120ms cubic-bezier(0.4, 0, 0.2, 1), border-color 120ms cubic-bezier(0.4, 0, 0.2, 1), color 120ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  '&:hover': {
+                    background: theme.palette.background.default,
+                    borderColor:
+                      theme.palette.mode === 'dark'
+                        ? 'rgba(36,135,33,0.5)'
+                        : 'rgba(74,103,65,0.35)',
+                    color: theme.palette.text.primary,
+                  },
+                })}
+              >
+                {/* Clock icon: SVG matching the design */}
+                <Box
+                  component="svg"
+                  viewBox="0 0 24 24"
+                  width={15}
+                  height={15}
+                  sx={{
+                    fill: 'none',
+                    stroke: 'currentColor',
+                    strokeWidth: 1.8,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round',
+                  }}
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </Box>
+              </Box>
+              {history.length > 0 && (
+                <Box
+                  component="span"
+                  sx={(theme) => ({
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    minWidth: 16,
+                    height: 16,
+                    padding: '0 4px',
+                    borderRadius: '999px',
+                    background: theme.palette.honey.main,
+                    color: '#3d2a14',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: `0 0 0 2px ${theme.palette.background.paper}`,
+                    pointerEvents: 'none',
+                  })}
+                >
+                  {history.length}
+                </Box>
+              )}
+            </Box>
+
+            {/* + Add button */}
+            <Box
+              component="button"
+              ref={addAnchorRef}
+              onClick={() => {
+                setAddOpen((o) => !o);
+                setHistoryOpen(false);
+              }}
+              aria-label="Add card to list"
+              aria-expanded={addOpen}
+              sx={(theme) => ({
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 10px 6px 8px',
+                borderRadius: '8px',
+                border: `1px solid ${theme.palette.primary.main}`,
+                background: theme.palette.primary.main,
+                color: '#fff',
+                fontSize: '12px',
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                transition: 'filter 120ms cubic-bezier(0.4, 0, 0.2, 1)',
+                filter: addOpen ? 'brightness(0.92)' : 'none',
+                '&:hover': { filter: 'brightness(0.92)' },
+              })}
+            >
+              <AddIcon sx={{ fontSize: 13 }} />
+              <span>Add</span>
+            </Box>
           </Box>
         </Box>
         <Box
@@ -114,6 +265,22 @@ export function CardListPanel({
           <SortByMenu value={sortBy} onChange={setSortBy} />
         </Box>
       </Box>
+
+      {/* Popovers */}
+      <HistoryPopover
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        anchorEl={historyAnchorRef.current}
+        history={history}
+        onUndo={(id) => onUndoHistory(id)}
+      />
+      <AddCardPopover
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        anchorEl={addAnchorRef.current}
+        onAdd={onAddCard}
+        existingNames={existingNames}
+      />
 
       {/* Scrollable list */}
       <Box
@@ -147,6 +314,7 @@ export function CardListPanel({
               selected={selectedName === e.name}
               inCart={inCartByName(e.name)}
               onSelect={() => onSelect(e.name)}
+              onRemove={onRemoveCard}
             />
           ))
         )}

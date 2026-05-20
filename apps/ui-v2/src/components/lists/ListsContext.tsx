@@ -14,6 +14,8 @@ type ListsContextValue = {
   save: (name: string, cards: string[]) => string;
   rename: (oldName: string, newName: string) => string | null;
   remove: (name: string) => void;
+  addCardToList: (listName: string, cardName: string) => void;
+  removeCardFromList: (listName: string, cardName: string) => void;
 };
 
 const ListsContext = createContext<ListsContextValue | null>(null);
@@ -64,14 +66,37 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     [setLists],
   );
 
+  const addCardToList = useCallback(
+    (listName: string, cardName: string) =>
+      setLists((current) => {
+        const existing = current[listName] ?? [];
+        return { ...current, [listName]: [...existing, cardName] };
+      }),
+    [setLists],
+  );
+
+  const removeCardFromList = useCallback(
+    (listName: string, cardName: string) =>
+      setLists((current) => {
+        const existing = current[listName];
+        if (!existing) return current;
+        const idx = existing.indexOf(cardName);
+        if (idx < 0) return current;
+        const next = existing.slice();
+        next.splice(idx, 1);
+        return { ...current, [listName]: next };
+      }),
+    [setLists],
+  );
+
   const get = useCallback((name: string) => lists[name] ?? [], [lists]);
 
   const names = useMemo(() => Object.keys(lists), [lists]);
   const totalCards = useMemo(() => names.reduce((sum, n) => sum + lists[n].length, 0), [lists, names]);
 
   const value = useMemo<ListsContextValue>(
-    () => ({ lists, names, count: names.length, totalCards, get, save, rename, remove }),
-    [lists, names, totalCards, get, save, rename, remove],
+    () => ({ lists, names, count: names.length, totalCards, get, save, rename, remove, addCardToList, removeCardFromList }),
+    [lists, names, totalCards, get, save, rename, remove, addCardToList, removeCardFromList],
   );
 
   return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;

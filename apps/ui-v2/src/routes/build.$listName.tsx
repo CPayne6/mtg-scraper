@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { groupByName } from '@/utils/parseDeckList';
 import { useListPrices } from '@/hooks/useListPrices';
+import { useListEditor } from '@/hooks/useListEditor';
 import { BuilderFilterBar } from '@/components/builder/BuilderFilterBar';
 import { SelectedCardPanel } from '@/components/builder/SelectedCardPanel';
 import { CardListPanel } from '@/components/builder/CardListPanel';
@@ -22,16 +23,28 @@ export const Route = createFileRoute('/build/$listName')({
 
 const ALL_STORES = STORE_FACETS.map((s) => s.name);
 
+function isTypingInField(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
 function BuilderRoute() {
   const { listName } = useParams({ from: '/build/$listName' });
   const navigate = useNavigate();
   const { get } = useLists();
   const { add: addToCart, items: cartItems } = useCart();
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const cards = get(listName);
   const entries = useMemo(() => groupByName(cards), [cards]);
   const uniqueNames = useMemo(() => entries.map((e) => e.name), [entries]);
+  const existingNames = useMemo(
+    () => uniqueNames.map((n) => n.toLowerCase()),
+    [uniqueNames],
+  );
 
   const { results } = useListPrices(uniqueNames);
 
@@ -49,11 +62,48 @@ function BuilderRoute() {
     [],
   );
 
-  // Default selection: first entry, once entries load. Don't clobber a remembered pick.
+  const cartIdSet = useMemo(
+    () => new Set(cartItems.map((i) => cartItemId(i))),
+    [cartItems],
+  );
+
+  const inCartByOffer = useCallback(
+    (offer: CardWithStore) => cartIdSet.has(cartItemId(offer)),
+    [cartIdSet],
+  );
+
+  const cartCardKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const item of cartItems) {
+      s.add((item.scryfall_id ?? item.title).toLowerCase());
+    }
+    return s;
+  }, [cartItems]);
+
+  const inCartByName = useCallback(
+    (name: string) => cartCardKeys.has(name.toLowerCase()),
+    [cartCardKeys],
+  );
+
+  // Editor: add/remove + history.
+  const { history, addCard, removeCard, undo } = useListEditor(
+    listName,
+    inCartByName,
+  );
+
+  // Default selection: first entry, once entries load. Also handles the case
+  // where the selected card was removed from the list — auto-pick the next
+  // entry in alphabetical order.
   useEffect(() => {
-    if (entries.length === 0) return;
+    if (entries.length === 0) {
+      if (selectedName !== null) setSelectedName(null);
+      return;
+    }
     if (!selectedName || !entries.some((e) => e.name === selectedName)) {
-      setSelectedName(entries[0].name);
+      const sorted = entries
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setSelectedName(sorted[0].name);
     }
   }, [entries, selectedName, setSelectedName]);
 
@@ -83,29 +133,6 @@ function BuilderRoute() {
     [setConditions],
   );
 
-  const cartIdSet = useMemo(
-    () => new Set(cartItems.map((i) => cartItemId(i))),
-    [cartItems],
-  );
-
-  const inCartByOffer = useCallback(
-    (offer: CardWithStore) => cartIdSet.has(cartItemId(offer)),
-    [cartIdSet],
-  );
-
-  const cartCardKeys = useMemo(() => {
-    const s = new Set<string>();
-    for (const item of cartItems) {
-      s.add((item.scryfall_id ?? item.title).toLowerCase());
-    }
-    return s;
-  }, [cartItems]);
-
-  const inCartByName = useCallback(
-    (name: string) => cartCardKeys.has(name.toLowerCase()),
-    [cartCardKeys],
-  );
-
   const handleAddOffer = useCallback(
     (offer: CardWithStore) => {
       const added = addToCart(offer);
@@ -122,6 +149,83 @@ function BuilderRoute() {
     },
     [addToCart, enqueueSnackbar],
   );
+
+  // Undo a specific entry and surface any block warning.
+  const performUndo = useCallback(
+    (entryId?: string) => {
+      const result = undo(entryId);
+      if (result === 'blocked') {
+        enqueueSnackbar(
+          "Can't remove that card while it's in your cart",
+          { variant: 'warning' },
+        );
+      }
+      return result;
+    },
+    [undo, enqueueSnackbar],
+  );
+
+  const handleAddCard = useCallback(
+    (cardName: string) => {
+      const entryId = addCard(cardName);
+      const key = enqueueSnackbar(`Added "${cardName}" to list`, {
+        autoHideDuration: 6000,
+        action: (snackKey) => (
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => {
+              performUndo(entryId);
+              closeSnackbar(snackKey);
+            }}
+          >
+            Undo
+          </Button>
+        ),
+      });
+      return key;
+    },
+    [addCard, enqueueSnackbar, closeSnackbar, performUndo],
+  );
+
+  const handleRemoveCard = useCallback(
+    (cardName: string) => {
+      // The reselect effect handles updating `selectedName` when the removed
+      // card's last copy disappears from `entries`.
+      const entryId = removeCard(cardName);
+      const key = enqueueSnackbar(`Removed "${cardName}" from list`, {
+        autoHideDuration: 6000,
+        action: (snackKey) => (
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => {
+              performUndo(entryId);
+              closeSnackbar(snackKey);
+            }}
+          >
+            Undo
+          </Button>
+        ),
+      });
+      return key;
+    },
+    [removeCard, enqueueSnackbar, closeSnackbar, performUndo],
+  );
+
+  // Cmd/Ctrl + Z keyboard shortcut.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'z' && e.key !== 'Z') return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey) return;
+      if (isTypingInField(e.target)) return;
+      e.preventDefault();
+      performUndo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [performUndo]);
 
   if (cards.length === 0) {
     return (
@@ -207,6 +311,11 @@ function BuilderRoute() {
           onSelect={setSelectedName}
           results={results}
           inCartByName={inCartByName}
+          history={history}
+          existingNames={existingNames}
+          onAddCard={handleAddCard}
+          onRemoveCard={handleRemoveCard}
+          onUndoHistory={performUndo}
         />
       </Box>
     </Box>
