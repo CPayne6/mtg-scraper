@@ -59,6 +59,16 @@ export class ManualService {
     return this.extractionRunRepository.findOne({ where: { id } });
   }
 
+  async sweepFailedStorefrontJobs(olderThanMs?: number) {
+    const reenqueued = await this.queueService.sweepFailedStorefrontJobs(
+      olderThanMs,
+    );
+    this.logger.log(
+      `Manual sweep: re-enqueued ${reenqueued} failed storefront bucket jobs`,
+    );
+    return { reenqueued };
+  }
+
   // ---------------------------------------------------------------------------
   // Storefront extraction
   // ---------------------------------------------------------------------------
