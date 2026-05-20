@@ -64,10 +64,12 @@ export class ExtractionScheduler implements OnModuleInit {
 
     // Failed-bucket sweeper. Bucket pagination occasionally exhausts its
     // 5-attempt budget on persistent proxy issues for a specific cursor;
-    // those products would otherwise stay stale forever. Run every 30 min
-    // and re-enqueue any bucket job that's been in the failed list >30 min.
+    // those products would otherwise stay stale forever. Run hourly and
+    // re-enqueue any bucket job that's been in the failed list >30 min.
+    // The sweeper caps re-enqueues per bucket via SWEEPER_MAX_ATTEMPTS so
+    // a chronically-broken bucket can't cycle forever.
     const sweeperJob = CronJob.from({
-      cronTime: '*/30 * * * *',
+      cronTime: '0 * * * *',
       timeZone: timezone,
       onTick: () => {
         this.queueService
@@ -78,7 +80,7 @@ export class ExtractionScheduler implements OnModuleInit {
     });
     this.schedulerRegistry.addCronJob('storefront-failed-sweeper', sweeperJob);
     sweeperJob.start();
-    this.logger.log('Failed-bucket sweeper scheduled every 30 min');
+    this.logger.log('Failed-bucket sweeper scheduled hourly');
 
     // Hourly incremental refresh
     const incrementalEnabled =
