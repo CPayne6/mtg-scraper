@@ -8,7 +8,8 @@
   "scripts": {
     "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
-    "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"
+    "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug",
+    "shopify:cart-test": "node scripts/shopify-cart-test.mjs"
   },
   "devDependencies": {
     "@nx/js": "^22.3.3",
