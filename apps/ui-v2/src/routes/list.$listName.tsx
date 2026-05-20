@@ -11,6 +11,7 @@ import Alert from '@mui/material/Alert';
 import ArrowForward from '@mui/icons-material/ArrowForward';
 import FilterAlt from '@mui/icons-material/FilterAlt';
 import ChevronLeft from '@mui/icons-material/ChevronLeft';
+import Construction from '@mui/icons-material/Construction';
 import { useSnackbar } from 'notistack';
 import type { CardWithStore } from '@scoutlgs/shared';
 import { useLists } from '@/components/lists/ListsContext';
@@ -189,6 +190,14 @@ function ListDetailRoute() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Construction sx={{ fontSize: 18 }} />}
+            onClick={() => navigate({ to: '/build/$listName', params: { listName } })}
+          >
+            Build Cart
+          </Button>
           <Button
             variant="outlined"
             color="primary"

@@ -14,6 +14,7 @@ import { Route as ListsRouteImport } from './routes/lists'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ListListNameRouteImport } from './routes/list.$listName'
 import { Route as CardNameRouteImport } from './routes/card.$name'
+import { Route as BuildListNameRouteImport } from './routes/build.$listName'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -40,11 +41,17 @@ const CardNameRoute = CardNameRouteImport.update({
   path: '/card/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BuildListNameRoute = BuildListNameRouteImport.update({
+  id: '/build/$listName',
+  path: '/build/$listName',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/lists': typeof ListsRoute
   '/settings': typeof SettingsRoute
+  '/build/$listName': typeof BuildListNameRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/lists': typeof ListsRoute
   '/settings': typeof SettingsRoute
+  '/build/$listName': typeof BuildListNameRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
@@ -60,19 +68,33 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/lists': typeof ListsRoute
   '/settings': typeof SettingsRoute
+  '/build/$listName': typeof BuildListNameRoute
   '/card/$name': typeof CardNameRoute
   '/list/$listName': typeof ListListNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/lists' | '/settings' | '/card/$name' | '/list/$listName'
+  fullPaths:
+    | '/'
+    | '/lists'
+    | '/settings'
+    | '/build/$listName'
+    | '/card/$name'
+    | '/list/$listName'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/lists' | '/settings' | '/card/$name' | '/list/$listName'
+  to:
+    | '/'
+    | '/lists'
+    | '/settings'
+    | '/build/$listName'
+    | '/card/$name'
+    | '/list/$listName'
   id:
     | '__root__'
     | '/'
     | '/lists'
     | '/settings'
+    | '/build/$listName'
     | '/card/$name'
     | '/list/$listName'
   fileRoutesById: FileRoutesById
@@ -81,6 +103,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ListsRoute: typeof ListsRoute
   SettingsRoute: typeof SettingsRoute
+  BuildListNameRoute: typeof BuildListNameRoute
   CardNameRoute: typeof CardNameRoute
   ListListNameRoute: typeof ListListNameRoute
 }
@@ -122,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CardNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/build/$listName': {
+      id: '/build/$listName'
+      path: '/build/$listName'
+      fullPath: '/build/$listName'
+      preLoaderRoute: typeof BuildListNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -129,6 +159,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ListsRoute: ListsRoute,
   SettingsRoute: SettingsRoute,
+  BuildListNameRoute: BuildListNameRoute,
   CardNameRoute: CardNameRoute,
   ListListNameRoute: ListListNameRoute,
 }
