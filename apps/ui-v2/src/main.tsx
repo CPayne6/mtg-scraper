@@ -7,6 +7,7 @@ import { SnackbarProvider } from 'notistack';
 import { Provider } from './components/ui/provider';
 import { CartProvider } from './components/cart/CartContext';
 import { ListsProvider } from './components/lists/ListsContext';
+import { AuthProvider } from './components/auth/AuthContext';
 
 import { routeTree } from './routeTree.gen';
 
@@ -27,11 +28,13 @@ createRoot(document.getElementById('root')!).render(
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
           autoHideDuration={3000}
         >
-          <ListsProvider>
-            <CartProvider>
-              <RouterProvider router={router} />
-            </CartProvider>
-          </ListsProvider>
+          <AuthProvider>
+            <ListsProvider>
+              <CartProvider>
+                <RouterProvider router={router} />
+              </CartProvider>
+            </ListsProvider>
+          </AuthProvider>
         </SnackbarProvider>
       </Provider>
     </ThemeProvider>
