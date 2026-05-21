@@ -6,15 +6,27 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-export interface SchedulerTriggerResponse {
-  message?: string;
+export type SchedulerJson = Record<string, unknown>;
+
+interface StorefrontTriggerOptions {
+  storeId?: number;
+  splitRanges?: number;
+  incremental?: boolean;
 }
 
-export interface SchedulerStatusResponse {
-  status: string;
-  initiatedAt?: number;
-  finishedAt?: number;
-  details?: Record<string, unknown>;
+interface StorefrontTriggerAllOptions {
+  splitRanges?: number;
+  incremental?: boolean;
+}
+
+interface ExtractionTriggerOptions {
+  skipExtraction?: boolean;
+  incremental?: boolean;
+}
+
+interface ReextractUnmatchedOptions {
+  storeId: number;
+  limit?: number;
 }
 
 @Injectable()
@@ -23,18 +35,91 @@ export class AdminService {
 
   constructor(private readonly configService: ConfigService) {}
 
-  async triggerScheduler(limit?: number): Promise<SchedulerTriggerResponse> {
-    const url = new URL('/manual/trigger', this.schedulerBase());
-    if (limit !== undefined) {
-      url.searchParams.set('limit', String(limit));
-    }
-    return this.send<SchedulerTriggerResponse>('PUT', url, 10_000);
+  // ---- Storefront ----
+
+  triggerStorefront(opts: StorefrontTriggerOptions): Promise<SchedulerJson> {
+    const url = new URL('/manual/storefront/trigger', this.schedulerBase());
+    this.setOptionalNumber(url, 'storeId', opts.storeId);
+    this.setOptionalNumber(url, 'splitRanges', opts.splitRanges);
+    this.setOptionalBoolean(url, 'incremental', opts.incremental);
+    return this.send('PUT', url, 10_000);
   }
 
-  async getSchedulerStatus(): Promise<SchedulerStatusResponse> {
-    const url = new URL('/manual/status', this.schedulerBase());
-    return this.send<SchedulerStatusResponse>('GET', url, 5_000);
+  triggerStorefrontAll(
+    opts: StorefrontTriggerAllOptions,
+  ): Promise<SchedulerJson> {
+    const url = new URL(
+      '/manual/storefront/trigger-all',
+      this.schedulerBase(),
+    );
+    this.setOptionalNumber(url, 'splitRanges', opts.splitRanges);
+    this.setOptionalBoolean(url, 'incremental', opts.incremental);
+    return this.send('PUT', url, 10_000);
   }
+
+  getStorefrontStatus(): Promise<SchedulerJson> {
+    const url = new URL('/manual/storefront/status', this.schedulerBase());
+    return this.send('GET', url, 5_000);
+  }
+
+  // ---- Extraction runs ----
+
+  triggerExtraction(opts: ExtractionTriggerOptions): Promise<SchedulerJson> {
+    const url = new URL('/manual/extraction/trigger', this.schedulerBase());
+    this.setOptionalBoolean(url, 'skipExtraction', opts.skipExtraction);
+    this.setOptionalBoolean(url, 'incremental', opts.incremental);
+    return this.send('PUT', url, 10_000);
+  }
+
+  getExtractionStatus(): Promise<SchedulerJson> {
+    const url = new URL('/manual/extraction/status', this.schedulerBase());
+    return this.send('GET', url, 5_000);
+  }
+
+  listExtractionRuns(limit?: number): Promise<SchedulerJson> {
+    const url = new URL('/manual/extraction', this.schedulerBase());
+    this.setOptionalNumber(url, 'limit', limit);
+    return this.send('GET', url, 5_000);
+  }
+
+  getExtractionRun(id: number): Promise<SchedulerJson> {
+    const url = new URL(
+      `/manual/extraction/${encodeURIComponent(String(id))}`,
+      this.schedulerBase(),
+    );
+    return this.send('GET', url, 5_000);
+  }
+
+  // ---- Extraction maintenance ----
+
+  reextractUnmatched(opts: ReextractUnmatchedOptions): Promise<SchedulerJson> {
+    const url = new URL(
+      '/manual/extraction/reextract-unmatched',
+      this.schedulerBase(),
+    );
+    url.searchParams.set('storeId', String(opts.storeId));
+    this.setOptionalNumber(url, 'limit', opts.limit);
+    return this.send('PUT', url, 10_000);
+  }
+
+  getUnmatchedStats(): Promise<SchedulerJson> {
+    const url = new URL(
+      '/manual/extraction/unmatched-stats',
+      this.schedulerBase(),
+    );
+    return this.send('GET', url, 5_000);
+  }
+
+  sweepFailed(olderThanMs?: number): Promise<SchedulerJson> {
+    const url = new URL(
+      '/manual/extraction/sweep-failed',
+      this.schedulerBase(),
+    );
+    this.setOptionalNumber(url, 'olderThanMs', olderThanMs);
+    return this.send('PUT', url, 10_000);
+  }
+
+  // ---- internals ----
 
   private schedulerBase(): URL {
     const base = this.configService.get<string>('scheduler.internalUrl');
@@ -46,11 +131,23 @@ export class AdminService {
     return new URL(base.endsWith('/') ? base : `${base}/`);
   }
 
-  private async send<T>(
+  private setOptionalNumber(url: URL, key: string, value?: number) {
+    if (value !== undefined) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  private setOptionalBoolean(url: URL, key: string, value?: boolean) {
+    if (value !== undefined) {
+      url.searchParams.set(key, value ? 'true' : 'false');
+    }
+  }
+
+  private async send(
     method: 'GET' | 'PUT',
     url: URL,
     timeoutMs: number,
-  ): Promise<T> {
+  ): Promise<SchedulerJson> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -67,7 +164,18 @@ export class AdminService {
           `Scheduler returned status ${response.status}`,
         );
       }
-      return (await response.json()) as T;
+      const text = await response.text();
+      if (!text) {
+        return {} as SchedulerJson;
+      }
+      try {
+        return JSON.parse(text) as SchedulerJson;
+      } catch {
+        this.logger.warn(
+          `Scheduler ${method} ${url.pathname} returned non-JSON body`,
+        );
+        return { raw: text } as SchedulerJson;
+      }
     } catch (error) {
       if (error instanceof BadGatewayException) {
         throw error;

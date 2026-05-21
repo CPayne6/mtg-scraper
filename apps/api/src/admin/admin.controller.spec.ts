@@ -1,4 +1,4 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContext, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminGuard } from '../auth/admin.guard';
@@ -23,8 +23,16 @@ describe('AdminController', () => {
 
   beforeEach(async () => {
     adminService = {
-      triggerScheduler: vi.fn().mockResolvedValue({ message: 'ok' }),
-      getSchedulerStatus: vi.fn().mockResolvedValue({ status: 'idle' }),
+      triggerStorefront: vi.fn().mockResolvedValue({ ok: true }),
+      triggerStorefrontAll: vi.fn().mockResolvedValue({ ok: true }),
+      getStorefrontStatus: vi.fn().mockResolvedValue({ status: 'idle' }),
+      triggerExtraction: vi.fn().mockResolvedValue({ ok: true }),
+      getExtractionStatus: vi.fn().mockResolvedValue({ status: 'idle' }),
+      listExtractionRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getExtractionRun: vi.fn().mockResolvedValue({ id: 7 }),
+      reextractUnmatched: vi.fn().mockResolvedValue({ ok: true }),
+      getUnmatchedStats: vi.fn().mockResolvedValue({ count: 0 }),
+      sweepFailed: vi.fn().mockResolvedValue({ swept: 0 }),
     };
     principalGuard = { canActivate: vi.fn().mockResolvedValue(true) };
 
@@ -42,7 +50,7 @@ describe('AdminController', () => {
     adminGuard = module.get(AdminGuard);
   });
 
-  it('lets admin principals trigger the scheduler', async () => {
+  it('forwards storefront trigger params and lets admin principals through', async () => {
     await expect(
       adminGuard.canActivate(
         makeContext({
@@ -53,10 +61,13 @@ describe('AdminController', () => {
       ),
     ).resolves.toBe(true);
 
-    const result = await controller.triggerScheduler('250');
+    await controller.triggerStorefront(2, 4, true);
 
-    expect(adminService.triggerScheduler).toHaveBeenCalledWith(250);
-    expect(result).toEqual({ message: 'ok' });
+    expect(adminService.triggerStorefront).toHaveBeenCalledWith({
+      storeId: 2,
+      splitRanges: 4,
+      incremental: true,
+    });
   });
 
   it('rejects non-admin user principals', async () => {
@@ -68,26 +79,47 @@ describe('AdminController', () => {
           role: 'user',
         }),
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('rejects anonymous principals', async () => {
+  it('returns 404 for anonymous principals so admin surface stays hidden', async () => {
     await expect(
       adminGuard.canActivate(
         makeContext({ principalUuid: 'p', kind: 'anonymous' }),
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('rejects missing principals', async () => {
+  it('returns 404 when no principal is attached', async () => {
     await expect(
       adminGuard.canActivate(makeContext(undefined)),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('parses the scheduler status request', async () => {
-    const result = await controller.getSchedulerStatus();
-    expect(adminService.getSchedulerStatus).toHaveBeenCalled();
-    expect(result).toEqual({ status: 'idle' });
+  it('returns 404 when the underlying PrincipalGuard rejects', async () => {
+    principalGuard.canActivate.mockRejectedValueOnce(new Error('no token'));
+    await expect(
+      adminGuard.canActivate(makeContext(undefined)),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('exposes extraction list, detail, and maintenance endpoints', async () => {
+    await controller.listExtractionRuns(10);
+    expect(adminService.listExtractionRuns).toHaveBeenCalledWith(10);
+
+    await controller.getExtractionRun(42);
+    expect(adminService.getExtractionRun).toHaveBeenCalledWith(42);
+
+    await controller.reextractUnmatched(3, 50);
+    expect(adminService.reextractUnmatched).toHaveBeenCalledWith({
+      storeId: 3,
+      limit: 50,
+    });
+
+    await controller.sweepFailed(0);
+    expect(adminService.sweepFailed).toHaveBeenCalledWith(0);
+
+    await controller.getUnmatchedStats();
+    expect(adminService.getUnmatchedStats).toHaveBeenCalled();
   });
 });
