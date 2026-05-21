@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthController } from './auth.controller';
 import { AuthSessionService } from './auth-session.service';
 import { JwtService } from './jwt.service';
+import { UserAuthService } from './user-auth.service';
 
 const makeRequest = (host: string) =>
   ({
@@ -24,6 +25,12 @@ describe('AuthController', () => {
       getJwks: vi.fn().mockResolvedValue({ keys: [{ kid: 'primary-1' }] }),
     } as unknown as JwtService;
 
+    const userAuthService = {
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+    } as unknown as UserAuthService;
+
     const configService = {
       get: vi.fn((key: string) =>
         key === 'jwt.internalAllowedHosts' ? ['auth', 'localhost'] : undefined,
@@ -35,6 +42,7 @@ describe('AuthController', () => {
       jwtService,
       controller: new AuthController(
         authSessionService,
+        userAuthService,
         jwtService,
         configService,
       ),

@@ -14,6 +14,8 @@ import { UserEmail } from './user-email.entity';
 import { OAuthAccount } from './oauth-account.entity';
 import { UserSession } from './user-session.entity';
 
+export type UserRole = 'user' | 'admin';
+
 @Entity('users')
 @Index('IDX_users_uuid', ['uuid'], { unique: true })
 @Index('IDX_users_principal_id', ['principalId'], { unique: true })
@@ -33,11 +35,14 @@ export class User {
   @Column({ name: 'principal_id' })
   principalId: number;
 
-  @Column({ name: 'primary_email_id', nullable: true })
+  @Column({ name: 'primary_email_id', type: 'int', nullable: true })
   primaryEmailId?: number | null;
 
   @Column({ name: 'display_name', type: 'varchar', length: 120, nullable: true })
   displayName?: string | null;
+
+  @Column({ type: 'varchar', length: 16, default: 'user' })
+  role: UserRole;
 
   @Column({ name: 'disabled_at', type: 'timestamp', nullable: true })
   disabledAt?: Date | null;

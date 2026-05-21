@@ -12,6 +12,8 @@ import { randomBytes } from 'crypto';
 import { EntityManager, IsNull, MoreThan, Repository } from 'typeorm';
 import { AnonymousSession } from '../database/entities/anonymous-session.entity';
 import { Principal } from '../database/entities/principal.entity';
+import { UserSession } from '../database/entities/user-session.entity';
+import { UserRole } from '../database/entities/user.entity';
 import { JwtService } from './jwt.service';
 import { TokenHashService } from './token-hash.service';
 
@@ -20,6 +22,12 @@ export interface SessionResponse {
   principal: null | {
     uuid: string;
     kind: 'anonymous' | 'user';
+  };
+  user: null | {
+    uuid: string;
+    displayName: string | null;
+    email: string | null;
+    role: UserRole;
   };
 }
 
@@ -36,6 +44,8 @@ export class AuthSessionService {
     private readonly principalRepository: Repository<Principal>,
     @InjectRepository(AnonymousSession)
     private readonly anonymousSessionRepository: Repository<AnonymousSession>,
+    @InjectRepository(UserSession)
+    private readonly userSessionRepository: Repository<UserSession>,
     private readonly entityManager: EntityManager,
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
@@ -54,23 +64,30 @@ export class AuthSessionService {
       }
     }
 
+    const userSession = await this.refreshUserSession(req, res);
+    if (userSession) {
+      return this.toSessionResponse(
+        userSession.user.principal,
+        userSession.user,
+      );
+    }
+
     const session = await this.getExistingAnonymousSession(req);
     if (session) {
       await this.refreshAnonymousSession(session, req, res);
       return this.toSessionResponse(session.principal);
     }
 
-    return { authenticated: false, principal: null };
+    return { authenticated: false, principal: null, user: null };
   }
 
   async createAnonymousSession(
     req: RequestWithCookies,
     res: Response,
   ): Promise<SessionResponse> {
-    const session = await this.getExistingAnonymousSession(req);
-    if (session) {
-      await this.refreshAnonymousSession(session, req, res);
-      return this.toSessionResponse(session.principal);
+    const existingSession = await this.getSession(req, res);
+    if (existingSession.principal) {
+      return existingSession;
     }
 
     const principal = await this.createAnonymousPrincipal(req, res);
@@ -91,10 +108,58 @@ export class AuthSessionService {
           uuid: claims.sub,
           kind: claims.principal_kind,
         },
+        relations:
+          claims.principal_kind === 'user' ? ['user', 'user.emails'] : [],
       });
     } catch {
       return null;
     }
+  }
+
+  private async refreshUserSession(
+    req: RequestWithCookies,
+    res: Response,
+  ): Promise<UserSession | null> {
+    const rawRefreshToken = req.cookies?.[this.refreshCookieName];
+    if (!rawRefreshToken) {
+      return null;
+    }
+
+    const session = await this.userSessionRepository.findOne({
+      where: {
+        refreshTokenHash: this.tokenHashService.hash(rawRefreshToken),
+        revokedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+      },
+      relations: ['user', 'user.principal', 'user.emails'],
+    });
+
+    if (!session) {
+      return null;
+    }
+
+    const now = new Date();
+    if (session.user.disabledAt) {
+      session.revokedAt = now;
+      await this.userSessionRepository.save(session);
+      return null;
+    }
+
+    session.lastSeenAt = now;
+    session.ipHash = this.hashIp(req);
+    session.userAgentHash = this.hashUserAgent(req);
+    session.user.principal.lastSeenAt = now;
+    await this.userSessionRepository.save(session);
+    await this.principalRepository.save(session.user.principal);
+    await this.setAccessCookie(
+      res,
+      session.user.principal,
+      session.user.uuid,
+      session.sessionUuid,
+      session.user.role,
+    );
+
+    return session;
   }
 
   private async getExistingAnonymousSession(
@@ -225,20 +290,7 @@ export class AuthSessionService {
     rawSessionToken: string,
     anonymousExpiresAt: Date,
   ): Promise<void> {
-    const accessToken = await this.jwtService.signAccessToken({
-      principalUuid: principal.uuid,
-      principalKind: principal.kind,
-    });
-
-    res.cookie(this.accessCookieName, accessToken, {
-      httpOnly: true,
-      secure: this.cookieSecure,
-      sameSite: 'lax',
-      domain: this.cookieDomain,
-      path: '/',
-      maxAge:
-        (this.configService.get<number>('jwt.accessTtlSeconds') ?? 900) * 1000,
-    });
+    await this.setAccessCookie(res, principal);
 
     res.cookie(this.anonymousCookieName, rawSessionToken, {
       httpOnly: true,
@@ -250,13 +302,55 @@ export class AuthSessionService {
     });
   }
 
-  private toSessionResponse(principal: Principal): SessionResponse {
+  private async setAccessCookie(
+    res: Response,
+    principal: Principal,
+    userUuid?: string,
+    sessionUuid?: string,
+    role?: UserRole,
+  ): Promise<void> {
+    const accessToken = await this.jwtService.signAccessToken({
+      principalUuid: principal.uuid,
+      principalKind: principal.kind,
+      userUuid,
+      sessionUuid,
+      role,
+    });
+
+    res.cookie(this.accessCookieName, accessToken, {
+      httpOnly: true,
+      secure: this.cookieSecure,
+      sameSite: 'lax',
+      domain: this.cookieDomain,
+      path: '/',
+      maxAge:
+        (this.configService.get<number>('jwt.accessTtlSeconds') ?? 900) * 1000,
+    });
+  }
+
+  private toSessionResponse(
+    principal: Principal,
+    user = principal.user,
+  ): SessionResponse {
+    const primaryEmail =
+      user?.emails?.find((email) => email.id === user.primaryEmailId) ??
+      user?.emails?.[0];
+
     return {
       authenticated: principal.kind === 'user',
       principal: {
         uuid: principal.uuid,
         kind: principal.kind,
       },
+      user:
+        principal.kind === 'user' && user
+          ? {
+              uuid: user.uuid,
+              displayName: user.displayName ?? null,
+              email: primaryEmail?.email ?? null,
+              role: user.role,
+            }
+          : null,
     };
   }
 
@@ -294,6 +388,13 @@ export class AuthSessionService {
   private get accessCookieName(): string {
     return (
       this.configService.get<string>('cookies.accessName') ?? 'scoutlgs_access'
+    );
+  }
+
+  private get refreshCookieName(): string {
+    return (
+      this.configService.get<string>('cookies.refreshName') ??
+      'scoutlgs_refresh'
     );
   }
 

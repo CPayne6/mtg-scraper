@@ -13,7 +13,9 @@ import { User } from '../database/entities/user.entity';
 import { AuthController } from './auth.controller';
 import { AuthSessionService } from './auth-session.service';
 import { JwtService } from './jwt.service';
+import { PasswordHashService } from './password-hash.service';
 import { TokenHashService } from './token-hash.service';
+import { UserAuthService } from './user-auth.service';
 
 @Module({
   imports: [
@@ -31,7 +33,13 @@ import { TokenHashService } from './token-hash.service';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthSessionService, JwtService, TokenHashService],
-  exports: [JwtService, TokenHashService],
+  providers: [
+    AuthSessionService,
+    UserAuthService,
+    JwtService,
+    TokenHashService,
+    PasswordHashService,
+  ],
+  exports: [JwtService, TokenHashService, PasswordHashService],
 })
 export class AuthModule {}

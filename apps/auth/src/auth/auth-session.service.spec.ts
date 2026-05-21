@@ -4,6 +4,7 @@ import { EntityManager } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AnonymousSession } from '../database/entities/anonymous-session.entity';
 import { Principal } from '../database/entities/principal.entity';
+import { UserSession } from '../database/entities/user-session.entity';
 import { AuthSessionService } from './auth-session.service';
 import { JwtService } from './jwt.service';
 import { TokenHashService } from './token-hash.service';
@@ -35,6 +36,7 @@ const makeResponse = () =>
 describe('AuthSessionService', () => {
   let principalRepository: MockRepository;
   let anonymousSessionRepository: MockRepository;
+  let userSessionRepository: MockRepository;
   let entityManager: Record<string, ReturnType<typeof vi.fn>>;
   let configService: ConfigService;
   let jwtService: Record<string, ReturnType<typeof vi.fn>>;
@@ -52,6 +54,10 @@ describe('AuthSessionService', () => {
       findOne: vi.fn(),
       save: vi.fn((entity) => Promise.resolve(entity)),
     };
+    userSessionRepository = {
+      findOne: vi.fn(),
+      save: vi.fn((entity) => Promise.resolve(entity)),
+    };
     entityManager = {
       transaction: vi.fn(),
     };
@@ -59,6 +65,7 @@ describe('AuthSessionService', () => {
       get: vi.fn((key: string) => {
         const values: Record<string, unknown> = {
           'cookies.accessName': 'scoutlgs_access',
+          'cookies.refreshName': 'scoutlgs_refresh',
           'cookies.anonymousName': 'scoutlgs_anon_session',
           'cookies.secure': true,
           'cookies.domain': 'scoutlgs.ca',
@@ -80,6 +87,7 @@ describe('AuthSessionService', () => {
     service = new AuthSessionService(
       principalRepository as any,
       anonymousSessionRepository as any,
+      userSessionRepository as any,
       entityManager as unknown as EntityManager,
       configService,
       jwtService as unknown as JwtService,
@@ -96,7 +104,11 @@ describe('AuthSessionService', () => {
 
     const result = await service.getSession(makeRequest(), res);
 
-    expect(result).toEqual({ authenticated: false, principal: null });
+    expect(result).toEqual({
+      authenticated: false,
+      principal: null,
+      user: null,
+    });
     expect(entityManager.transaction).not.toHaveBeenCalled();
     expect(res.cookie).not.toHaveBeenCalled();
   });
@@ -110,6 +122,13 @@ describe('AuthSessionService', () => {
       id: 2,
       uuid: USER_PRINCIPAL_UUID,
       kind: 'user',
+      user: {
+        uuid: '33333333-3333-3333-3333-333333333333',
+        displayName: 'Test User',
+        role: 'user',
+        primaryEmailId: 5,
+        emails: [{ id: 5, email: 'test@example.test' }],
+      },
     });
 
     const result = await service.getSession(
@@ -120,10 +139,118 @@ describe('AuthSessionService', () => {
     expect(jwtService.verifyAccessToken).toHaveBeenCalledWith('access-token');
     expect(principalRepository.findOne).toHaveBeenCalledWith({
       where: { uuid: USER_PRINCIPAL_UUID, kind: 'user' },
+      relations: ['user', 'user.emails'],
     });
     expect(result).toEqual({
       authenticated: true,
       principal: { uuid: USER_PRINCIPAL_UUID, kind: 'user' },
+      user: {
+        uuid: '33333333-3333-3333-3333-333333333333',
+        displayName: 'Test User',
+        email: 'test@example.test',
+        role: 'user',
+      },
+    });
+  });
+
+  it('reuses an authenticated user when the anonymous endpoint is called', async () => {
+    jwtService.verifyAccessToken.mockResolvedValue({
+      sub: USER_PRINCIPAL_UUID,
+      principal_kind: 'user',
+    });
+    principalRepository.findOne.mockResolvedValue({
+      id: 2,
+      uuid: USER_PRINCIPAL_UUID,
+      kind: 'user',
+      user: {
+        uuid: '33333333-3333-3333-3333-333333333333',
+        displayName: 'Test User',
+        role: 'user',
+        primaryEmailId: 5,
+        emails: [{ id: 5, email: 'test@example.test' }],
+      },
+    });
+
+    const result = await service.createAnonymousSession(
+      makeRequest({ cookies: { scoutlgs_access: 'access-token' } }),
+      makeResponse(),
+    );
+
+    expect(entityManager.transaction).not.toHaveBeenCalled();
+    expect(anonymousSessionRepository.findOne).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      authenticated: true,
+      principal: { uuid: USER_PRINCIPAL_UUID, kind: 'user' },
+      user: {
+        uuid: '33333333-3333-3333-3333-333333333333',
+        displayName: 'Test User',
+        email: 'test@example.test',
+        role: 'user',
+      },
+    });
+  });
+
+  it('refreshes a user session from the refresh cookie', async () => {
+    const principal = {
+      id: 2,
+      uuid: USER_PRINCIPAL_UUID,
+      kind: 'user',
+    } as Principal;
+    const userSession = {
+      id: 20,
+      sessionUuid: '44444444-4444-4444-4444-444444444444',
+      user: {
+        uuid: '33333333-3333-3333-3333-333333333333',
+        displayName: null,
+        disabledAt: null,
+        role: 'admin',
+        primaryEmailId: 7,
+        emails: [{ id: 7, email: 'refresh@example.test' }],
+        principal,
+      },
+    } as unknown as UserSession;
+    userSessionRepository.findOne.mockResolvedValue(userSession);
+    const res = makeResponse();
+
+    const result = await service.getSession(
+      makeRequest({
+        cookies: { scoutlgs_refresh: 'refresh-token' },
+        headers: {
+          'user-agent': 'Vitest',
+        },
+      }),
+      res,
+    );
+
+    expect(userSessionRepository.findOne).toHaveBeenCalledWith({
+      where: {
+        refreshTokenHash: 'hash:refresh-token',
+        revokedAt: expect.anything(),
+        expiresAt: expect.anything(),
+      },
+      relations: ['user', 'user.principal', 'user.emails'],
+    });
+    expect(jwtService.signAccessToken).toHaveBeenCalledWith({
+      principalUuid: USER_PRINCIPAL_UUID,
+      principalKind: 'user',
+      userUuid: '33333333-3333-3333-3333-333333333333',
+      sessionUuid: '44444444-4444-4444-4444-444444444444',
+      role: 'admin',
+    });
+    expect(res.cookie).toHaveBeenCalledWith(
+      'scoutlgs_access',
+      'signed-access-token',
+      expect.objectContaining({ httpOnly: true, path: '/' }),
+    );
+    expect(result).toEqual({
+      authenticated: true,
+      principal: { uuid: USER_PRINCIPAL_UUID, kind: 'user' },
+      user: {
+        uuid: '33333333-3333-3333-3333-333333333333',
+        displayName: null,
+        email: 'refresh@example.test',
+        role: 'admin',
+      },
     });
   });
 
@@ -168,6 +295,9 @@ describe('AuthSessionService', () => {
     expect(jwtService.signAccessToken).toHaveBeenCalledWith({
       principalUuid: PRINCIPAL_UUID,
       principalKind: 'anonymous',
+      userUuid: undefined,
+      sessionUuid: undefined,
+      role: undefined,
     });
     expect(res.cookie).toHaveBeenCalledWith(
       'scoutlgs_access',
@@ -193,6 +323,7 @@ describe('AuthSessionService', () => {
     expect(result).toEqual({
       authenticated: false,
       principal: { uuid: PRINCIPAL_UUID, kind: 'anonymous' },
+      user: null,
     });
   });
 
@@ -245,6 +376,7 @@ describe('AuthSessionService', () => {
     expect(result).toEqual({
       authenticated: false,
       principal: { uuid: PRINCIPAL_UUID, kind: 'anonymous' },
+      user: null,
     });
   });
 

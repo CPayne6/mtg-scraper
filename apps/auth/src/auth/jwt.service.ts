@@ -9,11 +9,13 @@ import {
 } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import type { PrincipalKind } from '../database/entities/principal.entity';
+import type { UserRole } from '../database/entities/user.entity';
 
 export interface PrincipalAccessTokenClaims extends JWTPayload {
   principal_kind: PrincipalKind;
   user_uuid?: string;
   sid?: string;
+  role?: UserRole;
 }
 
 @Injectable()
@@ -28,6 +30,7 @@ export class JwtService {
     principalKind: PrincipalKind;
     userUuid?: string;
     sessionUuid?: string;
+    role?: UserRole;
   }): Promise<string> {
     const { privateKey } = this.getKeys();
     const ttlSeconds =
@@ -37,6 +40,7 @@ export class JwtService {
       principal_kind: input.principalKind,
       user_uuid: input.userUuid,
       sid: input.sessionUuid,
+      role: input.role,
       typ: 'access',
     })
       .setProtectedHeader({
