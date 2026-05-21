@@ -2,12 +2,17 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import type { Request } from 'express';
-import type { PrincipalContext, PrincipalKind } from './principal.types';
+import type {
+  PrincipalContext,
+  PrincipalKind,
+  UserRole,
+} from './principal.types';
 
 interface PrincipalJwtPayload extends JWTPayload {
   principal_kind?: PrincipalKind;
   user_uuid?: string;
   sid?: string;
+  role?: UserRole;
 }
 
 @Injectable()
@@ -55,6 +60,7 @@ export class PrincipalJwtService {
       kind: payload.principal_kind,
       userUuid: payload.user_uuid,
       sessionUuid: payload.sid,
+      role: payload.role,
     };
   }
 }

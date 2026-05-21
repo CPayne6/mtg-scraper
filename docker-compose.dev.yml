@@ -72,6 +72,7 @@ services:
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
       - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
+      - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     volumes:
       # Mount source code for hot reload
       - ./apps/api/src:/app/apps/api/src:delegated
@@ -107,7 +108,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=5002
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=http://localhost:3001
       - COOKIE_SECURE=false
       - DATABASE_HOST=auth-postgres
       - DATABASE_PORT=5432

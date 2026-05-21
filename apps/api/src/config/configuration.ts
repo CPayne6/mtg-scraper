@@ -9,6 +9,10 @@ export default () => ({
     audience: process.env.AUTH_JWT_AUDIENCE ?? 'scoutlgs-api',
     accessCookieName: process.env.AUTH_ACCESS_COOKIE_NAME ?? 'scoutlgs_access',
   },
+  scheduler: {
+    internalUrl:
+      process.env.SCHEDULER_INTERNAL_URL ?? 'http://scheduler:5001',
+  },
   // V2 Scraping: Use database-first approach instead of cache-first
   useDatabaseFirst: process.env.USE_DATABASE_FIRST === 'true',
 });

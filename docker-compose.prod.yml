@@ -100,6 +100,7 @@ services:
       - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
       - AUTH_JWT_ISSUER=scoutlgs-auth
       - AUTH_JWT_AUDIENCE=scoutlgs-api
+      - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     secrets:
       - api_frontend_url
       - api_database_password
@@ -107,6 +108,7 @@ services:
       - redis-network
       - postgres-network
       - auth-network
+      - scheduler-internal-network
       - tunnel-network
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -239,6 +241,7 @@ services:
     networks:
       - redis-network
       - postgres-network
+      - scheduler-internal-network
     healthcheck:
       test: ["CMD", "pgrep", "-f", "node dist/main.js"]
       interval: 60s
@@ -331,6 +334,9 @@ networks:
     driver: overlay
   # Auth service access: api only
   auth-network:
+    driver: overlay
+  # Scheduler manual endpoints: api only (proxied via /admin/scheduler/*)
+  scheduler-internal-network:
     driver: overlay
   # Auth Postgres access: auth only
   auth-postgres-network:

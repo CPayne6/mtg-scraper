@@ -12,4 +12,7 @@ export const validationSchema = Joi.object({
   AUTH_JWT_ISSUER: Joi.string().default('scoutlgs-auth'),
   AUTH_JWT_AUDIENCE: Joi.string().default('scoutlgs-api'),
   AUTH_ACCESS_COOKIE_NAME: Joi.string().default('scoutlgs_access'),
+  SCHEDULER_INTERNAL_URL: Joi.string()
+    .uri()
+    .default('http://scheduler:5001'),
 });
