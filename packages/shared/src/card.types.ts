@@ -21,7 +21,10 @@ export interface Card {
   scryfall_id?: string;
 }
 
-export type CardWithStore = Card & { store: string };
+// `store` is the store's displayName (human-readable, e.g. "Face to Face Games").
+// `store_key` is the store's stable slug from the DB (e.g. "face-to-face-games")
+// and must be used anywhere an offer is grouped, filtered, deduped, or compared.
+export type CardWithStore = Card & { store: string; store_key: string };
 
 export interface StoreInfo {
   id: number;

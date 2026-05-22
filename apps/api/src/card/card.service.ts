@@ -85,6 +85,7 @@ export class CardService {
           card_number: collectorNumber,
           scryfall_id: scryfallId,
           store: listing.store.displayName,
+          store_key: listing.store.name,
         });
       }
     }
