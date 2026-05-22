@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -25,8 +25,12 @@ const CONDITION_TO_LABEL: Record<Condition, string> = {
   unknown: 'DMG',
 };
 
-function previewUrl(name: string): string {
+function scryfallPreviewUrl(name: string): string {
   return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=normal`;
+}
+
+function offerKey(o: CardWithStore): string {
+  return `${o.store_key}|${o.set}|${o.card_number ?? ''}|${o.condition}|${o.price}|${o.link ?? ''}`;
 }
 
 export function SelectedCardPanel({
@@ -37,12 +41,14 @@ export function SelectedCardPanel({
   inCartByOffer,
   onAddOffer,
 }: Props) {
+  const [hoveredOfferKey, setHoveredOfferKey] = useState<string | null>(null);
+
   const filteredOffers = useMemo(() => {
     if (!lookup || lookup.state !== 'success') return [] as CardWithStore[];
     const storeSet = new Set(selectedStores);
     const condSet = new Set(conditions);
     return lookup.offers
-      .filter((o) => (storeSet.size === 0 ? false : storeSet.has(o.store)))
+      .filter((o) => (storeSet.size === 0 ? false : storeSet.has(o.store_key)))
       .filter((o) => {
         if (condSet.size === 0) return true;
         const label = CONDITION_TO_LABEL[o.condition] ?? 'DMG';
@@ -55,6 +61,18 @@ export function SelectedCardPanel({
     () => filteredOffers.some((o) => inCartByOffer(o)),
     [filteredOffers, inCartByOffer],
   );
+
+  // Cheapest offer is the default preview source; hovered offer overrides it.
+  // Falls back to the Scryfall named-image lookup when no offers are loaded.
+  const cheapestOffer = filteredOffers[0];
+  const hoveredOffer = hoveredOfferKey
+    ? filteredOffers.find((o) => offerKey(o) === hoveredOfferKey) ?? null
+    : null;
+  const previewOffer = hoveredOffer ?? cheapestOffer ?? null;
+  const previewImage =
+    previewOffer?.image ||
+    (card && scryfallPreviewUrl(card.name)) ||
+    '';
 
   // Empty-list state
   if (!card) {
@@ -98,19 +116,21 @@ export function SelectedCardPanel({
           gap: '16px',
         })}
       >
-        {/* Preview thumb */}
+        {/* Preview thumb — defaults to cheapest offer's image; hovered offer
+            overrides; falls back to a generic Scryfall lookup when no offers. */}
         <Box
           aria-hidden="true"
           sx={(theme) => ({
             width: 124,
             aspectRatio: '5 / 7',
-            backgroundImage: `url("${previewUrl(card.name)}")`,
+            backgroundImage: previewImage ? `url("${previewImage}")` : 'none',
             backgroundColor: theme.palette.background.default,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
             borderRadius: '9px',
             flexShrink: 0,
+            transition: 'background-image 120ms ease-in-out',
             boxShadow:
               theme.palette.mode === 'dark'
                 ? '0 10px 28px -4px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.22)'
@@ -276,15 +296,22 @@ export function SelectedCardPanel({
               gap: '12px',
             }}
           >
-            {filteredOffers.map((offer, idx) => (
-              <StoreOfferTile
-                key={`${offer.store}|${offer.set}|${offer.condition}|${offer.price}`}
-                offer={offer}
-                isCheapest={idx === 0}
-                inCart={inCartByOffer(offer)}
-                onAdd={() => onAddOffer(offer)}
-              />
-            ))}
+            {filteredOffers.map((offer, idx) => {
+              const k = offerKey(offer);
+              return (
+                <StoreOfferTile
+                  key={`${k}|${idx}`}
+                  offer={offer}
+                  isCheapest={idx === 0}
+                  inCart={inCartByOffer(offer)}
+                  onAdd={() => onAddOffer(offer)}
+                  onHoverStart={() => setHoveredOfferKey(k)}
+                  onHoverEnd={() =>
+                    setHoveredOfferKey((curr) => (curr === k ? null : curr))
+                  }
+                />
+              );
+            })}
           </Box>
         )}
       </Box>

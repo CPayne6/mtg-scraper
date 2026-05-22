@@ -72,17 +72,19 @@ function CardRoute() {
     return STORE_FACETS.map((s, i) => ({
       id: i,
       uuid: String(i),
-      name: s.name,
-      displayName: s.name,
+      name: s.key,
+      displayName: s.label,
       cardCount: s.count,
     }));
   }, [response]);
 
+  // Counts are keyed by store slug (`store_key`), to match the filter values
+  // passed to FiltersSidebar via `selectedStores` / `onToggleStore`.
   const storeCounts = useMemo<Record<string, number>>(() => {
     if (!response) return {};
     const counts: Record<string, number> = {};
     for (const r of response.results) {
-      counts[r.store] = (counts[r.store] ?? 0) + 1;
+      counts[r.store_key] = (counts[r.store_key] ?? 0) + 1;
     }
     return counts;
   }, [response]);
@@ -99,7 +101,7 @@ function CardRoute() {
     if (!response) return [];
     const condFilter = new Set(conditions.map((c) => conditionMap[c]).filter(Boolean));
     return [...response.results]
-      .filter((r) => selectedStores.length === 0 || selectedStores.includes(r.store))
+      .filter((r) => selectedStores.length === 0 || selectedStores.includes(r.store_key))
       .filter((r) => condFilter.size === 0 || condFilter.has(r.condition))
       .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps

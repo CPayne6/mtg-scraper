@@ -21,7 +21,11 @@ export const Route = createFileRoute('/build/$listName')({
   component: BuilderRoute,
 });
 
-const ALL_STORES = STORE_FACETS.map((s) => s.name);
+// Builder filters/state operate on the store's slug (`key`), never displayName.
+const ALL_STORE_KEYS = STORE_FACETS.map((s) => s.key);
+const STORE_LABEL_BY_KEY: Record<string, string> = Object.fromEntries(
+  STORE_FACETS.map((s) => [s.key, s.label]),
+);
 
 function isTypingInField(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) return false;
@@ -53,9 +57,13 @@ function BuilderRoute() {
     `scoutlgs:builder:selected:${listName}`,
     null,
   );
+  // Stored values are store slugs (e.g. "face-to-face-games"), matching the
+  // `store_key` field on offers from the API. Bumped to v3 after migrating from
+  // displayName to slug — older v1/v2 values would silently filter out every
+  // offer.
   const [selectedStores, setSelectedStores] = useLocalStorage<string[]>(
-    'scoutlgs:builder:stores',
-    ALL_STORES,
+    'scoutlgs:builder:stores:v3',
+    ALL_STORE_KEYS,
   );
   const [conditions, setConditions] = useLocalStorage<string[]>(
     'scoutlgs:builder:conditions',
@@ -119,7 +127,7 @@ function BuilderRoute() {
 
   const handleToggleAll = useCallback(() => {
     setSelectedStores((current) =>
-      current.length === ALL_STORES.length ? [] : ALL_STORES.slice(),
+      current.length === ALL_STORE_KEYS.length ? [] : ALL_STORE_KEYS.slice(),
     );
   }, [setSelectedStores]);
 
@@ -267,7 +275,8 @@ function BuilderRoute() {
       }}
     >
       <BuilderFilterBar
-        allStores={ALL_STORES}
+        allStores={ALL_STORE_KEYS}
+        storeLabels={STORE_LABEL_BY_KEY}
         selectedStores={selectedStores}
         onToggleStore={handleToggleStore}
         onToggleAll={handleToggleAll}

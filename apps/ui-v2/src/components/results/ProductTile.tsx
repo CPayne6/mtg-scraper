@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import AddShoppingCart from '@mui/icons-material/AddShoppingCart';
@@ -7,22 +7,7 @@ import OpenInNew from '@mui/icons-material/OpenInNew';
 import { useSnackbar } from 'notistack';
 import type { CardWithStore } from '@scoutlgs/shared';
 import { useCart, cartItemId } from '@/components/cart/CartContext';
-
-const ART_GRADIENTS = [
-  'linear-gradient(135deg, #1a3a2a 0%, #4a6741 60%, #2a4a3a 100%)',
-  'linear-gradient(135deg, #5a1a1a 0%, #8a3a2a 60%, #3a1010 100%)',
-  'linear-gradient(135deg, #2a2a4a 0%, #4a5a8a 60%, #1a1a3a 100%)',
-  'linear-gradient(135deg, #3a2a4a 0%, #6a4a8a 60%, #2a1a3a 100%)',
-  'linear-gradient(135deg, #4a3a1a 0%, #8a6a2a 60%, #3a2a10 100%)',
-  'linear-gradient(135deg, #1a4a4a 0%, #3a8a8a 60%, #1a3a3a 100%)',
-  'linear-gradient(135deg, #4a1a3a 0%, #8a2a6a 60%, #3a1028 100%)',
-];
-
-function hashIndex(key: string, mod: number): number {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return h % mod;
-}
+import { gradientForCard } from '@/utils/cardGradient';
 
 type Props = {
   card: CardWithStore;
@@ -34,11 +19,14 @@ export function ProductTile({ card, isCheapest }: Props) {
   const { enqueueSnackbar } = useSnackbar();
   const id = cartItemId(card);
   const inCart = has(id);
+  const [imageFailed, setImageFailed] = useState(false);
 
-  const gradient = useMemo(() => {
-    const key = card.scryfall_id ?? card.title ?? '';
-    return ART_GRADIENTS[hashIndex(key, ART_GRADIENTS.length)];
-  }, [card.scryfall_id, card.title]);
+  const gradient = useMemo(
+    () => gradientForCard(card.scryfall_id ?? card.title ?? ''),
+    [card.scryfall_id, card.title],
+  );
+
+  const imageUrl = !imageFailed && card.image ? card.image : undefined;
 
   const handleArtClick = () => {
     if (inCart) return;
@@ -76,9 +64,27 @@ export function ProductTile({ card, isCheapest }: Props) {
           alignItems: 'flex-end',
           p: 1.5,
           background: gradient,
+          overflow: 'hidden',
           '&:hover .add-overlay': { opacity: 1 },
         }}
       >
+        {imageUrl && (
+          <Box
+            component="img"
+            src={imageUrl}
+            alt={`${card.title} from ${card.set}`}
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              zIndex: 1,
+            }}
+          />
+        )}
         {isCheapest && (
           <Box
             sx={(theme) => ({
@@ -92,7 +98,7 @@ export function ProductTile({ card, isCheapest }: Props) {
               px: 1,
               py: 0.5,
               borderRadius: '999px',
-              zIndex: 2,
+              zIndex: 3,
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
             })}
@@ -100,19 +106,21 @@ export function ProductTile({ card, isCheapest }: Props) {
             Cheapest
           </Box>
         )}
-        <Typography
-          sx={{
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 600,
-            textShadow: '0 1px 4px rgba(0,0,0,0.6)',
-            lineHeight: 1.2,
-            position: 'relative',
-            zIndex: 3,
-          }}
-        >
-          {card.title}
-        </Typography>
+        {!imageUrl && (
+          <Typography
+            sx={{
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 600,
+              textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+              lineHeight: 1.2,
+              position: 'relative',
+              zIndex: 3,
+            }}
+          >
+            {card.title}
+          </Typography>
+        )}
 
         <Box
           className="add-overlay"
@@ -132,7 +140,7 @@ export function ProductTile({ card, isCheapest }: Props) {
             opacity: inCart ? 1 : 0,
             transition: 'opacity 220ms',
             pointerEvents: 'none',
-            zIndex: 2,
+            zIndex: 4,
           }}
         >
           <Box

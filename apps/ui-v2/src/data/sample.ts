@@ -29,14 +29,17 @@ export const DECK_META: Record<string, DeckMeta> = {
   BorosAggro:         { colors: 'WR',   archetype: 'Aggro · Standard',         updated: 'yesterday' },
 };
 
+// Store facet defaults. `key` is the API slug (matches `store_key` on each
+// offer) and is the only thing used for filtering/grouping/keying. `label` is
+// the human-readable name used in UI text. Never filter on `label`.
 export const STORE_FACETS = [
-  { name: '401 Games', count: 1 },
-  { name: 'Face to Face', count: 1 },
-  { name: 'Hobbiesville', count: 1 },
-  { name: 'Black Knight', count: 1 },
-  { name: 'Exor Games', count: 1 },
-  { name: 'Game Knight', count: 1 },
-  { name: 'House of Cards', count: 1 },
+  { key: '401-games', label: '401 Games', count: 1 },
+  { key: 'face-to-face-games', label: 'Face to Face Games', count: 1 },
+  { key: 'hobbiesville', label: 'Hobbiesville', count: 1 },
+  { key: 'black-knight-games', label: 'Black Knight Games', count: 1 },
+  { key: 'exor-games', label: 'Exor Games', count: 1 },
+  { key: 'game-knight', label: 'Game Knight', count: 1 },
+  { key: 'house-of-cards', label: 'House of Cards', count: 1 },
 ];
 
 export const FALLBACK_CARDS = [

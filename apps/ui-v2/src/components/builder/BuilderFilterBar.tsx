@@ -4,7 +4,10 @@ import Typography from '@mui/material/Typography';
 import Popover from '@mui/material/Popover';
 
 type Props = {
+  // Store slugs (e.g. "face-to-face-games"), not displayNames.
   allStores: string[];
+  // slug -> human label, used for rendering only.
+  storeLabels: Record<string, string>;
   selectedStores: string[];
   onToggleStore: (name: string) => void;
   onToggleAll: () => void;
@@ -23,12 +26,14 @@ const CONDITION_TOOLTIPS: Record<string, string> = {
 
 export function BuilderFilterBar({
   allStores,
+  storeLabels,
   selectedStores,
   onToggleStore,
   onToggleAll,
   conditions,
   onToggleCondition,
 }: Props) {
+  const labelFor = (slug: string) => storeLabels[slug] ?? slug;
   const allOn = selectedStores.length === allStores.length && allStores.length > 0;
   const noneOn = selectedStores.length === 0;
   const unselected = allStores.filter((s) => !selectedStores.includes(s));
@@ -157,8 +162,8 @@ export function BuilderFilterBar({
                   component="button"
                   role="listitem"
                   onClick={() => onToggleStore(s)}
-                  title={`Remove ${s}`}
-                  aria-label={`Remove ${s}`}
+                  title={`Remove ${labelFor(s)}`}
+                  aria-label={`Remove ${labelFor(s)}`}
                   sx={(theme) => ({
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -195,7 +200,7 @@ export function BuilderFilterBar({
                   })}
                 >
                   <Box component="span" className="chip-dot" aria-hidden="true" />
-                  <Box component="span">{s}</Box>
+                  <Box component="span">{labelFor(s)}</Box>
                   <Box component="span" className="chip-x" aria-hidden="true">
                     {'×'}
                   </Box>
@@ -318,19 +323,21 @@ export function BuilderFilterBar({
                       opacity: 0.18,
                     })}
                   />
-                  <span>{s}</span>
+                  <span>{labelFor(s)}</span>
                 </Box>
               ))}
             </Popover>
           </>
         )}
 
-        {/* Divider */}
+        {/* Vertical divider between Stores and Condition. width must be '1px';
+            sx={{ width: 1 }} would resolve to 100% and render a full-width bar
+            when the flex row wraps to a new line. */}
         <Box
           aria-hidden="true"
           sx={(theme) => ({
             display: 'inline-block',
-            width: 1,
+            width: '1px',
             alignSelf: 'stretch',
             background: theme.palette.divider,
             mx: '4px',

@@ -22,7 +22,7 @@ type CartContextValue = {
 const CartContext = createContext<CartContextValue | null>(null);
 
 function cartItemId(card: CardWithStore): string {
-  return `${card.scryfall_id ?? card.title}|${card.store}|${card.set ?? ''}|${card.condition ?? ''}`;
+  return `${card.scryfall_id ?? card.title}|${card.store_key}|${card.set ?? ''}|${card.condition ?? ''}`;
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
