@@ -21,8 +21,14 @@ async function bootstrap() {
     }),
   );
 
+  const frontendUrl = configService.get<string>('frontendUrl') ?? '';
+  const allowedOrigins = frontendUrl
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: configService.get<string>('frontendUrl'),
+    origin: allowedOrigins.length > 1 ? allowedOrigins : allowedOrigins[0],
     credentials: true,
   });
 
