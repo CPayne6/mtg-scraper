@@ -17,7 +17,7 @@ import { SelectedCardPanel } from '@/components/builder/SelectedCardPanel';
 import { CardListPanel } from '@/components/builder/CardListPanel';
 import { STORE_FACETS } from '@/data/sample';
 
-export const Route = createFileRoute('/build/$listName')({
+export const Route = createFileRoute('/build/$listId/$slug')({
   component: BuilderRoute,
 });
 
@@ -36,13 +36,14 @@ function isTypingInField(target: EventTarget | null): boolean {
 }
 
 function BuilderRoute() {
-  const { listName } = useParams({ from: '/build/$listName' });
+  const { listId } = useParams({ from: '/build/$listId/$slug' });
   const navigate = useNavigate();
-  const { get } = useLists();
+  const { get, getList, loading } = useLists();
   const { add: addToCart, items: cartItems } = useCart();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
-  const cards = get(listName);
+  const cards = get(listId);
+  const list = getList(listId);
   const entries = useMemo(() => groupByName(cards), [cards]);
   const uniqueNames = useMemo(() => entries.map((e) => e.name), [entries]);
   const existingNames = useMemo(
@@ -54,7 +55,7 @@ function BuilderRoute() {
 
   // Persisted UI state
   const [selectedName, setSelectedName] = useLocalStorage<string | null>(
-    `scoutlgs:builder:selected:${listName}`,
+    `scoutlgs:builder:selected:${listId}`,
     null,
   );
   // Stored values are store slugs (e.g. "face-to-face-games"), matching the
@@ -95,7 +96,7 @@ function BuilderRoute() {
 
   // Editor: add/remove + history.
   const { history, addCard, removeCard, undo } = useListEditor(
-    listName,
+    listId,
     inCartByName,
   );
 
@@ -146,11 +147,11 @@ function BuilderRoute() {
       const added = addToCart(offer);
       if (added) {
         enqueueSnackbar(
-          `Added "${offer.title}" from ${offer.store} to cart`,
+          `Added `${offer.title}` from ${offer.store} to cart`,
           { variant: 'success' },
         );
       } else {
-        enqueueSnackbar(`"${offer.title}" from ${offer.store} is already in your cart`, {
+        enqueueSnackbar(``${offer.title}` from ${offer.store} is already in your cart`, {
           variant: 'default',
         });
       }
@@ -164,7 +165,7 @@ function BuilderRoute() {
       const result = undo(entryId);
       if (result === 'blocked') {
         enqueueSnackbar(
-          "Can't remove that card while it's in your cart",
+          "Can"t remove that card while it"s in your cart",
           { variant: 'warning' },
         );
       }
@@ -176,7 +177,7 @@ function BuilderRoute() {
   const handleAddCard = useCallback(
     (cardName: string) => {
       const entryId = addCard(cardName);
-      const key = enqueueSnackbar(`Added "${cardName}" to list`, {
+      const key = enqueueSnackbar(`Added `${cardName}` to list`, {
         autoHideDuration: 6000,
         action: (snackKey) => (
           <Button
@@ -201,7 +202,7 @@ function BuilderRoute() {
       // The reselect effect handles updating `selectedName` when the removed
       // card's last copy disappears from `entries`.
       const entryId = removeCard(cardName);
-      const key = enqueueSnackbar(`Removed "${cardName}" from list`, {
+      const key = enqueueSnackbar(`Removed `${cardName}` from list`, {
         autoHideDuration: 6000,
         action: (snackKey) => (
           <Button
@@ -235,12 +236,12 @@ function BuilderRoute() {
     return () => window.removeEventListener('keydown', onKey);
   }, [performUndo]);
 
-  if (cards.length === 0) {
+  if (!list && !loading) {
     return (
       <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
         <EmptyState
           title="List not found"
-          description={`We couldn't find "${listName}" in your saved lists.`}
+          description="We couldn't find that list in your saved lists."
           action={
             <Button variant="outlined" color="primary" onClick={() => navigate({ to: "/lists" })}>
               Back to Lists

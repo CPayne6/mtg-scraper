@@ -1,2 +1,2 @@
 export { ListsProvider, useLists } from './ListsContext';
-export type { ListsContextValue, SavedLists } from './ListsContext.types';
+export type { ListsContextValue, ServerList } from './ListsContext.types';

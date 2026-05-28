@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
+import { slugifyName } from '@/utils/slugify';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -17,6 +18,7 @@ import type { CardWithStore } from '@scoutlgs/shared';
 import { useLists } from '@/components/lists/ListsContext';
 import { useCart } from '@/components/cart/CartContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { useConfirm } from '@/components/feedback/ConfirmDialog';
 import { ColorPips } from '@/components/lists/ColorPips';
 import { KpiTile } from '@/components/results/KpiTile';
 import { DecklistRow } from '@/components/results/DecklistRow';
@@ -25,7 +27,7 @@ import { colorIdentityName } from '@/data/colors';
 import { groupByName } from '@/utils/parseDeckList';
 import { fetchCard } from '@/api/cards';
 
-export const Route = createFileRoute('/list/$listName')({
+export const Route = createFileRoute('/list/$listId/$slug')({
   component: ListDetailRoute,
 });
 
@@ -44,15 +46,18 @@ const CONDITION_LABELS: Record<string, string> = {
 };
 
 function ListDetailRoute() {
-  const { listName } = useParams({ from: '/list/$listName' });
+  const { listId } = useParams({ from: '/list/$listId/$slug' });
   const navigate = useNavigate();
-  const { get, remove: removeList } = useLists();
+  const { get, getList, remove: removeList, loading } = useLists();
   const { add: addToCart } = useCart();
   const { enqueueSnackbar } = useSnackbar();
-  const cards = get(listName);
+  const confirm = useConfirm();
+  const cards = get(listId);
+  const list = getList(listId);
+  const listName = list?.name ?? '';
   const entries = useMemo(() => groupByName(cards), [cards]);
   const [results, setResults] = useState<Record<string, CardState>>({});
-  const elapsedStart = useMemo(() => Date.now(), [listName]);
+  const elapsedStart = useMemo(() => Date.now(), [listId]);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -110,14 +115,14 @@ function ListDetailRoute() {
     return { deckTotal: total, inStockCount: inStock, uniqueStoreCount: stores.size };
   }, [entries, results]);
 
-  if (cards.length === 0) {
+  if (!list && !loading) {
     return (
       <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
         <EmptyState
           title="List not found"
-          description={`We couldn't find "${listName}" in your saved lists.`}
+          description="We couldn't find that list in your saved lists."
           action={
-            <Button variant="outlined" color="primary" onClick={() => navigate({ to: '/lists' })}>
+            <Button variant="outlined" color="primary" onClick={() => navigate({ to: "/lists" })}>
               Back to Lists
             </Button>
           }
@@ -129,15 +134,27 @@ function ListDetailRoute() {
   const meta = DECK_META[listName] ?? { colors: '', archetype: 'Custom', updated: 'recently' };
   const checkoutStores = uniqueStoreCount || 0;
 
+  const handleDeleteList = useCallback(async () => {
+    const ok = await confirm({
+      title: `Delete ${listName || 'this list'}?`,
+      description: 'This removes the list from your account. This action cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await removeList(listId);
+    navigate({ to: '/lists' });
+  }, [confirm, listName, listId, navigate, removeList]);
+
   const handleAddRowToCart = (cardName: string) => {
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
-      enqueueSnackbar(`No price yet for "${cardName}"`, { variant: 'warning' });
+      enqueueSnackbar(`No price yet for `${cardName}``, { variant: `warning` });
       return;
     }
     const added = addToCart(r.cheapest);
     enqueueSnackbar(
-      added ? `Added "${cardName}" to cart` : `"${cardName}" is already in your cart`,
+      added ? `Added `${cardName}` to cart` : ``${cardName}` is already in your cart`,
       { variant: added ? 'success' : 'default' },
     );
   };
@@ -190,24 +207,24 @@ function ListDetailRoute() {
             {colorIdentityName(meta.colors)} · {cards.length} cards
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
           <Button
             variant="contained"
             color="primary"
             startIcon={<Construction sx={{ fontSize: 18 }} />}
-            onClick={() => navigate({ to: '/build/$listName', params: { listName } })}
+            onClick={() =>
+              navigate({
+                to: '/build/$listId/$slug',
+                params: { listId, slug: slugifyName(listName || listId) },
+              })
+            }
           >
             Build Cart
           </Button>
           <Button
             variant="outlined"
             color="primary"
-            onClick={() => {
-              if (window.confirm(`Delete "${listName}"?`)) {
-                removeList(listName);
-                navigate({ to: '/lists' });
-              }
-            }}
+            onClick={handleDeleteList}
           >
             Delete
           </Button>
@@ -218,7 +235,7 @@ function ListDetailRoute() {
             disabled={!isLoaded || checkoutStores === 0}
           >
             {checkoutStores > 0
-              ? `Check Out at ${checkoutStores} ${checkoutStores === 1 ? 'Store' : 'Stores'}`
+              ? `Check Out at ${checkoutStores} ${checkoutStores === 1 ? `Store` : `Stores`}`
               : 'Check Out'}
           </Button>
         </Stack>
@@ -261,14 +278,14 @@ function ListDetailRoute() {
       >
         <KpiTile
           label="Deck total"
-          value={isLoaded ? `CA$${deckTotal.toFixed(2)}` : '…'}
-          delta={isLoaded ? `${inStockCount} of ${entries.length} priced` : 'scouting'}
+          value={isLoaded ? `CA$${deckTotal.toFixed(2)}` : `…`}
+          delta={isLoaded ? `${inStockCount} of ${entries.length} priced` : `scouting`}
           deltaTone={isLoaded && inStockCount === entries.length ? 'good' : 'muted'}
         />
         <KpiTile
           label="Stores searched"
-          value={isLoaded ? `${uniqueStoreCount} ${uniqueStoreCount === 1 ? 'store' : 'stores'}` : '…'}
-          delta={isLoaded && elapsedMs != null ? `in ${(elapsedMs / 1000).toFixed(1)}s` : 'in progress'}
+          value={isLoaded ? `${uniqueStoreCount} ${uniqueStoreCount === 1 ? `store` : `stores`}` : `…`}
+          delta={isLoaded && elapsedMs != null ? `in ${(elapsedMs / 1000).toFixed(1)}s` : `in progress`}
         />
         <KpiTile
           label="In stock"
@@ -301,7 +318,7 @@ function ListDetailRoute() {
             let store = '—';
             if (r?.state === 'success' && r.cheapest) {
               const { set, condition } = r.cheapest;
-              meta = `${set || '—'} · ${CONDITION_LABELS[condition] ?? condition}`;
+              meta = `${set || `—`} · ${CONDITION_LABELS[condition] ?? condition}`;
               price = qty * r.cheapest.price;
               store = r.cheapest.store;
             } else if (r?.state === 'pending') {
@@ -320,7 +337,7 @@ function ListDetailRoute() {
                 price={price}
                 store={store}
                 onStoreChange={() => handleAddRowToCart(name)}
-                onRemove={() => enqueueSnackbar(`Removed ${name}`, { variant: 'default' })}
+                onRemove={() => enqueueSnackbar(`Removed ${name}`, { variant: `default` })}
               />
             );
           })}

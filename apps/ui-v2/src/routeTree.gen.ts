@@ -12,9 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ListsRouteImport } from './routes/lists'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ListListNameRouteImport } from './routes/list.$listName'
 import { Route as CardNameRouteImport } from './routes/card.$name'
-import { Route as BuildListNameRouteImport } from './routes/build.$listName'
+import { Route as ListListIdSlugRouteImport } from './routes/list.$listId.$slug'
+import { Route as BuildListIdSlugRouteImport } from './routes/build.$listId.$slug'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -31,19 +31,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ListListNameRoute = ListListNameRouteImport.update({
-  id: '/list/$listName',
-  path: '/list/$listName',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CardNameRoute = CardNameRouteImport.update({
   id: '/card/$name',
   path: '/card/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BuildListNameRoute = BuildListNameRouteImport.update({
-  id: '/build/$listName',
-  path: '/build/$listName',
+const ListListIdSlugRoute = ListListIdSlugRouteImport.update({
+  id: '/list/$listId/$slug',
+  path: '/list/$listId/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BuildListIdSlugRoute = BuildListIdSlugRouteImport.update({
+  id: '/build/$listId/$slug',
+  path: '/build/$listId/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -51,26 +51,26 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/lists': typeof ListsRoute
   '/settings': typeof SettingsRoute
-  '/build/$listName': typeof BuildListNameRoute
   '/card/$name': typeof CardNameRoute
-  '/list/$listName': typeof ListListNameRoute
+  '/build/$listId/$slug': typeof BuildListIdSlugRoute
+  '/list/$listId/$slug': typeof ListListIdSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/lists': typeof ListsRoute
   '/settings': typeof SettingsRoute
-  '/build/$listName': typeof BuildListNameRoute
   '/card/$name': typeof CardNameRoute
-  '/list/$listName': typeof ListListNameRoute
+  '/build/$listId/$slug': typeof BuildListIdSlugRoute
+  '/list/$listId/$slug': typeof ListListIdSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/lists': typeof ListsRoute
   '/settings': typeof SettingsRoute
-  '/build/$listName': typeof BuildListNameRoute
   '/card/$name': typeof CardNameRoute
-  '/list/$listName': typeof ListListNameRoute
+  '/build/$listId/$slug': typeof BuildListIdSlugRoute
+  '/list/$listId/$slug': typeof ListListIdSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -78,34 +78,34 @@ export interface FileRouteTypes {
     | '/'
     | '/lists'
     | '/settings'
-    | '/build/$listName'
     | '/card/$name'
-    | '/list/$listName'
+    | '/build/$listId/$slug'
+    | '/list/$listId/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/lists'
     | '/settings'
-    | '/build/$listName'
     | '/card/$name'
-    | '/list/$listName'
+    | '/build/$listId/$slug'
+    | '/list/$listId/$slug'
   id:
     | '__root__'
     | '/'
     | '/lists'
     | '/settings'
-    | '/build/$listName'
     | '/card/$name'
-    | '/list/$listName'
+    | '/build/$listId/$slug'
+    | '/list/$listId/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ListsRoute: typeof ListsRoute
   SettingsRoute: typeof SettingsRoute
-  BuildListNameRoute: typeof BuildListNameRoute
   CardNameRoute: typeof CardNameRoute
-  ListListNameRoute: typeof ListListNameRoute
+  BuildListIdSlugRoute: typeof BuildListIdSlugRoute
+  ListListIdSlugRoute: typeof ListListIdSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -131,13 +131,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/list/$listName': {
-      id: '/list/$listName'
-      path: '/list/$listName'
-      fullPath: '/list/$listName'
-      preLoaderRoute: typeof ListListNameRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/card/$name': {
       id: '/card/$name'
       path: '/card/$name'
@@ -145,11 +138,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CardNameRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/build/$listName': {
-      id: '/build/$listName'
-      path: '/build/$listName'
-      fullPath: '/build/$listName'
-      preLoaderRoute: typeof BuildListNameRouteImport
+    '/list/$listId/$slug': {
+      id: '/list/$listId/$slug'
+      path: '/list/$listId/$slug'
+      fullPath: '/list/$listId/$slug'
+      preLoaderRoute: typeof ListListIdSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/build/$listId/$slug': {
+      id: '/build/$listId/$slug'
+      path: '/build/$listId/$slug'
+      fullPath: '/build/$listId/$slug'
+      preLoaderRoute: typeof BuildListIdSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -159,9 +159,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ListsRoute: ListsRoute,
   SettingsRoute: SettingsRoute,
-  BuildListNameRoute: BuildListNameRoute,
   CardNameRoute: CardNameRoute,
-  ListListNameRoute: ListListNameRoute,
+  BuildListIdSlugRoute: BuildListIdSlugRoute,
+  ListListIdSlugRoute: ListListIdSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

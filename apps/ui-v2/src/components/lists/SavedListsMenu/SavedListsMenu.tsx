@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useMemo, useState, type MouseEvent } from 'react';
 import Button from '@mui/material/Button';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -17,46 +17,61 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import { useNavigate } from '@tanstack/react-router';
 import { useLists } from '@/components/lists/ListsContext';
+import { useConfirm } from '@/components/feedback/ConfirmDialog';
+import { slugifyName } from '@/utils/slugify';
 
 export function SavedListsMenu() {
   const navigate = useNavigate();
-  const { lists, names, count, rename, remove } = useLists();
+  const { lists, count, rename, remove } = useLists();
+  const confirm = useConfirm();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [draft, setDraft] = useState('');
   const open = Boolean(anchor);
 
   const handleOpen = (e: MouseEvent<HTMLElement>) => setAnchor(e.currentTarget);
   const handleClose = () => setAnchor(null);
 
-  const startEdit = (e: MouseEvent<HTMLElement>, name: string) => {
+  const startEdit = (e: MouseEvent<HTMLElement>, id: string, name: string) => {
     e.stopPropagation();
-    setEditing(name);
+    setEditing({ id, name });
     setDraft(name);
     setAnchor(null);
   };
 
-  const handleDelete = (e: MouseEvent<HTMLElement>, name: string) => {
-    e.stopPropagation();
-    remove(name);
-  };
+  const handleDelete = useCallback(
+    async (e: MouseEvent<HTMLElement>, id: string, name: string) => {
+      e.stopPropagation();
+      const ok = await confirm({
+        title: `Delete ${name}?`,
+        description: 'This removes the list from your account. This action cannot be undone.',
+        confirmLabel: 'Delete',
+        tone: 'danger',
+      });
+      if (ok) await remove(id);
+    },
+    [confirm, remove],
+  );
 
-  const cleaned = useMemo(() => draft.replace(/\W/g, ''), [draft]);
+  const trimmedDraft = useMemo(() => draft.trim(), [draft]);
   const canSave =
     editing != null &&
-    cleaned.length > 0 &&
-    cleaned !== editing &&
-    !lists[cleaned];
+    trimmedDraft.length > 0 &&
+    trimmedDraft !== editing.name &&
+    !lists.some((l) => l.id !== editing.id && l.name === trimmedDraft);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editing || !canSave) return;
-    rename(editing, draft);
+    await rename(editing.id, trimmedDraft);
     setEditing(null);
   };
 
-  const handleOpenList = (name: string) => {
+  const handleOpenList = (id: string, name: string) => {
     setAnchor(null);
-    navigate({ to: '/list/$listName', params: { listName: name } });
+    navigate({
+      to: '/list/$listId/$slug',
+      params: { listId: id, slug: slugifyName(name) },
+    });
   };
 
   if (count === 0) return null;
@@ -84,10 +99,10 @@ export function SavedListsMenu() {
           Saved Decklists
         </Box>
         <Box sx={{ height: '1px', bgcolor: 'divider' }} />
-        {names.slice(0, 8).map((n) => (
+        {lists.slice(0, 8).map((list) => (
           <MenuItem
-            key={n}
-            onClick={() => handleOpenList(n)}
+            key={list.id}
+            onClick={() => handleOpenList(list.id, list.name)}
             sx={{
               py: 1.25,
               px: 1.75,
@@ -105,10 +120,10 @@ export function SavedListsMenu() {
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {n}
+                  {list.name}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                  {lists[n].length} cards
+                  {list.cards.length} cards
                 </Typography>
               </Box>
               <Stack
@@ -119,8 +134,8 @@ export function SavedListsMenu() {
                 <Tooltip title="Rename">
                   <IconButton
                     size="small"
-                    aria-label={`Rename ${n}`}
-                    onClick={(e) => startEdit(e, n)}
+                    aria-label={`Rename ${list.name}`}
+                    onClick={(e) => startEdit(e, list.id, list.name)}
                     sx={{ width: 28, height: 28 }}
                   >
                     <EditIcon sx={{ fontSize: 16 }} />
@@ -129,8 +144,8 @@ export function SavedListsMenu() {
                 <Tooltip title="Delete">
                   <IconButton
                     size="small"
-                    aria-label={`Delete ${n}`}
-                    onClick={(e) => handleDelete(e, n)}
+                    aria-label={`Delete ${list.name}`}
+                    onClick={(e) => handleDelete(e, list.id, list.name)}
                     sx={{
                       width: 28,
                       height: 28,

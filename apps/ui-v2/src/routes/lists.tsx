@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
@@ -7,7 +8,9 @@ import Add from '@mui/icons-material/Add';
 import { useLists } from '@/components/lists/ListsContext';
 import { DeckCard } from '@/components/lists/DeckCard';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { useConfirm } from '@/components/feedback/ConfirmDialog';
 import { DECK_META } from '@/data/sample';
+import { slugifyName } from '@/utils/slugify';
 
 export const Route = createFileRoute('/lists')({
   component: ListsRoute,
@@ -15,7 +18,21 @@ export const Route = createFileRoute('/lists')({
 
 function ListsRoute() {
   const navigate = useNavigate();
-  const { names, count, totalCards, lists, remove } = useLists();
+  const { count, totalCards, lists, remove } = useLists();
+  const confirm = useConfirm();
+
+  const handleDelete = useCallback(
+    async (id: string, name: string) => {
+      const ok = await confirm({
+        title: `Delete ${name}?`,
+        description: 'This removes the list from your account. This action cannot be undone.',
+        confirmLabel: 'Delete',
+        tone: 'danger',
+      });
+      if (ok) await remove(id);
+    },
+    [confirm, remove],
+  );
 
   return (
     <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
@@ -89,23 +106,27 @@ function ListsRoute() {
             gap: 2,
           }}
         >
-          {names.map((n) => {
-            const meta = DECK_META[n] ?? {
+          {lists.map((list) => {
+            const meta = DECK_META[list.name] ?? {
               colors: '',
               archetype: 'Custom',
               updated: 'recently',
             };
-            const cnt = lists[n].length;
             return (
               <DeckCard
-                key={n}
-                name={n}
+                key={list.id}
+                name={list.name}
                 colors={meta.colors}
                 archetype={meta.archetype}
-                count={cnt}
+                count={list.cards.length}
                 updated={meta.updated}
-                onOpen={() => navigate({ to: '/list/$listName', params: { listName: n } })}
-                onDelete={() => remove(n)}
+                onOpen={() =>
+                  navigate({
+                    to: '/list/$listId/$slug',
+                    params: { listId: list.id, slug: slugifyName(list.name) },
+                  })
+                }
+                onDelete={() => handleDelete(list.id, list.name)}
               />
             );
           })}

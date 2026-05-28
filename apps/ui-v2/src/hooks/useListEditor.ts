@@ -24,8 +24,11 @@ function makeId(): string {
 
 export type UndoResult = 'undone' | 'blocked' | 'noop';
 
+// `listId` is the server list UUID. Mutations are fire-and-forget: ListsContext
+// owns the optimistic state and rolls it back on API error (with a toast). The
+// history here is local UI state for the Undo affordance.
 export function useListEditor(
-  listName: string,
+  listId: string,
   inCartByName: (name: string) => boolean,
 ): {
   history: ListHistoryEntry[];
@@ -35,7 +38,7 @@ export function useListEditor(
 } {
   const { addCardToList, removeCardFromList } = useLists();
   const [history, setHistory] = useLocalStorage<ListHistoryEntry[]>(
-    `scoutlgs:list-history:${listName}`,
+    `scoutlgs:list-history:${listId}`,
     [],
   );
 
@@ -59,18 +62,18 @@ export function useListEditor(
 
   const addCard = useCallback(
     (cardName: string) => {
-      addCardToList(listName, cardName);
+      void addCardToList(listId, cardName);
       return pushEntry('add', cardName);
     },
-    [addCardToList, listName, pushEntry],
+    [addCardToList, listId, pushEntry],
   );
 
   const removeCard = useCallback(
     (cardName: string) => {
-      removeCardFromList(listName, cardName);
+      void removeCardFromList(listId, cardName);
       return pushEntry('remove', cardName);
     },
-    [removeCardFromList, listName, pushEntry],
+    [removeCardFromList, listId, pushEntry],
   );
 
   // Keep a ref to the latest history so undo can read it without making the
@@ -92,14 +95,14 @@ export function useListEditor(
 
       if (target.type === 'add') {
         if (inCartByName(target.cardName)) return 'blocked';
-        removeCardFromList(listName, target.cardName);
+        void removeCardFromList(listId, target.cardName);
       } else {
-        addCardToList(listName, target.cardName);
+        void addCardToList(listId, target.cardName);
       }
       setHistory((h) => h.filter((e) => e.id !== target.id));
       return 'undone';
     },
-    [addCardToList, inCartByName, listName, removeCardFromList, setHistory],
+    [addCardToList, inCartByName, listId, removeCardFromList, setHistory],
   );
 
   return { history, addCard, removeCard, undo };
