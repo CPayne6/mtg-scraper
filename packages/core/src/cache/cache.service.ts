@@ -1,9 +1,20 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bullmq';
-import { QUEUE_NAMES, StoreCardCacheEntry, CardWithStore } from '@scoutlgs/shared';
+import type { CardWithStore } from '@scoutlgs/shared';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
+
+/**
+ * Cache entry for a single store-card combination.
+ * Used for batch cache retrieval by the API.
+ */
+export interface StoreCardCacheEntry {
+  /** Store name slug (e.g., 'f2f', '401', 'hobbies') */
+  storeName: string;
+  results: CardWithStore[];
+  timestamp: number;
+  error?: string;
+  retryCount?: number;
+}
 
 export type { CardWithStore };
 
@@ -29,29 +40,84 @@ export interface SchedulerJobStatus {
   }
 }
 
+export interface StoreBackoffState {
+  /** Absolute timestamp (ms) when the backoff expires */
+  blockedUntil: number;
+  /** The error type that triggered the backoff */
+  errorType: string;
+  /** Number of consecutive failures for this store */
+  consecutiveFailures: number;
+  /** The current backoff duration in ms */
+  currentBackoffMs: number;
+}
+
+export interface BackoffCheckResult {
+  /** Whether the store is currently blocked */
+  blocked: boolean;
+  /** Remaining time in ms until backoff expires (min 500ms) */
+  remainingMs?: number;
+  /** Absolute timestamp when backoff expires */
+  blockedUntil?: number;
+}
+
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
   private readonly STORE_CACHE_KEY_PREFIX = 'card:';
   private readonly STORE_KEY_SEPARATOR = ':store:';
   private readonly SCRAPING_KEY_PREFIX = 'scraping:';
+  private readonly RATE_LIMIT_KEY_PREFIX = 'ratelimit:store:';
   private readonly SCHEDULER_KEY = 'scheduler:job-status';
   private readonly SCRAPING_TTL = 300; // 5 minutes in seconds
   private readonly CACHE_TTL = 86400; // 24 hours in seconds
+  private readonly BASE_BACKOFF_MS = 5000; // 5 seconds initial backoff
+  private readonly MAX_BACKOFF_MS = 60000; // 60 seconds max backoff
+  private readonly MIN_DELAY_MS = 500; // Minimum delay when re-queueing
+  private redis: Redis;
   private cardSubscriber: Redis;
 
   // Map of pattern -> pending pattern subscription info (for PSUBSCRIBE)
   private pendingPatternSubscriptions = new Map<string, PendingPatternSubscription>();
 
+  // Store event handler references for cleanup
+  private errorHandler: ((err: Error) => void) | null = null;
+  private closeHandler: (() => void) | null = null;
+  private reconnectingHandler: ((delay: number) => void) | null = null;
+  private endHandler: (() => void) | null = null;
+  private readyHandler: (() => Promise<void>) | null = null;
+  private pmessageHandler: ((pattern: string, channel: string, operation: string) => Promise<void>) | null = null;
+
   constructor(
-    @InjectQueue(QUEUE_NAMES.CARD_SCRAPE) private readonly queue: Queue,
     private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit() {
-    this.logger.log('Initializing card subscriber...');
+    this.logger.log('Initializing cache service Redis connections...');
 
-    // Create Redis subscriber instance
+    const redisConfig = {
+      host: this.configService.get('REDIS_HOST', 'localhost'),
+      port: this.configService.get('REDIS_PORT', 6379),
+      password: this.configService.get('REDIS_PASSWORD'),
+      retryStrategy: (times: number) => {
+        const delay = Math.min(times * 50, 2000);
+        this.logger.warn(`Redis reconnecting (attempt ${times}), delay: ${delay}ms`);
+        return delay;
+      },
+      maxRetriesPerRequest: null,
+    };
+
+    // Create Redis client for general operations
+    this.redis = new Redis(redisConfig);
+
+    this.redis.on('error', (err) => {
+      this.logger.error('Redis client error:', err);
+    });
+
+    this.redis.on('ready', () => {
+      this.logger.log('Redis client ready');
+    });
+
+    // Create Redis subscriber instance (separate connection for pub/sub)
     this.cardSubscriber = new Redis({
       host: this.configService.get('REDIS_HOST', 'localhost'),
       port: this.configService.get('REDIS_PORT', 6379),
@@ -64,26 +130,30 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       maxRetriesPerRequest: null,
     });
 
-    // Set up error handlers
-    this.cardSubscriber.on('error', (err) => {
+    // Set up error handlers (store references for cleanup)
+    this.errorHandler = (err) => {
       this.logger.error('Card subscriber error:', err);
-    });
+    };
+    this.cardSubscriber.on('error', this.errorHandler);
 
-    this.cardSubscriber.on('close', () => {
+    this.closeHandler = () => {
       this.logger.warn('Card subscriber connection closed');
-    });
+    };
+    this.cardSubscriber.on('close', this.closeHandler);
 
-    this.cardSubscriber.on('reconnecting', (delay) => {
+    this.reconnectingHandler = (delay) => {
       this.logger.log(`Card subscriber reconnecting in ${delay}ms...`);
-    });
+    };
+    this.cardSubscriber.on('reconnecting', this.reconnectingHandler);
 
-    this.cardSubscriber.on('end', () => {
+    this.endHandler = () => {
       this.logger.error('Card subscriber connection ended - failing all pending requests');
       this.failAllPendingRequests('Redis connection ended');
-    });
+    };
+    this.cardSubscriber.on('end', this.endHandler);
 
     // Handle successful reconnection
-    this.cardSubscriber.on('ready', async () => {
+    this.readyHandler = async () => {
       this.logger.log('Card subscriber ready');
 
       // Resubscribe to all active patterns after reconnection
@@ -97,10 +167,11 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
           this.failAllPendingRequests('Failed to resubscribe after reconnection');
         }
       }
-    });
+    };
+    this.cardSubscriber.on('ready', this.readyHandler);
 
     // Handle pattern notification for store-card subscriptions (PSUBSCRIBE)
-    this.cardSubscriber.on('pmessage', async (pattern: string, channel: string, operation: string) => {
+    this.pmessageHandler = async (pattern: string, channel: string, operation: string) => {
       this.logger.debug(`Received keyspace notification on pattern ${pattern}, channel ${channel}: ${operation}`);
 
       const pending = this.pendingPatternSubscriptions.get(pattern);
@@ -125,20 +196,38 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
           if (pending.pendingStores.size === 0) {
             this.logger.debug(`All stores completed for ${pending.cardName}. Notifying ${pending.callbacks.size} callback(s).`);
             pending.callbacks.forEach(cb => cb(pending.results));
-            await this.cleanupPatternSubscription(pattern);
+            try {
+              await this.cleanupPatternSubscription(pattern);
+            } catch (cleanupErr) {
+              this.logger.error(`Failed to cleanup pattern subscription: ${pattern}`, cleanupErr);
+              // Force remove from map even if punsubscribe failed
+              this.pendingPatternSubscriptions.delete(pattern);
+            }
           }
         }
       }
-    });
+    };
+    this.cardSubscriber.on('pmessage', this.pmessageHandler);
 
-    // Wait for subscriber to be ready
-    if (this.cardSubscriber.status !== 'ready') {
-      await new Promise<void>((resolve) => {
-        this.cardSubscriber.once('ready', () => resolve());
+    // Wait for both connections to be ready
+    const waitForReady = (client: Redis, name: string): Promise<void> => {
+      if (client.status === 'ready') {
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        client.once('ready', () => {
+          this.logger.log(`${name} connection ready`);
+          resolve();
+        });
       });
-    }
+    };
 
-    this.logger.log('Card subscriber initialized successfully');
+    await Promise.all([
+      waitForReady(this.redis, 'Redis client'),
+      waitForReady(this.cardSubscriber, 'Card subscriber'),
+    ]);
+
+    this.logger.log('Cache service initialized successfully');
   }
 
   async onModuleDestroy() {
@@ -147,10 +236,42 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     // Fail all pending requests before shutdown
     this.failAllPendingRequests('Service shutting down');
 
-    // Disconnect subscriber
+    // Remove all event listeners before disconnecting to prevent memory leaks
     if (this.cardSubscriber) {
+      if (this.errorHandler) {
+        this.cardSubscriber.off('error', this.errorHandler);
+      }
+      if (this.closeHandler) {
+        this.cardSubscriber.off('close', this.closeHandler);
+      }
+      if (this.reconnectingHandler) {
+        this.cardSubscriber.off('reconnecting', this.reconnectingHandler);
+      }
+      if (this.endHandler) {
+        this.cardSubscriber.off('end', this.endHandler);
+      }
+      if (this.readyHandler) {
+        this.cardSubscriber.off('ready', this.readyHandler);
+      }
+      if (this.pmessageHandler) {
+        this.cardSubscriber.off('pmessage', this.pmessageHandler);
+      }
+
       await this.cardSubscriber.quit();
     }
+
+    // Close main Redis client
+    if (this.redis) {
+      await this.redis.quit();
+    }
+
+    // Clear handler references
+    this.errorHandler = null;
+    this.closeHandler = null;
+    this.reconnectingHandler = null;
+    this.endHandler = null;
+    this.readyHandler = null;
+    this.pmessageHandler = null;
 
     this.logger.log('Cache service shutdown complete');
   }
@@ -194,8 +315,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     try {
       const cacheKey = this.buildStoreCardKey(cardName, storeName);
-      const redis = await this.queue.client;
-
       const entry: StoreCardCacheEntry = {
         storeName,
         results,
@@ -205,7 +324,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       };
 
       // Cache for 24 hours
-      await redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(entry));
+      await this.redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(entry));
       this.logger.debug(`Cached ${results.length} results for ${cardName} at store ${storeName}${error ? ` (error: ${error})` : ''}`);
     } catch (error) {
       this.logger.error(`Error caching results for ${cardName} at store ${storeName}:`, error);
@@ -222,8 +341,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async getStoreCard(cardName: string, storeName: string): Promise<StoreCardCacheEntry | null> {
     try {
       const cacheKey = this.buildStoreCardKey(cardName, storeName);
-      const redis = await this.queue.client;
-      const cached = await redis.get(cacheKey);
+      const cached = await this.redis.get(cacheKey);
 
       if (!cached) {
         this.logger.debug(`Cache miss for ${cardName} at store ${storeName}`);
@@ -257,10 +375,8 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const redis = await this.queue.client;
       const keys = storeNames.map(storeName => this.buildStoreCardKey(cardName, storeName));
-
-      const cached = await redis.mget(...keys);
+      const cached = await this.redis.mget(...keys);
 
       for (let i = 0; i < storeNames.length; i++) {
         const storeName = storeNames[i];
@@ -297,8 +413,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async isStoreBeingScraped(cardName: string, storeName: string): Promise<boolean> {
     try {
       const scrapingKey = this.buildScrapingKey(cardName, storeName);
-      const redis = await this.queue.client;
-      const exists = await redis.exists(scrapingKey);
+      const exists = await this.redis.exists(scrapingKey);
       return exists === 1;
     } catch (error) {
       this.logger.error(`Error checking scraping status for ${cardName} at ${storeName}:`, error);
@@ -314,10 +429,8 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async markStoreAsBeingScraped(cardName: string, storeName: string, requestId: string): Promise<boolean> {
     try {
       const scrapingKey = this.buildScrapingKey(cardName, storeName);
-      const redis = await this.queue.client;
-
       // Use SET NX (set if not exists) to prevent race conditions
-      const result = await redis.set(scrapingKey, requestId, 'EX', this.SCRAPING_TTL, 'NX');
+      const result = await this.redis.set(scrapingKey, requestId, 'EX', this.SCRAPING_TTL, 'NX');
 
       return result === 'OK';
     } catch (error) {
@@ -332,9 +445,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async markStoreScrapeComplete(cardName: string, storeName: string): Promise<void> {
     try {
       const scrapingKey = this.buildScrapingKey(cardName, storeName);
-      const redis = await this.queue.client;
-
-      await redis.del(scrapingKey);
+      await this.redis.del(scrapingKey);
       this.logger.debug(`Marked scrape complete for ${cardName} at store ${storeName}`);
     } catch (error) {
       this.logger.error(`Error marking scrape complete for ${cardName} at ${storeName}:`, error);
@@ -392,7 +503,11 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         this.cardSubscriber.psubscribe(pattern, (err) => {
           if (err) {
             this.logger.error(`Failed to psubscribe to ${pattern}:`, err);
-            this.cleanupPatternSubscription(pattern);
+            this.cleanupPatternSubscription(pattern).catch((cleanupErr) => {
+              this.logger.error(`Failed to cleanup after psubscribe error: ${pattern}`, cleanupErr);
+              // Force remove from map even if punsubscribe failed
+              this.pendingPatternSubscriptions.delete(pattern);
+            });
           } else {
             this.logger.debug(`Subscribed to pattern notifications for: ${cardName} on pattern: ${pattern}`);
           }
@@ -417,7 +532,13 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
             // If no more callbacks waiting, clean up
             if (currentPending.callbacks.size === 0) {
-              await this.cleanupPatternSubscription(pattern);
+              try {
+                await this.cleanupPatternSubscription(pattern);
+              } catch (cleanupErr) {
+                this.logger.error(`Failed to cleanup pattern subscription on timeout: ${pattern}`, cleanupErr);
+                // Force remove from map even if punsubscribe failed
+                this.pendingPatternSubscriptions.delete(pattern);
+              }
             }
           }
 
@@ -463,8 +584,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   async schedulerJobStatus(): Promise<SchedulerJobStatus | null> {
     try {
-      const redis = await this.queue.client;
-      const status = await redis.get(this.SCHEDULER_KEY);
+      const status = await this.redis.get(this.SCHEDULER_KEY);
 
       if (!status) {
         this.logger.debug('No scheduler job status found in cache');
@@ -482,13 +602,213 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   async setSchedulerJobStatus(status: SchedulerJobStatus): Promise<void> {
     try {
-      const redis = await this.queue.client;
-      await redis.set(this.SCHEDULER_KEY, JSON.stringify(status));
+      await this.redis.set(this.SCHEDULER_KEY, JSON.stringify(status));
       this.logger.debug('Updated scheduler job status in cache');
     }
     catch (error) {
       this.logger.error('Error setting scheduler job status in cache:', error);
       throw error;
+    }
+  }
+
+  // =====================================
+  // Rate Limit / Backoff Methods
+  // =====================================
+
+  /**
+   * Build the rate limit backoff key for a store.
+   * Format: ratelimit:store:{storename}:backoff
+   */
+  private buildBackoffKey(storeName: string): string {
+    return `${this.RATE_LIMIT_KEY_PREFIX}${storeName.toLowerCase()}:backoff`;
+  }
+
+  /**
+   * Check if a store is currently in backoff due to rate limiting.
+   * @param storeName The store name slug (e.g., 'f2f', '401')
+   * @returns BackoffCheckResult with blocked status and remaining time
+   */
+  async isStoreRateLimited(storeName: string): Promise<BackoffCheckResult> {
+    try {
+      const key = this.buildBackoffKey(storeName);
+      const data = await this.redis.get(key);
+
+      if (!data) {
+        return { blocked: false };
+      }
+
+      const state: StoreBackoffState = JSON.parse(data);
+      const now = Date.now();
+
+      if (state.blockedUntil > now) {
+        // Calculate remaining time with minimum of MIN_DELAY_MS
+        const remainingMs = Math.max(state.blockedUntil - now, this.MIN_DELAY_MS);
+
+        this.logger.debug(
+          `Store ${storeName} is rate limited for ${remainingMs}ms (until ${new Date(state.blockedUntil).toISOString()})`,
+        );
+
+        return {
+          blocked: true,
+          remainingMs,
+          blockedUntil: state.blockedUntil,
+        };
+      }
+
+      // Backoff has expired
+      return { blocked: false };
+    } catch (error) {
+      this.logger.error(`Error checking rate limit state for ${storeName}:`, error);
+      // On error, don't block - let the request proceed
+      return { blocked: false };
+    }
+  }
+
+  /**
+   * Record an error for a store, triggering a backoff period.
+   * If retryAfterSeconds is provided (from server's retry-after header), use that value.
+   * Otherwise, use exponential backoff based on consecutive failures.
+   * @param storeName The store name slug
+   * @param errorType The error type that triggered the backoff
+   * @param retryAfterSeconds Optional server-provided retry-after value in seconds
+   * @returns The backoff duration in ms that was applied
+   */
+  async recordStoreRateLimit(
+    storeName: string,
+    errorType: string,
+    retryAfterSeconds?: number,
+  ): Promise<number> {
+    try {
+      const key = this.buildBackoffKey(storeName);
+      // Get current state to track consecutive failures
+      const existingData = await this.redis.get(key);
+      let consecutiveFailures = 1;
+
+      if (existingData) {
+        try {
+          const existingState: StoreBackoffState = JSON.parse(existingData);
+          consecutiveFailures = (existingState.consecutiveFailures ?? 0) + 1;
+        } catch {
+          // Ignore parse errors, start fresh
+        }
+      }
+
+      // Use server-provided retry-after if available, otherwise use exponential backoff
+      let backoffMs: number;
+      if (retryAfterSeconds && retryAfterSeconds > 0) {
+        // Server told us how long to wait - use that (convert to ms)
+        // Cap at max backoff to prevent excessive delays
+        backoffMs = Math.min(retryAfterSeconds * 1000, this.MAX_BACKOFF_MS);
+        this.logger.debug(`Using server retry-after: ${retryAfterSeconds}s (capped to ${backoffMs}ms)`);
+      } else {
+        // Calculate exponential backoff: base * 2^(failures-1), capped at max
+        backoffMs = Math.min(
+          this.BASE_BACKOFF_MS * Math.pow(2, consecutiveFailures - 1),
+          this.MAX_BACKOFF_MS,
+        );
+      }
+
+      const state: StoreBackoffState = {
+        blockedUntil: Date.now() + backoffMs,
+        errorType,
+        consecutiveFailures,
+        currentBackoffMs: backoffMs,
+      };
+
+      // TTL slightly longer than backoff to ensure auto-cleanup
+      const ttlSeconds = Math.ceil(backoffMs / 1000) + 30;
+
+      await this.redis.set(key, JSON.stringify(state), 'EX', ttlSeconds);
+
+      this.logger.warn(
+        `Backoff recorded for store ${storeName} (${errorType}). ` +
+        `Failures: ${consecutiveFailures}, backoff: ${backoffMs}ms, ` +
+        `blocked until ${new Date(state.blockedUntil).toISOString()}`,
+      );
+
+      return backoffMs;
+    } catch (error) {
+      this.logger.error(`Error recording backoff for ${storeName}:`, error);
+      // Don't throw - rate limiting is best-effort
+      return this.BASE_BACKOFF_MS;
+    }
+  }
+
+  /**
+   * Record an error for a shared API endpoint, triggering a backoff period for all stores using that API.
+   * This is used when multiple stores share the same backend API (e.g., BinderPOS stores).
+   * @param apiEndpoint A unique identifier for the API (e.g., 'binderpos')
+   * @param errorType The error type that triggered the backoff
+   * @param retryAfterSeconds Optional server-provided retry-after value in seconds
+   * @returns The backoff duration in ms that was applied
+   */
+  async recordApiRateLimit(
+    apiEndpoint: string,
+    errorType: string,
+    retryAfterSeconds?: number,
+  ): Promise<number> {
+    // Use the same method but with a different key prefix
+    return this.recordStoreRateLimit(`api:${apiEndpoint}`, errorType, retryAfterSeconds);
+  }
+
+  /**
+   * Check if a shared API endpoint is currently in backoff.
+   * @param apiEndpoint A unique identifier for the API (e.g., 'binderpos')
+   * @returns BackoffCheckResult with blocked status and remaining time
+   */
+  async isApiRateLimited(apiEndpoint: string): Promise<BackoffCheckResult> {
+    return this.isStoreRateLimited(`api:${apiEndpoint}`);
+  }
+
+  /**
+   * Clear the backoff state for a shared API endpoint.
+   * @param apiEndpoint A unique identifier for the API
+   */
+  async clearApiRateLimit(apiEndpoint: string): Promise<void> {
+    return this.clearStoreRateLimit(`api:${apiEndpoint}`);
+  }
+
+  /**
+   * Clear the backoff state for a store.
+   * Can be called when a store successfully responds after being rate limited.
+   * @param storeName The store name slug
+   */
+  async clearStoreRateLimit(storeName: string): Promise<void> {
+    try {
+      const key = this.buildBackoffKey(storeName);
+      await this.redis.del(key);
+      this.logger.debug(`Cleared rate limit state for store ${storeName}`);
+    } catch (error) {
+      this.logger.error(`Error clearing rate limit for ${storeName}:`, error);
+    }
+  }
+
+  // =====================================
+  // Proxy Rotation
+  // =====================================
+
+  /**
+   * Get the next proxy number for a scraper type.
+   * Uses atomic INCR with modulo to rotate through 1-maxProxies.
+   * @param scraperType The scraper type (e.g., 'f2f', 'binderpos')
+   * @param maxProxies Maximum number of proxies (from WEBSHARE_IP_COUNT)
+   * @returns Proxy number between 1 and maxProxies
+   */
+  async getNextProxyNumber(scraperType: string, maxProxies: number): Promise<number> {
+    try {
+      const key = `proxy:counter:${scraperType}`;
+      // INCR is atomic - no race conditions across multiple scraper instances
+      const value = await this.redis.incr(key);
+
+      // Use modulo to wrap around: converts any value to 1-maxProxies range
+      const proxyNumber = ((value - 1) % maxProxies) + 1;
+
+      this.logger.debug(`Proxy rotation for ${scraperType}: using proxy ${proxyNumber}/${maxProxies}`);
+      return proxyNumber;
+    } catch (error) {
+      this.logger.error(`Error getting next proxy number for ${scraperType}:`, error);
+      // Fallback to proxy 1 on error
+      return 1;
     }
   }
 
@@ -500,10 +820,52 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
    * Check Redis health by pinging the connection
    * Returns status object for use in health checks
    */
+  // ---------------------------------------------------------------------------
+  // Storefront prefix cache
+  // ---------------------------------------------------------------------------
+
+  private readonly STOREFRONT_PREFIX_KEY = 'storefront:prefixes';
+  private readonly STOREFRONT_PREFIX_TTL = 86400; // 24 hours
+
+  /**
+   * Get cached storefront prefixes from Redis.
+   * Returns null if not cached.
+   */
+  async getStorefrontPrefixes(): Promise<{
+    alpha: string[];
+    hasNonAlpha: boolean;
+  } | null> {
+    try {
+      const cached = await this.redis.get(this.STOREFRONT_PREFIX_KEY);
+      if (!cached) return null;
+      return JSON.parse(cached);
+    } catch (error) {
+      this.logger.error('Error reading storefront prefixes from cache:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Cache storefront prefixes in Redis with 24-hour TTL.
+   */
+  async setStorefrontPrefixes(prefixes: {
+    alpha: string[];
+    hasNonAlpha: boolean;
+  }): Promise<void> {
+    try {
+      await this.redis.setex(
+        this.STOREFRONT_PREFIX_KEY,
+        this.STOREFRONT_PREFIX_TTL,
+        JSON.stringify(prefixes),
+      );
+    } catch (error) {
+      this.logger.error('Error caching storefront prefixes:', error);
+    }
+  }
+
   async checkHealth(): Promise<{ status: 'up' | 'down'; message?: string }> {
     try {
-      const redis = await this.queue.client;
-      const pong = await redis.ping();
+      const pong = await this.redis.ping();
 
       if (pong === 'PONG') {
         return { status: 'up' };

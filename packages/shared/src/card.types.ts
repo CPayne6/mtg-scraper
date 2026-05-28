@@ -1,12 +1,19 @@
-
 // Card condition slugs match the values emitted by the scrapers and stored on
 // the listing variants. `dmg` and `unknown` are distinct — `unknown` means we
 // couldn't determine the condition, not that the card is damaged.
-export type Condition = 'nm' | 'lp' | 'mp' | 'hp' | 'dmg' | 'unknown'
+export enum Condition {
+  NM = 'nm',
+  LP = 'lp',
+  MP = 'mp',
+  HP = 'hp',
+  DMG = 'dmg',
+  UNKNOWN = 'unknown',
+}
 
 export interface Card {
   price: number;
   condition: Condition;
+  foil?: boolean;
   image: string;
   title: string;
   currency: string;
@@ -35,6 +42,14 @@ export interface PriceStats {
   max: number;
   avg: number;
   count: number;
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
 export interface CardSearchResponse {

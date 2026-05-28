@@ -1,9 +1,11 @@
-import { Controller, Get, Param, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Logger, VERSION_NEUTRAL } from '@nestjs/common';
 import { CardService } from './card.service';
 import { CardSearchResponse } from '@scoutlgs/shared';
 import { GetCardDto } from './dto/get-card.dto';
 
-@Controller('card')
+// Legacy endpoint — kept VERSION_NEUTRAL so /api/card/:name stays where it is.
+// The deck-list UI still reads from this; new clients should use /api/v1/cards.
+@Controller({ path: 'card', version: VERSION_NEUTRAL })
 export class CardController {
   private readonly logger = new Logger(CardController.name);
 

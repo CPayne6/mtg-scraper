@@ -21,4 +21,18 @@ export default defineConfig({
       usePolling: true, // Enable polling for Docker volumes
     },
   },
+  build: {
+    // @scoutlgs/shared compiles to CJS — workspace packages bypass Rollup's
+    // default commonjs plugin (it only matches node_modules), so opt them in
+    // explicitly. Required for Vite to detect Condition/QUEUE_NAMES/etc. as
+    // named exports.
+    commonjsOptions: {
+      include: [/packages[\\/]shared/, /node_modules/],
+    },
+  },
+  optimizeDeps: {
+    // Dev-mode equivalent of the commonjsOptions above: force esbuild to
+    // pre-bundle the workspace CJS package so named exports are detectable.
+    include: ['@scoutlgs/shared'],
+  },
 })

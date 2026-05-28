@@ -162,26 +162,39 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
       .sort((a, b) => a.label.toLocaleLowerCase().localeCompare(b.label.toLocaleLowerCase()))
     , [cardNames])
 
-  // Filter cards by selected stores
+  // Derive storeCounts (the shape StoreFilter expects) from the legacy
+  // /api/card response's `stores: StoreInfo[]` field.
+  const storeCounts = useMemo(() => {
+    const stores = currentCardData?.data?.stores ?? []
+    return stores.map(s => ({
+      storeSlug: s.name,
+      storeName: s.displayName,
+      count: s.cardCount,
+    }))
+  }, [currentCardData])
+
+  // selectedStores contains slugs; results carry display names, so map slug→displayName for filtering.
   const filteredCards = useMemo(() => {
     if (!currentCardData?.data) return undefined
 
     const { selectedStores, data: cardData } = currentCardData
 
-    // If no stores selected or all stores selected, return all cards
     if (selectedStores.length === 0 || selectedStores.length === (cardData.stores?.length ?? 0)) {
       return cardData.results
     }
 
-    // Filter cards by selected stores
-    return cardData.results.filter(card => selectedStores.includes(card.store))
+    const selectedDisplayNames = new Set(
+      cardData.stores
+        .filter(s => selectedStores.includes(s.name))
+        .map(s => s.displayName)
+    )
+    return cardData.results.filter(card => selectedDisplayNames.has(card.store))
   }, [currentCardData])
 
-  // Handler for store filter changes
-  const handleStoreFilterChange = (storeNames: string[]) => {
+  const handleStoreFilterChange = (slugs: string[]) => {
     setDataStateByIndex(cardIndex, (prev) => ({
       ...prev,
-      selectedStores: storeNames
+      selectedStores: slugs
     }))
   }
 
@@ -228,8 +241,8 @@ export function DeckDisplay({ listName, pagination = true }: DeckListProps) {
             <StoreFilterSkeleton />
           ) : (
             <StoreFilter
-              stores={currentCardData.data.stores}
-              selectedStores={currentCardData.selectedStores || []}
+              storeCounts={storeCounts}
+              selectedSlugs={currentCardData.selectedStores || []}
               onStoresChange={handleStoreFilterChange}
             />
           )}
