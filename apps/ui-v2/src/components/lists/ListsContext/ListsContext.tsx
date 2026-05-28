@@ -13,23 +13,13 @@ import {
   deleteList as apiDeleteList,
   fetchList,
   fetchLists,
+  renameList as apiRenameList,
   replaceListCards,
   type ListSummary,
 } from '@/api/lists';
 import type { ListsContextValue, ServerList } from './ListsContext.types';
-import { readNameOverrides, writeNameOverrides } from './ListsContext.utils';
 
 const ListsContext = createContext<ListsContextValue | null>(null);
-
-function applyOverrides(
-  lists: ServerList[],
-  overrides: Record<string, string>,
-): ServerList[] {
-  if (Object.keys(overrides).length === 0) return lists;
-  return lists.map((l) =>
-    overrides[l.id] ? { ...l, name: overrides[l.id] } : l,
-  );
-}
 
 async function loadList(summary: ListSummary): Promise<ServerList | null> {
   try {
@@ -53,13 +43,9 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   const [lists, setLists] = useState<ServerList[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [overrides, setOverrides] = useState<Record<string, string>>(() =>
-    readNameOverrides(),
-  );
   const { enqueueSnackbar } = useSnackbar();
   const initRan = useRef(false);
 
-  // Initial load: GET /lists, fetch each, optionally migrate localStorage.
   useEffect(() => {
     if (initRan.current) return;
     initRan.current = true;
@@ -89,19 +75,14 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [enqueueSnackbar]);
 
-  const visibleLists = useMemo(
-    () => applyOverrides(lists, overrides),
-    [lists, overrides],
-  );
-
   const get = useCallback(
-    (id: string) => visibleLists.find((l) => l.id === id)?.cards ?? [],
-    [visibleLists],
+    (id: string) => lists.find((l) => l.id === id)?.cards ?? [],
+    [lists],
   );
 
   const getList = useCallback(
-    (id: string) => visibleLists.find((l) => l.id === id),
-    [visibleLists],
+    (id: string) => lists.find((l) => l.id === id),
+    [lists],
   );
 
   const save = useCallback(
@@ -137,48 +118,45 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       const trimmed = newName.trim();
       if (!trimmed) return null;
       const current = lists.find((l) => l.id === id);
-      if (!current) return null;
-      // No server rename endpoint yet — persist as a client-side override.
-      const nextOverrides = { ...overrides, [id]: trimmed };
-      setOverrides(nextOverrides);
-      writeNameOverrides(nextOverrides);
-      return trimmed;
+      if (!current || current.name === trimmed) return current?.name ?? null;
+      // Optimistic update, roll back on error.
+      const prevName = current.name;
+      setLists((all) =>
+        all.map((l) => (l.id === id ? { ...l, name: trimmed } : l)),
+      );
+      try {
+        await apiRenameList(id, trimmed);
+        return trimmed;
+      } catch (err) {
+        setLists((all) =>
+          all.map((l) => (l.id === id ? { ...l, name: prevName } : l)),
+        );
+        const msg = err instanceof Error ? err.message : 'Failed to rename list';
+        enqueueSnackbar(msg, { variant: 'error' });
+        return null;
+      }
     },
-    [lists, overrides],
+    [lists, enqueueSnackbar],
   );
 
   const remove = useCallback(
     async (id: string): Promise<void> => {
       // Optimistic: drop from state immediately, restore on failure.
       const prev = lists;
-      const prevOverrides = overrides;
       setLists((current) => current.filter((l) => l.id !== id));
-      if (overrides[id]) {
-        const { [id]: _removed, ...rest } = overrides;
-        setOverrides(rest);
-        writeNameOverrides(rest);
-      }
       try {
         await apiDeleteList(id);
       } catch (err) {
         setLists(prev);
-        if (prevOverrides[id]) {
-          setOverrides(prevOverrides);
-          writeNameOverrides(prevOverrides);
-        }
         const msg = err instanceof Error ? err.message : 'Failed to delete list';
         enqueueSnackbar(msg, { variant: 'error' });
       }
     },
-    [lists, overrides, enqueueSnackbar],
+    [lists, enqueueSnackbar],
   );
 
   const replaceCardsForList = useCallback(
     async (id: string, prevCards: string[], nextCards: string[]) => {
-      // Skip the server call when the list would become empty — the API
-      // requires ArrayMinSize(1) on PUT /cards. The server keeps the previous
-      // cards; next non-empty mutation re-syncs.
-      if (nextCards.length === 0) return;
       try {
         await replaceListCards(id, nextCards);
       } catch (err) {
@@ -212,6 +190,15 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       if (!current) return;
       const idx = current.cards.indexOf(cardName);
       if (idx < 0) return;
+      // Lists must have at least one card on the server side, so refuse the
+      // removal here and tell the user. Callers can offer Delete-List instead.
+      if (current.cards.length <= 1) {
+        enqueueSnackbar(
+          'Lists must have at least one card. Delete the list to remove it.',
+          { variant: 'warning' },
+        );
+        return;
+      }
       const nextCards = current.cards.slice();
       nextCards.splice(idx, 1);
       setLists((all) =>
@@ -219,20 +206,20 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       );
       await replaceCardsForList(id, current.cards, nextCards);
     },
-    [lists, replaceCardsForList],
+    [lists, replaceCardsForList, enqueueSnackbar],
   );
 
-  const names = useMemo(() => visibleLists.map((l) => l.name), [visibleLists]);
+  const names = useMemo(() => lists.map((l) => l.name), [lists]);
   const totalCards = useMemo(
-    () => visibleLists.reduce((sum, l) => sum + l.cards.length, 0),
-    [visibleLists],
+    () => lists.reduce((sum, l) => sum + l.cards.length, 0),
+    [lists],
   );
 
   const value = useMemo<ListsContextValue>(
     () => ({
-      lists: visibleLists,
+      lists,
       names,
-      count: visibleLists.length,
+      count: lists.length,
       totalCards,
       loading,
       error,
@@ -245,7 +232,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       removeCardFromList,
     }),
     [
-      visibleLists,
+      lists,
       names,
       totalCards,
       loading,

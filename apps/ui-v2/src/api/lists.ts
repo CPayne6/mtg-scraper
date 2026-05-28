@@ -147,6 +147,19 @@ export function replaceListCards(
   );
 }
 
+export function renameList(
+  listId: string,
+  name: string,
+): Promise<{ message: string }> {
+  return request<{ message: string }>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/name`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    },
+  );
+}
+
 export function deleteList(listId: string): Promise<void> {
   return request<void>(`/api/v1/lists/${encodeURIComponent(listId)}`, {
     method: 'DELETE',

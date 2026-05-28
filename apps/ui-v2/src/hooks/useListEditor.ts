@@ -33,10 +33,10 @@ export function useListEditor(
 ): {
   history: ListHistoryEntry[];
   addCard: (cardName: string) => string;
-  removeCard: (cardName: string) => string;
+  removeCard: (cardName: string) => string | null;
   undo: (entryId?: string) => UndoResult;
 } {
-  const { addCardToList, removeCardFromList } = useLists();
+  const { addCardToList, removeCardFromList, getList } = useLists();
   const [history, setHistory] = useLocalStorage<ListHistoryEntry[]>(
     `scoutlgs:list-history:${listId}`,
     [],
@@ -69,11 +69,19 @@ export function useListEditor(
   );
 
   const removeCard = useCallback(
-    (cardName: string) => {
+    (cardName: string): string | null => {
+      const list = getList(listId);
+      // Server rejects empty lists. Hand off to the context so it surfaces the
+      // "lists need at least one card" toast, and skip history so the Undo
+      // affordance doesn't accumulate a stale entry.
+      if (list && list.cards.length <= 1 && list.cards.includes(cardName)) {
+        void removeCardFromList(listId, cardName);
+        return null;
+      }
       void removeCardFromList(listId, cardName);
       return pushEntry('remove', cardName);
     },
-    [removeCardFromList, listId, pushEntry],
+    [getList, removeCardFromList, listId, pushEntry],
   );
 
   // Keep a ref to the latest history so undo can read it without making the

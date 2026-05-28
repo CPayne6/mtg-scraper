@@ -202,7 +202,10 @@ function BuilderRoute() {
       // The reselect effect handles updating `selectedName` when the removed
       // card's last copy disappears from `entries`.
       const entryId = removeCard(cardName);
-      const key = enqueueSnackbar(`Removed `${cardName}` from list`, {
+      // ListsContext already toasted ("lists need at least one card") when the
+      // removal was refused — skip the success/undo snackbar.
+      if (!entryId) return null;
+      const key = enqueueSnackbar(`Removed "${cardName}" from list`, {
         autoHideDuration: 6000,
         action: (snackKey) => (
           <Button

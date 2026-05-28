@@ -38,6 +38,7 @@ describe('ListsController', () => {
       getListsForOwner: vi.fn(),
       getListWithPrices: vi.fn(),
       updateFilters: vi.fn(),
+      updateName: vi.fn(),
       replaceCards: vi.fn(),
       deleteList: vi.fn(),
     };
@@ -151,6 +152,36 @@ describe('ListsController', () => {
 
       expect(result.message).toBe('No owner cookie');
       expect(listsService.updateFilters).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PUT /v1/lists/:listId/name', () => {
+    it('should rename the list for owner', async () => {
+      listsService.updateName.mockResolvedValue(undefined);
+
+      const result = await controller.updateName(
+        LIST_UUID,
+        { name: 'New Name' },
+        OWNER_COOKIE,
+      );
+
+      expect(listsService.updateName).toHaveBeenCalledWith(
+        LIST_UUID,
+        OWNER_COOKIE,
+        'New Name',
+      );
+      expect(result.message).toBe('Name updated');
+    });
+
+    it('should return message when no cookie', async () => {
+      const result = await controller.updateName(
+        LIST_UUID,
+        { name: 'New Name' },
+        undefined,
+      );
+
+      expect(result.message).toBe('No owner cookie');
+      expect(listsService.updateName).not.toHaveBeenCalled();
     });
   });
 

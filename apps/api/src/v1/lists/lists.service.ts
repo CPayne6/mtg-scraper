@@ -260,6 +260,17 @@ export class ListsService {
     await this.cardListRepository.save(list);
   }
 
+  async updateName(
+    listUuid: string,
+    ownerCookie: string,
+    name: string,
+  ): Promise<void> {
+    const list = await this.findOwnedList(listUuid, ownerCookie);
+    list.name = name;
+    list.expiresAt = this.expiresAt();
+    await this.cardListRepository.save(list);
+  }
+
   async replaceCards(
     listUuid: string,
     ownerCookie: string,

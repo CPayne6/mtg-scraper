@@ -19,6 +19,7 @@ import { ListsService } from './lists.service';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
+import { UpdateNameDto } from './dto/update-name.dto';
 
 const COOKIE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
@@ -87,6 +88,20 @@ export class ListsController {
       return { message: 'No owner cookie' };
     }
     return this.listsService.replaceCards(listId, cookie, dto.cards);
+  }
+
+  @Put(':listId/name')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async updateName(
+    @Param('listId') listId: string,
+    @Body() dto: UpdateNameDto,
+    @OwnerCookie() cookie: string | undefined,
+  ) {
+    if (!cookie) {
+      return { message: 'No owner cookie' };
+    }
+    await this.listsService.updateName(listId, cookie, dto.name);
+    return { message: 'Name updated' };
   }
 
   @Delete(':listId')

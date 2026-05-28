@@ -352,6 +352,34 @@ describe('ListsService', () => {
     });
   });
 
+  describe('updateName', () => {
+    it('should rename the list and reset expiry', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+
+      await service.updateName(LIST_UUID, OWNER_COOKIE, 'Renamed Deck');
+
+      expect(cardListRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Renamed Deck' }),
+      );
+    });
+
+    it('should throw ForbiddenException for non-owner', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+
+      await expect(
+        service.updateName(LIST_UUID, 'wrong-cookie', 'New Name'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException for missing list', async () => {
+      cardListRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.updateName('bad-uuid', OWNER_COOKIE, 'New Name'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('replaceCards', () => {
     it('should delete old entries and insert new resolved ones', async () => {
       cardListRepo.findOne.mockResolvedValue(makeList());
