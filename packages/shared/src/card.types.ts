@@ -1,5 +1,8 @@
 
-export type Condition = 'nm' | 'pl' | 'mp' | 'hp' | 'unknown'
+// Card condition slugs match the values emitted by the scrapers and stored on
+// the listing variants. `dmg` and `unknown` are distinct — `unknown` means we
+// couldn't determine the condition, not that the card is damaged.
+export type Condition = 'nm' | 'lp' | 'mp' | 'hp' | 'dmg' | 'unknown'
 
 export interface Card {
   price: number;

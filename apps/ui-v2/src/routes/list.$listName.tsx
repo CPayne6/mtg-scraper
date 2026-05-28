@@ -36,10 +36,11 @@ type CardState =
 
 const CONDITION_LABELS: Record<string, string> = {
   nm: 'NM',
-  pl: 'LP',
+  lp: 'LP',
   mp: 'MP',
   hp: 'HP',
-  unknown: '—',
+  dmg: 'DMG',
+  unknown: 'Unknown',
 };
 
 function ListDetailRoute() {
