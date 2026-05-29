@@ -142,7 +142,21 @@ function buildTheme(mode: 'light' | 'dark') {
             '&:hover fieldset': { borderColor: surf.divider },
             '&.Mui-focused fieldset': { borderColor: primaryMain, borderWidth: 2 },
           },
-          input: { padding: '12px 14px' },
+          input: ({ theme }) => ({
+            padding: '15px 14px',
+            [theme.breakpoints.up('sm')]: { padding: '12px 14px' },
+          }),
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          outlined: ({ theme }) => ({
+            transform: 'translate(14px, 15px) scale(1)',
+            [theme.breakpoints.up('sm')]: { transform: 'translate(14px, 12px) scale(1)' },
+            '&.MuiInputLabel-shrink': {
+              transform: 'translate(14px, -9px) scale(0.75)',
+            },
+          }),
         },
       },
       MuiFilledInput: {

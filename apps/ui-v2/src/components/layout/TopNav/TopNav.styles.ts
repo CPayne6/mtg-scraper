@@ -4,8 +4,8 @@ export const toolbarSx: SxProps<Theme> = {
   maxWidth: 1100,
   width: '100%',
   mx: 'auto',
-  gap: 4,
-  px: { xs: 2, md: 3 },
+  gap: { xs: 1, sm: 2, md: 4 },
+  px: { xs: 1.5, md: 3 },
   minHeight: 64,
 };
 

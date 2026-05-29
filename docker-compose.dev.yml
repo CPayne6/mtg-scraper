@@ -19,6 +19,26 @@ services:
       timeout: 3s
       retries: 5
 
+  # PostgreSQL - Identity/auth database
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: scoutlgs-auth-postgres-dev
+    environment:
+      - POSTGRES_DB=scoutlgs_auth
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - scoutlgs-auth-postgres-data-dev:/var/lib/postgresql/data
+    networks:
+      - scoutlgs-network-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
@@ -51,6 +71,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
+      - FRONTEND_URL=http://localhost:3001,http://localhost:3002
+      - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
+      - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     volumes:
       # Mount source code for hot reload
       - ./apps/api/src:/app/apps/api/src:delegated
@@ -66,6 +89,44 @@ services:
       redis:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
+
+  # Auth Service (Development mode with hot reload)
+  auth:
+    build:
+      context: .
+      dockerfile: apps/auth/Dockerfile.dev
+    container_name: scoutlgs-auth-dev
+    ports:
+      - "5002:5002"
+    env_file:
+      - apps/auth/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=5002
+      - FRONTEND_URL=http://localhost:3001,http://localhost:3002
+      - COOKIE_SECURE=false
+      - DATABASE_HOST=auth-postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs_auth
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+    volumes:
+      - ./apps/auth/src:/app/apps/auth/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/shared/dist:/app/packages/shared/dist:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./packages/core/dist:/app/packages/core/dist:delegated
+      - ./apps/auth/tsconfig.json:/app/apps/auth/tsconfig.json:ro
+      - ./apps/auth/nest-cli.json:/app/apps/auth/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      auth-postgres:
         condition: service_healthy
     networks:
       - scoutlgs-network-dev
@@ -183,4 +244,6 @@ volumes:
   scoutlgs-redis-data-dev:
     driver: local
   scoutlgs-postgres-data-dev:
+    driver: local
+  scoutlgs-auth-postgres-data-dev:
     driver: local

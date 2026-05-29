@@ -1,71 +1,89 @@
 import { useMemo } from 'react';
-import Drawer from '@mui/material/Drawer';
 import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import IconButton from '@mui/material/IconButton';
 import Button from '@mui/material/Button';
+import Drawer from '@mui/material/Drawer';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 import Close from '@mui/icons-material/Close';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import ShoppingCartOutlined from '@mui/icons-material/ShoppingCartOutlined';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
-import { useCart, cartItemId, type CartItem } from '@/components/cart/CartContext';
+import { cartItemId, type CartItem, useCart } from '@/components/cart/CartContext';
+import {
+  footerSx,
+  headerSx,
+  mobileHandleSx,
+  mobileHandleWrapSx,
+  paperSx,
+  storeHeaderSx,
+} from './CartDrawer.styles';
 import { ART_GRADIENTS, hashIndex } from './CartDrawer.utils';
-import { paperSx, headerSx, storeHeaderSx, footerSx } from './CartDrawer.styles';
 
 export function CartDrawer() {
   const { items, isOpen, close, remove, clear } = useCart();
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const byStore = useMemo(() => {
     const groups: Record<string, CartItem[]> = {};
-    for (const it of items) {
-      (groups[it.store] = groups[it.store] || []).push(it);
+    for (const item of items) {
+      (groups[item.store] = groups[item.store] || []).push(item);
     }
     return groups;
   }, [items]);
 
   const storeKeys = Object.keys(byStore);
-  const total = items.reduce((s, c) => s + (c.price ?? 0), 0);
+  const total = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
+  const hasAnyLink = items.some((item) => item.link && item.link.trim().length > 0);
 
   const openAllStores = () => {
     const opened = new Set<string>();
     let openedCount = 0;
+
     for (const store of storeKeys) {
-      const candidate = byStore[store].find((c) => c.link && c.link.trim().length > 0);
-      if (!candidate || opened.has(candidate.link)) continue;
+      const candidate = (byStore[store] ?? []).find((item) => item.link && item.link.trim().length > 0);
+      if (!candidate?.link || opened.has(candidate.link)) continue;
+
       const win = window.open(candidate.link, '_blank', 'noopener,noreferrer');
       if (win) {
         opened.add(candidate.link);
         openedCount += 1;
       }
     }
-    if (openedCount === 0) {
-      enqueueSnackbar(
-        'No store links available yet — try again once prices have loaded.',
-        { variant: 'warning' },
-      );
-    } else {
-      enqueueSnackbar(
-        `Opening ${openedCount} ${openedCount === 1 ? 'store' : 'stores'}…`,
-        { variant: 'success' },
-      );
-    }
-  };
 
-  const hasAnyLink = items.some((c) => c.link && c.link.trim().length > 0);
+    if (openedCount === 0) {
+      enqueueSnackbar('No store links available yet - try again once prices have loaded.', {
+        variant: 'warning',
+      });
+      return;
+    }
+
+    enqueueSnackbar(`Opening ${openedCount} ${openedCount === 1 ? 'store' : 'stores'}...`, {
+      variant: 'success',
+    });
+  };
 
   return (
     <Drawer
-      anchor="right"
+      anchor={isMobile ? 'bottom' : 'right'}
       open={isOpen}
       onClose={close}
       slotProps={{
-        paper: { sx: paperSx },
+        paper: { sx: paperSx(isMobile) },
       }}
     >
-      <Box sx={headerSx}>
-        <Box>
+      {isMobile && (
+        <Box sx={mobileHandleWrapSx}>
+          <Box sx={mobileHandleSx} />
+        </Box>
+      )}
+
+      <Box sx={headerSx(isMobile)}>
+        <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.78rem', mt: '2px' }}>
             {items.length} {items.length === 1 ? 'card' : 'cards'} from {storeKeys.length}{' '}
@@ -77,7 +95,7 @@ export function CartDrawer() {
         </IconButton>
       </Box>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, py: 1.75 }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, py: 1.75, minHeight: 0 }}>
         {items.length === 0 ? (
           <Stack alignItems="center" spacing={1.5} sx={{ py: 6, textAlign: 'center' }}>
             <ShoppingCartOutlined sx={{ fontSize: 36, opacity: 0.4 }} />
@@ -87,29 +105,36 @@ export function CartDrawer() {
           </Stack>
         ) : (
           storeKeys.map((store) => {
-            const list = byStore[store];
-            const subtotal = list.reduce((s, c) => s + (c.price ?? 0), 0);
+            const list = byStore[store] ?? [];
+            const subtotal = list.reduce((sum, item) => sum + (item.price ?? 0), 0);
+
             return (
               <Box key={store} sx={{ mb: 2.5 }}>
                 <Box sx={storeHeaderSx}>
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: 'primary.main' }}>
+                  <Typography
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      color: 'primary.main',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      minWidth: 0,
+                    }}
+                  >
                     {store}
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 }}>
                     CA${subtotal.toFixed(2)}
                   </Typography>
                 </Box>
-                {list.map((c) => {
-                  const id = cartItemId(c);
+
+                {list.map((item) => {
+                  const id = cartItemId(item);
                   const gradient = ART_GRADIENTS[hashIndex(id, ART_GRADIENTS.length)];
+
                   return (
-                    <Stack
-                      key={id}
-                      direction="row"
-                      alignItems="center"
-                      spacing={1.25}
-                      sx={{ py: 1 }}
-                    >
+                    <Stack key={id} direction="row" alignItems="center" spacing={1.25} sx={{ py: 1 }}>
                       <Box
                         sx={{
                           width: 36,
@@ -129,27 +154,35 @@ export function CartDrawer() {
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {c.title}
+                          {item.title}
                         </Typography>
-                        <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>
-                          {c.set} · {c.condition}
+                        <Typography
+                          sx={{
+                            fontSize: '0.72rem',
+                            color: 'text.secondary',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {item.set} - {item.condition}
                         </Typography>
                       </Box>
                       <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, flexShrink: 0 }}>
-                        CA${(c.price ?? 0).toFixed(2)}
+                        CA${(item.price ?? 0).toFixed(2)}
                       </Typography>
                       <IconButton
                         size="small"
                         aria-label="View at store"
-                        disabled={!c.link}
+                        disabled={!item.link}
                         onClick={() => {
-                          if (c.link) {
-                            window.open(c.link, '_blank', 'noopener,noreferrer');
+                          if (item.link) {
+                            window.open(item.link, '_blank', 'noopener,noreferrer');
                           } else {
-                            enqueueSnackbar(`No store link for ${c.title}`, { variant: 'warning' });
+                            enqueueSnackbar(`No store link for ${item.title}`, { variant: 'warning' });
                           }
                         }}
-                        sx={{ width: 28, height: 28 }}
+                        sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
                         <OpenInNew sx={{ fontSize: 14 }} />
                       </IconButton>
@@ -157,7 +190,7 @@ export function CartDrawer() {
                         size="small"
                         aria-label="Remove"
                         onClick={() => remove(id)}
-                        sx={{ width: 28, height: 28 }}
+                        sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
                         <Close sx={{ fontSize: 14 }} />
                       </IconButton>
@@ -181,16 +214,17 @@ export function CartDrawer() {
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
-            <Button variant="outlined" color="primary" sx={{ flex: 1 }} onClick={clear}>
+          <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 1.25 }}>
+            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} fullWidth>
               Clear
             </Button>
             <Button
               variant="contained"
               color="primary"
-              sx={{ flex: 1 }}
+              sx={{ flex: { xs: 'unset', sm: 1 }, whiteSpace: 'nowrap' }}
               disabled={!hasAnyLink}
               onClick={openAllStores}
+              fullWidth
             >
               Open All Stores ({storeKeys.length})
             </Button>

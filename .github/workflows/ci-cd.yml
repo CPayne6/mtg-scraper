@@ -125,6 +125,7 @@ jobs:
         with:
           path: |
             apps/api/dist
+            apps/auth/dist
             apps/ui/dist
             apps/scraper/dist
             apps/scheduler/dist
@@ -139,6 +140,7 @@ jobs:
           name: build-artifacts
           path: |
             apps/api/dist
+            apps/auth/dist
             apps/ui/dist
             apps/scraper/dist
             apps/scheduler/dist
@@ -162,6 +164,8 @@ jobs:
         service:
           - name: api
             dockerfile: apps/api/Dockerfile
+          - name: auth
+            dockerfile: apps/auth/Dockerfile
           - name: ui
             dockerfile: apps/ui/Dockerfile
           - name: scraper

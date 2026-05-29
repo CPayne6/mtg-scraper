@@ -45,8 +45,8 @@ export function Footer() {
       sx={(theme) => ({
         borderTop: `1px solid ${theme.palette.divider}`,
         bgcolor: 'background.paper',
-        py: 4,
-        px: 3,
+        py: { xs: 3, md: 4 },
+        px: { xs: 2, md: 3 },
       })}
     >
       <Box

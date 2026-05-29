@@ -46,6 +46,7 @@
     "generic-pool": "^3.9.0",
     "ioredis": "^5.8.2",
     "joi": "^18.0.2",
+    "jose": "^6.1.2",
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^0.3.19",

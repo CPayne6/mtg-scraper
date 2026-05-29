@@ -39,9 +39,9 @@ export function TopNav() {
             component="img"
             src={logoSrc}
             alt=""
-            sx={{ width: 44, height: 44, objectFit: 'contain' }}
+            sx={{ width: { xs: 36, md: 44 }, height: { xs: 36, md: 44 }, objectFit: 'contain' }}
           />
-          <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.01em' }}>
+          <Typography sx={{ fontWeight: 700, fontSize: { xs: '1rem', md: '1.1rem' }, letterSpacing: '-0.01em' }}>
             ScoutLGS
           </Typography>
         </Box>

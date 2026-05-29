@@ -187,7 +187,7 @@ function HomeRoute() {
               </Button>
             </Box>
             <Box sx={{ mt: 1.75 }}>
-              <Tip>Try "Atraxa, Grand Unifier", "Sol Ring", or paste a Commander list.</Tip>
+              <Tip>Try "Atraxa, Grand Unifier" or "Sol Ring".</Tip>
             </Box>
           </>
         ) : (
@@ -219,7 +219,7 @@ function HomeRoute() {
                 flexWrap: 'wrap',
               }}
             >
-              <Tip>Arena, MTGO, or plain — we'll figure out the format.</Tip>
+              <Tip>Paste a Commander list — Arena, MTGO, or plain. We'll figure out the format.</Tip>
               <Button variant="contained" size="large" color="primary" onClick={handleScoutDeck}>
                 Scout Deck
               </Button>

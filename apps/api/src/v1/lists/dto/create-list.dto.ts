@@ -6,7 +6,9 @@ import {
   ArrayMaxSize,
   MinLength,
   MaxLength,
+  IsIn,
 } from 'class-validator';
+import type { CardListVisibility } from '@scoutlgs/core';
 
 export class CreateListDto {
   @IsString()
@@ -32,4 +34,8 @@ export class CreateListDto {
   @IsString()
   @MaxLength(10)
   filterSetCode?: string;
+
+  @IsOptional()
+  @IsIn(['private', 'unlisted', 'public'])
+  visibility?: CardListVisibility;
 }

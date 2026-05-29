@@ -1,6 +1,13 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ensureAnonymousSession, type SessionResponse } from '@/api/auth';
-import type { AuthContextValue, AuthStatus } from './AuthContext.types';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  ensureAnonymousSession,
+  login as loginRequest,
+  logout as logoutRequest,
+  resetAnonymousSessionCache,
+  signup as signupRequest,
+  type SessionResponse,
+} from '@/api/auth';
+import type { AuthContextValue, AuthStatus, LoginInput, SignupInput } from './AuthContext.types';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -27,13 +34,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const signup = useCallback(async (input: SignupInput) => {
+    const next = await signupRequest(input);
+    setSession(next);
+    setStatus('ready');
+    return next;
+  }, []);
+
+  const login = useCallback(async (input: LoginInput) => {
+    const next = await loginRequest(input);
+    setSession(next);
+    setStatus('ready');
+    return next;
+  }, []);
+
+  const logout = useCallback(async () => {
+    await logoutRequest();
+    resetAnonymousSessionCache();
+    setSession(null);
+    setStatus('loading');
+    try {
+      const next = await ensureAnonymousSession();
+      setSession(next);
+      setStatus('ready');
+    } catch {
+      setStatus('error');
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
       session,
       principalId: session?.principal?.uuid ?? null,
+      signup,
+      login,
+      logout,
     }),
-    [session, status],
+    [session, status, signup, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

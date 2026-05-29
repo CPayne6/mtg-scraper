@@ -13,7 +13,8 @@ const LIST_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const makeList = (overrides: Partial<CardList> = {}): CardList => ({
   id: 1,
   uuid: LIST_UUID,
-  ownerCookie: OWNER_COOKIE,
+  ownerPrincipalUuid: OWNER_COOKIE,
+  visibility: 'unlisted',
   name: 'My Deck',
   filterStores: undefined,
   filterConditions: undefined,
@@ -419,6 +420,8 @@ describe('ListsService', () => {
 
       expect(cardListRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
+          ownerPrincipalUuid: OWNER_COOKIE,
+          visibility: 'unlisted',
           filterStores: 'f2f',
           filterConditions: 'NM',
           filterSetCode: 'lea',
