@@ -9,7 +9,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import type { Request, Response } from 'express';
 import { AuthSessionService } from './auth-session.service';
 // Email/password auth is intentionally disabled until email verification ships.
@@ -18,6 +18,10 @@ import { AuthSessionService } from './auth-session.service';
 // import { SignupDto } from './dto/signup.dto';
 import { GoogleOAuthService } from './google-oauth.service';
 import { JwtService } from './jwt.service';
+import {
+  EmailNotAuthoritativeError,
+  EmailNotVerifiedError,
+} from './oauth-errors';
 import { OAuthSignInService } from './oauth-sign-in.service';
 import { UserAuthService } from './user-auth.service';
 
@@ -28,6 +32,7 @@ type RequestWithCookies = Request & {
 interface OAuthStateCookie {
   nonce: string;
   redirect: string;
+  codeVerifier: string;
 }
 
 const SAFE_REDIRECT_PATTERN = /^\/(?!\/)[A-Za-z0-9\-._~!$&'()*+,;=:@%/?#]*$/;
@@ -99,9 +104,13 @@ export class AuthController {
 
     const safeRedirect = this.sanitizeRedirect(redirect);
     const nonce = randomBytes(32).toString('base64url');
-    this.setStateCookie(res, { nonce, redirect: safeRedirect });
+    const codeVerifier = this.newPkceVerifier();
+    this.setStateCookie(res, { nonce, redirect: safeRedirect, codeVerifier });
 
-    const authorizationUrl = this.googleOAuthService.buildAuthorizationUrl(nonce);
+    const authorizationUrl = this.googleOAuthService.buildAuthorizationUrl(
+      nonce,
+      this.pkceChallenge(codeVerifier),
+    );
     return res.redirect(authorizationUrl);
   }
 
@@ -114,6 +123,11 @@ export class AuthController {
     @Query('error') error: string | undefined,
   ) {
     const stateCookie = this.readStateCookie(req);
+
+    if (!state || !stateCookie || stateCookie.nonce !== state) {
+      return res.redirect(this.frontendErrorUrl('invalid-state'));
+    }
+
     this.clearStateCookie(res);
 
     if (error) {
@@ -121,19 +135,24 @@ export class AuthController {
       return res.redirect(this.frontendErrorUrl(error));
     }
 
-    if (!code || !state || !stateCookie || stateCookie.nonce !== state) {
+    if (!code) {
       return res.redirect(this.frontendErrorUrl('invalid-state'));
     }
 
     try {
-      const profile = await this.googleOAuthService.exchangeCodeForProfile(code);
+      const profile = await this.googleOAuthService.exchangeCodeForProfile(
+        code,
+        stateCookie.codeVerifier,
+      );
       await this.oauthSignInService.signInWithGoogle(profile, req, res);
     } catch (err) {
       this.logger.error('Google OAuth sign-in failed', err as Error);
       const reason =
-        err instanceof Error && err.message.includes('Google has not verified')
-          ? 'email-not-verified'
-          : 'sign-in-failed';
+        err instanceof EmailNotVerifiedError
+          ? err.code
+          : err instanceof EmailNotAuthoritativeError
+            ? err.code
+            : 'sign-in-failed';
       return res.redirect(this.frontendErrorUrl(reason));
     }
 
@@ -177,15 +196,30 @@ export class AuthController {
   ): OAuthStateCookie | null {
     const raw = req.cookies?.[this.stateCookieName];
     if (!raw) return null;
+
+    const [encodedPayload, signature] = raw.split('.');
+    if (
+      !encodedPayload ||
+      !signature ||
+      !this.hasValidStateSignature(encodedPayload, signature)
+    ) {
+      return null;
+    }
+
     try {
       const decoded = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
+        Buffer.from(encodedPayload, 'base64url').toString('utf8'),
       ) as Partial<OAuthStateCookie>;
       if (
         typeof decoded.nonce === 'string' &&
-        typeof decoded.redirect === 'string'
+        typeof decoded.redirect === 'string' &&
+        typeof decoded.codeVerifier === 'string'
       ) {
-        return { nonce: decoded.nonce, redirect: decoded.redirect };
+        return {
+          nonce: decoded.nonce,
+          redirect: this.sanitizeRedirect(decoded.redirect),
+          codeVerifier: decoded.codeVerifier,
+        };
       }
     } catch {
       // fall through
@@ -203,7 +237,38 @@ export class AuthController {
   }
 
   private encodeState(payload: OAuthStateCookie): string {
-    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const encodedPayload = Buffer.from(
+      JSON.stringify(payload),
+      'utf8',
+    ).toString('base64url');
+    return `${encodedPayload}.${this.signStatePayload(encodedPayload)}`;
+  }
+
+  private hasValidStateSignature(
+    encodedPayload: string,
+    signature: string,
+  ): boolean {
+    const expected = this.signStatePayload(encodedPayload);
+    const expectedBuffer = Buffer.from(expected, 'base64url');
+    const signatureBuffer = Buffer.from(signature, 'base64url');
+    return (
+      expectedBuffer.length === signatureBuffer.length &&
+      timingSafeEqual(expectedBuffer, signatureBuffer)
+    );
+  }
+
+  private signStatePayload(encodedPayload: string): string {
+    return createHmac('sha256', this.stateSigningSecret)
+      .update(encodedPayload)
+      .digest('base64url');
+  }
+
+  private newPkceVerifier(): string {
+    return randomBytes(32).toString('base64url');
+  }
+
+  private pkceChallenge(codeVerifier: string): string {
+    return createHash('sha256').update(codeVerifier).digest('base64url');
   }
 
   private frontendSuccessUrl(redirectPath: string): string {
@@ -234,5 +299,13 @@ export class AuthController {
 
   private get cookieDomain(): string | undefined {
     return this.configService.get<string>('cookies.domain');
+  }
+
+  private get stateSigningSecret(): string {
+    const secret = this.configService.get<string>('security.tokenHashSecret');
+    if (!secret) {
+      throw new Error('security.tokenHashSecret is not configured');
+    }
+    return secret;
   }
 }

@@ -44,6 +44,8 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
     'Sign-up was interrupted. Please try again.',
   'email-not-verified':
     'Google has not verified that email. Verify it on your Google account and try again.',
+  'email-not-authoritative':
+    'We cannot link this Google account to an existing ScoutLGS profile right now. Please contact support if you believe this is wrong.',
   'sign-in-failed':
     'Could not complete Google sign-up. Please try again.',
   access_denied:

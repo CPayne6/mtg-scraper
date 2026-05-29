@@ -14,6 +14,10 @@ import type { SessionResponse } from './auth-session.service';
 import { normalizeEmail } from './email.utils';
 import type { GoogleProfile } from './google-oauth.service';
 import { JwtService } from './jwt.service';
+import {
+  EmailNotAuthoritativeError,
+  EmailNotVerifiedError,
+} from './oauth-errors';
 import { TokenHashService } from './token-hash.service';
 
 type RequestWithCookies = Request & {
@@ -39,9 +43,7 @@ export class OAuthSignInService {
     res: Response,
   ): Promise<SessionResponse> {
     if (profile.email && !profile.emailVerified) {
-      throw new UnauthorizedException(
-        'Google has not verified this email. Please verify the email on your Google account and try again.',
-      );
+      throw new EmailNotVerifiedError();
     }
 
     const rawRefreshToken = this.newOpaqueToken();
@@ -79,6 +81,9 @@ export class OAuthSignInService {
           });
 
           if (existingEmail) {
+            if (!profile.emailAuthoritative) {
+              throw new EmailNotAuthoritativeError();
+            }
             user = existingEmail.user;
             principal = existingEmail.user.principal;
           } else {
@@ -203,7 +208,7 @@ export class OAuthSignInService {
         email: profile.email,
         normalizedEmail: normalizeEmail(profile.email),
         source: 'google',
-        verifiedAt: profile.emailVerified ? now : null,
+        verifiedAt: profile.emailAuthoritative ? now : null,
       });
       await userEmailRepository.save(userEmail);
 
