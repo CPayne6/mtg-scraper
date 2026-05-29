@@ -56,17 +56,26 @@ function ListDetailRoute() {
   const list = getList(listId);
   const listName = list?.name ?? '';
   const entries = useMemo(() => groupByName(cards), [cards]);
-  const [results, setResults] = useState<Record<string, CardState>>({});
-  const elapsedStart = useMemo(() => Date.now(), [listId]);
+  const entryKey = useMemo(() => entries.map((e) => e.name).join('\n'), [entries]);
+  const [lookupResults, setLookupResults] = useState<{
+    key: string;
+    results: Record<string, CardState>;
+  }>({ key: '', results: {} });
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const results = useMemo<Record<string, CardState>>(() => {
+    if (entries.length === 0) return {};
+    const pending = Object.fromEntries(
+      entries.map((e) => [e.name, { state: 'pending' } as CardState]),
+    );
+    if (lookupResults.key !== entryKey) return pending;
+    return { ...pending, ...lookupResults.results };
+  }, [entries, entryKey, lookupResults]);
 
   useEffect(() => {
-    if (entries.length === 0) {
-      setResults({});
-      return;
-    }
+    if (entries.length === 0) return;
     const controller = new AbortController();
-    setResults(Object.fromEntries(entries.map((e) => [e.name, { state: 'pending' }])));
+    const elapsedStart = Date.now();
+    const nextResults: Record<string, CardState> = {};
     let remaining = entries.length;
     const tick = () => {
       remaining -= 1;
@@ -82,19 +91,21 @@ function ListDetailRoute() {
             resp.results.length > 0
               ? [...resp.results].sort((a, b) => a.price - b.price)[0]
               : null;
-          setResults((prev) => ({ ...prev, [entry.name]: { state: 'success', cheapest } }));
+          nextResults[entry.name] = { state: 'success', cheapest };
+          setLookupResults({ key: entryKey, results: { ...nextResults } });
           tick();
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           if (err instanceof Error && err.name === 'AbortError') return;
           const message = err instanceof Error ? err.message : 'Failed to fetch';
-          setResults((prev) => ({ ...prev, [entry.name]: { state: 'error', message } }));
+          nextResults[entry.name] = { state: 'error', message };
+          setLookupResults({ key: entryKey, results: { ...nextResults } });
           tick();
         });
     }
     return () => controller.abort();
-  }, [entries, elapsedStart]);
+  }, [entries, entryKey]);
 
   const loadedCount = Object.values(results).filter((r) => r.state !== 'pending').length;
   const isLoaded = entries.length > 0 && loadedCount === entries.length;
@@ -115,6 +126,18 @@ function ListDetailRoute() {
     return { deckTotal: total, inStockCount: inStock, uniqueStoreCount: stores.size };
   }, [entries, results]);
 
+  const handleDeleteList = useCallback(async () => {
+    const ok = await confirm({
+      title: `Delete ${listName || 'this list'}?`,
+      description: 'This removes the list from your account. This action cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await removeList(listId);
+    navigate({ to: '/lists' });
+  }, [confirm, listName, listId, navigate, removeList]);
+
   if (!list && !loading) {
     return (
       <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
@@ -134,27 +157,15 @@ function ListDetailRoute() {
   const meta = DECK_META[listName] ?? { colors: '', archetype: 'Custom', updated: 'recently' };
   const checkoutStores = uniqueStoreCount || 0;
 
-  const handleDeleteList = useCallback(async () => {
-    const ok = await confirm({
-      title: `Delete ${listName || 'this list'}?`,
-      description: 'This removes the list from your account. This action cannot be undone.',
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    await removeList(listId);
-    navigate({ to: '/lists' });
-  }, [confirm, listName, listId, navigate, removeList]);
-
   const handleAddRowToCart = (cardName: string) => {
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
-      enqueueSnackbar(`No price yet for `${cardName}``, { variant: `warning` });
+      enqueueSnackbar(`No price yet for "${cardName}"`, { variant: 'warning' });
       return;
     }
     const added = addToCart(r.cheapest);
     enqueueSnackbar(
-      added ? `Added `${cardName}` to cart` : ``${cardName}` is already in your cart`,
+      added ? `Added "${cardName}" to cart` : `"${cardName}" is already in your cart`,
       { variant: added ? 'success' : 'default' },
     );
   };
@@ -235,7 +246,7 @@ function ListDetailRoute() {
             disabled={!isLoaded || checkoutStores === 0}
           >
             {checkoutStores > 0
-              ? `Check Out at ${checkoutStores} ${checkoutStores === 1 ? `Store` : `Stores`}`
+              ? `Check Out at ${checkoutStores} ${checkoutStores === 1 ? 'Store' : 'Stores'}`
               : 'Check Out'}
           </Button>
         </Stack>
@@ -284,7 +295,7 @@ function ListDetailRoute() {
         />
         <KpiTile
           label="Stores searched"
-          value={isLoaded ? `${uniqueStoreCount} ${uniqueStoreCount === 1 ? `store` : `stores`}` : `…`}
+          value={isLoaded ? `${uniqueStoreCount} ${uniqueStoreCount === 1 ? 'store' : 'stores'}` : `…`}
           delta={isLoaded && elapsedMs != null ? `in ${(elapsedMs / 1000).toFixed(1)}s` : `in progress`}
         />
         <KpiTile

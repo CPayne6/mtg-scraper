@@ -112,6 +112,30 @@ describe('ListsService', () => {
       );
     });
 
+    it('should preserve duplicate resolved cards as separate entries', async () => {
+      cardNameResolver.resolveCardNames.mockResolvedValue({
+        resolved: [
+          { input: 'Lightning Bolt', cardNameId: 1, resolvedName: 'Lightning Bolt', fuzzy: false },
+          { input: 'Lightning Bolt', cardNameId: 1, resolvedName: 'Lightning Bolt', fuzzy: false },
+          { input: 'Lightning Bolt', cardNameId: 1, resolvedName: 'Lightning Bolt', fuzzy: false },
+        ],
+        unresolved: [],
+      });
+
+      const result = await service.createList(
+        { name: 'Burn', cards: ['Lightning Bolt', 'Lightning Bolt', 'Lightning Bolt'] },
+        OWNER_COOKIE,
+      );
+
+      expect(result.cardCount).toBe(3);
+      const entries = cardListEntryRepo.save.mock.calls[0][0];
+      expect(entries).toEqual([
+        expect.objectContaining({ cardNameId: 1, position: 1 }),
+        expect.objectContaining({ cardNameId: 1, position: 2 }),
+        expect.objectContaining({ cardNameId: 1, position: 3 }),
+      ]);
+    });
+
     it('should include fuzzy match warnings', async () => {
       cardNameResolver.resolveCardNames.mockResolvedValue({
         resolved: [
@@ -220,6 +244,73 @@ describe('ListsService', () => {
       expect(result.cards[0].price).toBe(1.5);
       expect(result.cards[0].totalListings).toBe(25);
       expect(result.cards[0].store).toBe('Face to Face Games');
+    });
+
+    it('should return duplicate card entries from the stored positions', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+
+      entityManager.query
+        .mockResolvedValueOnce([
+          {
+            position: '1',
+            card_name_id: '10',
+            card_name: 'Lightning Bolt',
+            variant_id: '100',
+            price: '1.50',
+            foil: false,
+            quantity: 4,
+            condition_code: 'NM',
+            currency: 'CAD',
+            image_url: null,
+            store_slug: 'f2f',
+            store_display_name: 'Face to Face Games',
+            store_base_url: 'https://f2f.com',
+            printing_id: '5',
+            scryfall_id: 'abc',
+            collector_number: '141',
+            rarity: 'common',
+            image_uri: 'https://img.com/bolt.jpg',
+            set_code: 'lea',
+            set_name: 'Alpha',
+            product_handle: 'lightning-bolt',
+          },
+          {
+            position: '2',
+            card_name_id: '10',
+            card_name: 'Lightning Bolt',
+            variant_id: '100',
+            price: '1.50',
+            foil: false,
+            quantity: 4,
+            condition_code: 'NM',
+            currency: 'CAD',
+            image_url: null,
+            store_slug: 'f2f',
+            store_display_name: 'Face to Face Games',
+            store_base_url: 'https://f2f.com',
+            printing_id: '5',
+            scryfall_id: 'abc',
+            collector_number: '141',
+            rarity: 'common',
+            image_uri: 'https://img.com/bolt.jpg',
+            set_code: 'lea',
+            set_name: 'Alpha',
+            product_handle: 'lightning-bolt',
+          },
+        ])
+        .mockResolvedValueOnce([
+          { card_name_id: '10', total_listings: '25' },
+        ]);
+
+      const result = await service.getListWithPrices(LIST_UUID);
+
+      expect(result.cards).toHaveLength(2);
+      expect(result.cards.map((c) => c.position)).toEqual([1, 2]);
+      expect(result.cards.map((c) => c.cardName)).toEqual([
+        'Lightning Bolt',
+        'Lightning Bolt',
+      ]);
+      expect(result.cards.map((c) => c.totalListings)).toEqual([25, 25]);
     });
 
     it('should throw NotFoundException for unknown list', async () => {

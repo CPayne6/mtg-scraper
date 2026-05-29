@@ -84,7 +84,8 @@ function BuilderRoute() {
   const cartCardKeys = useMemo(() => {
     const s = new Set<string>();
     for (const item of cartItems) {
-      s.add((item.scryfall_id ?? item.title).toLowerCase());
+      s.add(item.title.toLowerCase());
+      s.add(item.title.replace(/\s*\[[^\]]+\]\s*$/, '').trim().toLowerCase());
     }
     return s;
   }, [cartItems]);
@@ -147,11 +148,11 @@ function BuilderRoute() {
       const added = addToCart(offer);
       if (added) {
         enqueueSnackbar(
-          `Added `${offer.title}` from ${offer.store} to cart`,
+          `Added "${offer.title}" from ${offer.store} to cart`,
           { variant: 'success' },
         );
       } else {
-        enqueueSnackbar(``${offer.title}` from ${offer.store} is already in your cart`, {
+        enqueueSnackbar(`"${offer.title}" from ${offer.store} is already in your cart`, {
           variant: 'default',
         });
       }
@@ -165,7 +166,7 @@ function BuilderRoute() {
       const result = undo(entryId);
       if (result === 'blocked') {
         enqueueSnackbar(
-          "Can"t remove that card while it"s in your cart",
+          "Can't remove that card while it's in your cart",
           { variant: 'warning' },
         );
       }
@@ -177,7 +178,7 @@ function BuilderRoute() {
   const handleAddCard = useCallback(
     (cardName: string) => {
       const entryId = addCard(cardName);
-      const key = enqueueSnackbar(`Added `${cardName}` to list`, {
+      const key = enqueueSnackbar(`Added "${cardName}" to list`, {
         autoHideDuration: 6000,
         action: (snackKey) => (
           <Button

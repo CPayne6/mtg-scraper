@@ -345,42 +345,66 @@ export class ListsService {
   ): Promise<any[]> {
     return this.entityManager.query(
       `
-      SELECT DISTINCT ON (e.card_name_id)
+      SELECT
         e.position,
         e.card_name_id,
         cn.name AS card_name,
-        v.id AS variant_id,
-        v.price,
-        v.foil,
-        v.quantity,
-        c.code AS condition_code,
-        l.currency,
-        l.image_url,
-        s.name AS store_slug,
-        s.display_name AS store_display_name,
-        s.base_url AS store_base_url,
-        p.id AS printing_id,
-        p.scryfall_id,
-        p.collector_number,
-        p.rarity,
-        p.image_uri,
-        ps.code AS set_code,
-        ps.name AS set_name,
-        pu.handle AS product_handle
+        best.variant_id,
+        best.price,
+        best.foil,
+        best.quantity,
+        best.condition_code,
+        best.currency,
+        best.image_url,
+        best.store_slug,
+        best.store_display_name,
+        best.store_base_url,
+        best.printing_id,
+        best.scryfall_id,
+        best.collector_number,
+        best.rarity,
+        best.image_uri,
+        best.set_code,
+        best.set_name,
+        best.product_handle
       FROM card_list_entries e
       JOIN card_names cn ON cn.id = e.card_name_id
-      LEFT JOIN card_listings l ON l.card_name_id = e.card_name_id
-      LEFT JOIN card_variants v ON v.card_listing_id = l.id
-      LEFT JOIN stores s ON s.id = l.store_id
-      LEFT JOIN card_conditions c ON c.id = v.condition_id
-      LEFT JOIN product_urls pu ON pu.id = l.product_url_id
-      LEFT JOIN card_printings p ON p.id = l.card_printing_id
-      LEFT JOIN sets ps ON ps.id = p.set_id
+      LEFT JOIN LATERAL (
+        SELECT
+          v.id AS variant_id,
+          v.price,
+          v.foil,
+          v.quantity,
+          c.code AS condition_code,
+          l.currency,
+          l.image_url,
+          s.name AS store_slug,
+          s.display_name AS store_display_name,
+          s.base_url AS store_base_url,
+          p.id AS printing_id,
+          p.scryfall_id,
+          p.collector_number,
+          p.rarity,
+          p.image_uri,
+          ps.code AS set_code,
+          ps.name AS set_name,
+          pu.handle AS product_handle
+        FROM card_listings l
+        JOIN card_variants v ON v.card_listing_id = l.id
+        JOIN stores s ON s.id = l.store_id
+        JOIN card_conditions c ON c.id = v.condition_id
+        LEFT JOIN product_urls pu ON pu.id = l.product_url_id
+        LEFT JOIN card_printings p ON p.id = l.card_printing_id
+        LEFT JOIN sets ps ON ps.id = p.set_id
+        WHERE l.card_name_id = e.card_name_id
+          AND ($2::text[] IS NULL OR s.name = ANY($2))
+          AND ($3::text[] IS NULL OR c.code = ANY($3))
+          AND ($4::text IS NULL OR ps.code = $4)
+        ORDER BY v.price ASC
+        LIMIT 1
+      ) best ON true
       WHERE e.card_list_id = $1
-        AND ($2::text[] IS NULL OR s.name = ANY($2))
-        AND ($3::text[] IS NULL OR c.code = ANY($3))
-        AND ($4::text IS NULL OR ps.code = $4)
-      ORDER BY e.card_name_id, v.price ASC
+      ORDER BY e.position ASC
       `,
       [listId, stores, conditions, setCode],
     );
@@ -394,16 +418,20 @@ export class ListsService {
   ): Promise<any[]> {
     return this.entityManager.query(
       `
+      WITH list_card_names AS (
+        SELECT DISTINCT card_name_id
+        FROM card_list_entries
+        WHERE card_list_id = $1
+      )
       SELECT e.card_name_id, COUNT(v.id) AS total_listings
-      FROM card_list_entries e
+      FROM list_card_names e
       JOIN card_listings l ON l.card_name_id = e.card_name_id
       JOIN card_variants v ON v.card_listing_id = l.id
       JOIN stores s ON s.id = l.store_id
       JOIN card_conditions c ON c.id = v.condition_id
       LEFT JOIN card_printings p ON p.id = l.card_printing_id
       LEFT JOIN sets ps ON ps.id = p.set_id
-      WHERE e.card_list_id = $1
-        AND ($2::text[] IS NULL OR s.name = ANY($2))
+      WHERE ($2::text[] IS NULL OR s.name = ANY($2))
         AND ($3::text[] IS NULL OR c.code = ANY($3))
         AND ($4::text IS NULL OR ps.code = $4)
       GROUP BY e.card_name_id
