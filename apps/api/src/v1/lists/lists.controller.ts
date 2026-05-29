@@ -20,6 +20,7 @@ import { ListsService } from './lists.service';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
+import { UpdateNameDto } from './dto/update-name.dto';
 
 @Controller('lists')
 export class ListsController {
@@ -86,6 +87,22 @@ export class ListsController {
       principal.principalUuid,
       dto.cards,
     );
+  }
+
+  @Put(':listId/name')
+  @UseGuards(PrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async updateName(
+    @Param('listId') listId: string,
+    @Body() dto: UpdateNameDto,
+    @CurrentPrincipal() principal: PrincipalContext,
+  ) {
+    await this.listsService.updateName(
+      listId,
+      principal.principalUuid,
+      dto.name,
+    );
+    return { message: 'Name updated' };
   }
 
   @Delete(':listId')

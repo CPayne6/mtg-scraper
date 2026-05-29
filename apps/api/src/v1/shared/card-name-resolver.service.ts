@@ -50,17 +50,13 @@ export class CardNameResolverService {
     const resolved: ResolvedCardName[] = [];
     const unresolved: string[] = [];
 
-    // Deduplicate and normalize
-    const uniqueEntries = new Map<string, string>(); // normalized -> original
-    for (const name of names) {
-      const normalized = this.normalizeCardName(name);
-      if (!uniqueEntries.has(normalized)) {
-        uniqueEntries.set(normalized, name);
-      }
-    }
+    const normalizedEntries = names.map((name) => ({
+      original: name,
+      normalized: this.normalizeCardName(name),
+    }));
 
     // Step 1: Batch exact match via IN query
-    const normalizedNames = [...uniqueEntries.keys()];
+    const normalizedNames = [...new Set(normalizedEntries.map((e) => e.normalized))];
     const exactMatches = normalizedNames.length > 0
       ? await this.cardNameRepository.find({
           where: { normalizedName: In(normalizedNames) },
@@ -72,9 +68,9 @@ export class CardNameResolverService {
       exactMap.set(match.normalizedName, match);
     }
 
-    // Step 2: Fuzzy match only for misses
-    const fuzzyNeeded: string[] = [];
-    for (const [normalized, original] of uniqueEntries) {
+    // Step 2: Preserve the user's input order and multiplicity.
+    const fuzzyMap = new Map<string, CardName | null>();
+    for (const { normalized, original } of normalizedEntries) {
       const exact = exactMap.get(normalized);
       if (exact) {
         resolved.push({
@@ -83,22 +79,23 @@ export class CardNameResolverService {
           resolvedName: exact.name,
           fuzzy: false,
         });
-      } else {
-        fuzzyNeeded.push(original);
+        continue;
       }
-    }
 
-    for (const name of fuzzyNeeded) {
-      const match = await this.findCardNameByFuzzyMatch(name);
+      let match = fuzzyMap.get(normalized);
+      if (!fuzzyMap.has(normalized)) {
+        match = await this.findCardNameByFuzzyMatch(original);
+        fuzzyMap.set(normalized, match);
+      }
       if (match) {
         resolved.push({
-          input: name,
+          input: original,
           cardNameId: match.id,
           resolvedName: match.name,
           fuzzy: true,
         });
       } else {
-        unresolved.push(name);
+        unresolved.push(original);
       }
     }
 

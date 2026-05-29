@@ -46,6 +46,7 @@ describe('ListsController', () => {
       getListsForOwner: vi.fn(),
       getListWithPrices: vi.fn(),
       updateFilters: vi.fn(),
+      updateName: vi.fn(),
       replaceCards: vi.fn(),
       deleteList: vi.fn(),
     };
@@ -123,6 +124,25 @@ describe('ListsController', () => {
         expect.objectContaining({ filterStores: 'f2f' }),
       );
       expect(result.message).toBe('Filters updated');
+    });
+  });
+
+  describe('PUT /v1/lists/:listId/name', () => {
+    it('should rename the list for owner', async () => {
+      listsService.updateName.mockResolvedValue(undefined);
+
+      const result = await controller.updateName(
+        LIST_UUID,
+        { name: 'New Name' },
+        PRINCIPAL,
+      );
+
+      expect(listsService.updateName).toHaveBeenCalledWith(
+        LIST_UUID,
+        PRINCIPAL_UUID,
+        'New Name',
+      );
+      expect(result.message).toBe('Name updated');
     });
   });
 

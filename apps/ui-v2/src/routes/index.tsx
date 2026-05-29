@@ -16,6 +16,7 @@ import { Tip } from '@/components/feedback/Tip';
 import { useLists } from '@/components/lists/ListsContext';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { parseDeckList } from '@/utils/parseDeckList';
+import { slugifyName } from '@/utils/slugify';
 
 type HomeSearch = { mode?: 'card' | 'deck' };
 
@@ -41,15 +42,19 @@ function HomeRoute() {
     navigate({ to: '/card/$name', params: { name: name.trim() } });
   };
 
-  const handleScoutDeck = () => {
+  const handleScoutDeck = async () => {
     const cards = parseDeckList(deckText);
     if (cards.length === 0) {
       enqueueSnackbar("Couldn't find any cards in that list", { variant: 'warning' });
       return;
     }
     const listName = `CardList${count + 1}`;
-    const key = save(listName, cards);
-    navigate({ to: '/list/$listName', params: { listName: key } });
+    const id = await save(listName, cards);
+    if (!id) return;
+    navigate({
+      to: '/list/$listId/$slug',
+      params: { listId: id, slug: slugifyName(listName) },
+    });
   };
 
   return (

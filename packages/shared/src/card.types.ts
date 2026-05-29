@@ -1,4 +1,6 @@
-
+// Card condition slugs match the values emitted by the scrapers and stored on
+// the listing variants. `dmg` and `unknown` are distinct — `unknown` means we
+// couldn't determine the condition, not that the card is damaged.
 export enum Condition {
   NM = 'nm',
   LP = 'lp',
