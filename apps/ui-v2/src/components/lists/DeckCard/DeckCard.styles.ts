@@ -16,7 +16,7 @@ export const containerSx = (gradient: string): SxProps<Theme> => (theme) => ({
     position: 'absolute',
     inset: 0,
     background: gradient,
-    opacity: theme.palette.mode === 'dark' ? 0.1 : 0.06,
+    opacity: theme.palette.gradientWashOpacity,
     zIndex: -1,
     pointerEvents: 'none',
   },

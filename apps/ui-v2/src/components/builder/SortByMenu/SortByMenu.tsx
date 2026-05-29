@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Popover from '@mui/material/Popover';
-import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
+import { KeyboardArrowDown } from '@mui/icons-material';
 import type { SortByMenuProps } from './SortByMenu.types';
 import { OPTIONS } from './SortByMenu.utils';
 import { triggerSx, popoverPaperSx, headingSx, optionSx } from './SortByMenu.styles';

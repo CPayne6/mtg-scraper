@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import AddIcon from '@mui/icons-material/Add';
+import { Add as AddIcon } from '@mui/icons-material';
 import { CardListRow } from '../CardListRow';
 import { SortByMenu, type SortBy } from '../SortByMenu';
 import { AddCardPopover } from '../AddCardPopover';

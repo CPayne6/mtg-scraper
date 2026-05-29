@@ -1,5 +1,5 @@
 import Box from '@mui/material/Box';
-import InfoOutlined from '@mui/icons-material/InfoOutlined';
+import { InfoOutlined } from '@mui/icons-material';
 
 export function StaleNotice() {
   return (

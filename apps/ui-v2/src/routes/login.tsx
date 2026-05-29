@@ -10,8 +10,8 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
-import Visibility from '@mui/icons-material/Visibility';
-import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import { Visibility } from '@mui/icons-material';
+import { VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '@/components/auth/AuthContext';
 import { AuthSessionError } from '@/api/auth';
 

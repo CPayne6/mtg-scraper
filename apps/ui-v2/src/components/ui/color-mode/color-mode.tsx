@@ -1,7 +1,7 @@
 import IconButton, { type IconButtonProps } from '@mui/material/IconButton';
 import Skeleton from '@mui/material/Skeleton';
-import DarkMode from '@mui/icons-material/DarkMode';
-import LightMode from '@mui/icons-material/LightMode';
+import { DarkMode } from '@mui/icons-material';
+import { LightMode } from '@mui/icons-material';
 import { ThemeProvider, useTheme } from 'next-themes';
 import type { ThemeProviderProps } from 'next-themes';
 import * as React from 'react';

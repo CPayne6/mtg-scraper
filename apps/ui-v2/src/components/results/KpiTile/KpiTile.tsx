@@ -43,9 +43,7 @@ export function KpiTile({ label, value, delta, deltaTone = 'muted' }: KpiTilePro
             mt: '2px',
             color:
               deltaTone === 'good'
-                ? theme.palette.mode === 'dark'
-                  ? '#6dcf69'
-                  : theme.palette.primary.main
+                ? theme.palette.success.main
                 : 'text.secondary',
             fontWeight: deltaTone === 'good' ? 600 : 400,
           })}

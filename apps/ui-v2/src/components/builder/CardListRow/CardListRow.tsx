@@ -1,8 +1,8 @@
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import Check from '@mui/icons-material/Check';
-import Close from '@mui/icons-material/Close';
+import { Check } from '@mui/icons-material';
+import { Close } from '@mui/icons-material';
 import type { CardListRowProps } from './CardListRow.types';
 import { artUrl } from './CardListRow.utils';
 import {

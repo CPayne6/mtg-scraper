@@ -62,14 +62,8 @@ export const inCartBadgeSx: SxProps<Theme> = (theme) => ({
   cursor: 'not-allowed',
   color: '#fff',
   zIndex: 2,
-  background:
-    theme.palette.mode === 'dark'
-      ? theme.palette.primary.main
-      : 'rgba(74, 103, 65, 0.92)',
-  boxShadow:
-    theme.palette.mode === 'dark'
-      ? '0 0 0 2px rgba(255,255,255,0.12)'
-      : '0 0 0 2px rgba(255,255,255,0.18)',
+  background: theme.palette.primary.main,
+  boxShadow: `0 0 0 2px ${theme.palette.onImageOutline}`,
 });
 
 export const removeBtnSx: SxProps<Theme> = {

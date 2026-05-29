@@ -10,10 +10,10 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
-import Visibility from '@mui/icons-material/Visibility';
-import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import CheckCircle from '@mui/icons-material/CheckCircle';
-import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
+import { Visibility } from '@mui/icons-material';
+import { VisibilityOff } from '@mui/icons-material';
+import { CheckCircle } from '@mui/icons-material';
+import { RadioButtonUnchecked } from '@mui/icons-material';
 import { useAuth } from '@/components/auth/AuthContext';
 import { AuthSessionError } from '@/api/auth';
 

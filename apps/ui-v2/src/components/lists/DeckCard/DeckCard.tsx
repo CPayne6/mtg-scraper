@@ -3,7 +3,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import Close from '@mui/icons-material/Close';
+import { Close } from '@mui/icons-material';
 import { ColorPips } from '@/components/lists/ColorPips';
 import { colorIdentityName } from '@/data/colors';
 import type { DeckCardProps } from './DeckCard.types';

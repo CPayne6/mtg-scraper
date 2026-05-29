@@ -9,4 +9,6 @@ export type FiltersSidebarProps = {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   storeCounts?: Record<string, number>;
+  maxPrice: string;
+  onMaxPriceChange: (value: string) => void;
 };

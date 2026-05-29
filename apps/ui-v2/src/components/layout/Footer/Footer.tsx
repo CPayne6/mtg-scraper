@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
+import { STORE_COUNT, STORE_FACETS } from '@/data/sample';
 
 function FooterHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -19,10 +20,21 @@ function FooterHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FooterLink({ children }: { children: React.ReactNode }) {
+function FooterLink({
+  children,
+  href,
+  external,
+}: {
+  children: React.ReactNode;
+  href: string;
+  external?: boolean;
+}) {
   return (
     <Box
       component="a"
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noopener noreferrer' : undefined}
       sx={{
         display: 'block',
         fontSize: 14,
@@ -67,32 +79,37 @@ export function Footer() {
             color="text.secondary"
             sx={{ fontSize: 12, maxWidth: 320, lineHeight: 1.5 }}
           >
-            ScoutLGS is independent. We don't sell cards — we point you to seven Greater Toronto game
+            ScoutLGS is independent. We do not sell cards. We point you to {STORE_COUNT} game
             stores that do.
           </Typography>
         </Box>
         <Box>
           <FooterHeading>Product</FooterHeading>
           <Stack>
-            <FooterLink>Search</FooterLink>
-            <FooterLink>List scout</FooterLink>
+            <FooterLink href="/">Search</FooterLink>
+            <FooterLink href="/?mode=deck">List scout</FooterLink>
+            <FooterLink href="/lists">Saved lists</FooterLink>
+            <FooterLink href="/settings">Settings</FooterLink>
           </Stack>
         </Box>
         <Box>
           <FooterHeading>Stores</FooterHeading>
           <Stack>
-            <FooterLink>Face to Face</FooterLink>
-            <FooterLink>401 Games</FooterLink>
-            <FooterLink>Hobbiesville</FooterLink>
-            <FooterLink>See all 7 →</FooterLink>
+            {STORE_FACETS.map((store) => (
+              <FooterLink key={store.key} href={store.baseUrl} external>
+                {store.label}
+              </FooterLink>
+            ))}
           </Stack>
         </Box>
         <Box>
-          <FooterHeading>About</FooterHeading>
+          <FooterHeading>Account</FooterHeading>
           <Stack>
-            <FooterLink>How it works</FooterLink>
-            <FooterLink>Why local</FooterLink>
-            <FooterLink>Contact</FooterLink>
+            <FooterLink href="/login">Sign in</FooterLink>
+            <FooterLink href="/signup">Create account</FooterLink>
+            <FooterLink href="https://github.com/CPayne6/mtg-scraper/issues" external>
+              Contact
+            </FooterLink>
           </Stack>
         </Box>
       </Box>

@@ -5,6 +5,11 @@
       "dependsOn": ["^build"],
       "cache": true,
       "inputs": ["production", "^production"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": ["default", "^production"]
     }
   },
   "namedInputs": {
@@ -18,12 +23,5 @@
     ],
     "sharedGlobals": []
   },
-  "plugins": [
-    {
-      "plugin": "@nx/js",
-      "options": {
-        "buildTargetName": "build"
-      }
-    }
-  ]
+  "plugins": []
 }

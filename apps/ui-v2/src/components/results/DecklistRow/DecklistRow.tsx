@@ -1,8 +1,9 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
-import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
-import MoreVert from '@mui/icons-material/MoreVert';
+import Tooltip from '@mui/material/Tooltip';
+import { AddShoppingCart } from '@mui/icons-material';
+import { DeleteOutline } from '@mui/icons-material';
 import type { DecklistRowProps } from './DecklistRow.types';
 import { containerSx, qtyBadgeSx, storeBtnSx } from './DecklistRow.styles';
 
@@ -13,6 +14,7 @@ export function DecklistRow({
   price,
   store,
   onStoreChange,
+  storeActionDisabled,
   onRemove,
 }: DecklistRowProps) {
   return (
@@ -57,15 +59,24 @@ export function DecklistRow({
       >
         CA${price.toFixed(2)}
       </Typography>
-      <Box component="button" type="button" onClick={onStoreChange} sx={storeBtnSx}>
+      <Box
+        component="button"
+        type="button"
+        onClick={onStoreChange}
+        disabled={storeActionDisabled}
+        aria-label={`Add ${name} from ${store} to cart`}
+        sx={storeBtnSx(storeActionDisabled)}
+      >
+        <AddShoppingCart sx={{ fontSize: 14, flexShrink: 0 }} />
         <Box component="span" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {store}
         </Box>
-        <KeyboardArrowDown sx={{ fontSize: 14 }} />
       </Box>
-      <IconButton size="small" aria-label="Row actions" onClick={onRemove}>
-        <MoreVert sx={{ fontSize: 18 }} />
-      </IconButton>
+      <Tooltip title="Remove from list">
+        <IconButton size="small" aria-label={`Remove ${name} from list`} onClick={onRemove}>
+          <DeleteOutline sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 }

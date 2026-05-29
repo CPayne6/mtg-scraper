@@ -7,7 +7,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import SearchIcon from '@mui/icons-material/Search';
+import { Search as SearchIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
 import { SavedListsMenu } from '@/components/lists/SavedListsMenu';
@@ -17,6 +17,7 @@ import { useLists } from '@/components/lists/ListsContext';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { parseDeckList } from '@/utils/parseDeckList';
 import { slugifyName } from '@/utils/slugify';
+import { STORE_COUNT } from '@/data/sample';
 
 type HomeSearch = { mode?: 'card' | 'deck' };
 
@@ -81,7 +82,7 @@ function HomeRoute() {
             lineHeight: 1.5,
           }}
         >
-          Paste a card or a card list. We'll check seven Greater Toronto game stores in seconds.
+          Paste a card or a card list. We'll check {STORE_COUNT} game stores in seconds.
         </Typography>
         <Box sx={{ mt: 2.5, display: 'inline-flex', position: 'relative' }}>
           <SavedListsMenu />
@@ -108,17 +109,9 @@ function HomeRoute() {
               fontWeight: 500,
               minWidth: 0,
               color: mode === 'card' ? 'primary.main' : 'text.secondary',
-              bgcolor:
-                mode === 'card'
-                  ? theme.palette.mode === 'dark'
-                    ? 'rgba(36,135,33,0.18)'
-                    : 'rgba(74,103,65,0.12)'
-                  : 'transparent',
+              bgcolor: mode === 'card' ? theme.palette.primarySoft : 'transparent',
               '&:hover': {
-                bgcolor:
-                  theme.palette.mode === 'dark'
-                    ? 'rgba(36,135,33,0.14)'
-                    : 'rgba(74,103,65,0.06)',
+                bgcolor: theme.palette.primarySoftHover,
                 color: 'text.primary',
               },
             })}
@@ -136,17 +129,9 @@ function HomeRoute() {
               fontWeight: 500,
               minWidth: 0,
               color: mode === 'deck' ? 'primary.main' : 'text.secondary',
-              bgcolor:
-                mode === 'deck'
-                  ? theme.palette.mode === 'dark'
-                    ? 'rgba(36,135,33,0.18)'
-                    : 'rgba(74,103,65,0.12)'
-                  : 'transparent',
+              bgcolor: mode === 'deck' ? theme.palette.primarySoft : 'transparent',
               '&:hover': {
-                bgcolor:
-                  theme.palette.mode === 'dark'
-                    ? 'rgba(36,135,33,0.14)'
-                    : 'rgba(74,103,65,0.06)',
+                bgcolor: theme.palette.primarySoftHover,
                 color: 'text.primary',
               },
             })}

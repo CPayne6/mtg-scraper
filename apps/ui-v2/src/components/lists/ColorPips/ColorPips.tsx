@@ -24,10 +24,7 @@ export function ColorPips({ colors, size = 18 }: ColorPipsProps) {
             borderRadius: '50%',
             width: size,
             height: size,
-            filter:
-              theme.palette.mode === 'dark'
-                ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))'
-                : 'drop-shadow(0 1px 2px rgba(0,0,0,0.18))',
+            filter: theme.palette.iconShadow,
           })}
         />
       ))}

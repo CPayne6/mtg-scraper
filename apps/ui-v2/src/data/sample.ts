@@ -7,6 +7,13 @@ export type DeckMeta = {
   updated: string;
 };
 
+export type StoreFacet = {
+  key: string;
+  label: string;
+  count: number;
+  baseUrl: string;
+};
+
 export const SEED_LISTS: Record<string, string[]> = {
   AtraxaSuperfriends: [
     'Atraxa, Grand Unifier',
@@ -32,15 +39,19 @@ export const DECK_META: Record<string, DeckMeta> = {
 // Store facet defaults. `key` is the API slug (matches `store_key` on each
 // offer) and is the only thing used for filtering/grouping/keying. `label` is
 // the human-readable name used in UI text. Never filter on `label`.
-export const STORE_FACETS = [
-  { key: '401-games', label: '401 Games', count: 1 },
-  { key: 'face-to-face-games', label: 'Face to Face Games', count: 1 },
-  { key: 'hobbiesville', label: 'Hobbiesville', count: 1 },
-  { key: 'black-knight-games', label: 'Black Knight Games', count: 1 },
-  { key: 'exor-games', label: 'Exor Games', count: 1 },
-  { key: 'game-knight', label: 'Game Knight', count: 1 },
-  { key: 'house-of-cards', label: 'House of Cards', count: 1 },
+export const STORE_FACETS: StoreFacet[] = [
+  { key: '401-games', label: '401 Games', count: 1, baseUrl: 'https://store.401games.ca' },
+  { key: 'face-to-face-games', label: 'Face to Face Games', count: 1, baseUrl: 'https://facetofacegames.com' },
+  { key: 'hobbiesville', label: 'Hobbiesville', count: 1, baseUrl: 'https://hobbiesville.com' },
+  { key: 'black-knight-games', label: 'Black Knight Games', count: 1, baseUrl: 'https://blackknightgames.ca' },
+  { key: 'exor-games', label: 'Exor Games', count: 1, baseUrl: 'https://exorgames.com' },
+  { key: 'game-knight', label: 'Game Knight', count: 1, baseUrl: 'https://gameknight.ca' },
+  { key: 'house-of-cards', label: 'House of Cards', count: 1, baseUrl: 'https://houseofcards.ca' },
+  { key: 'the-cg-realm', label: 'The CG Realm', count: 1, baseUrl: 'https://www.thecgrealm.com' },
 ];
+
+export const STORE_COUNT = STORE_FACETS.length;
+export const DEFAULT_STORE_KEYS = STORE_FACETS.map((store) => store.key);
 
 export const FALLBACK_CARDS = [
   'Lightning Bolt', 'Atraxa, Grand Unifier', 'Sol Ring', 'Cyclonic Rift',

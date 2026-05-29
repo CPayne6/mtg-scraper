@@ -58,9 +58,7 @@ export const toggleAllChipSx = (allOn: boolean): SxProps<Theme> => (theme) => ({
   '&:hover': {
     background: allOn
       ? theme.palette.primary.main
-      : theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.16)'
-        : 'rgba(74,103,65,0.08)',
+      : theme.palette.primarySoftHover,
     color: allOn ? '#fff' : theme.palette.text.primary,
   },
 });
@@ -132,11 +130,7 @@ export const addBtnSx: SxProps<Theme> = (theme) => ({
   gap: '6px',
   padding: '6px 11px',
   borderRadius: 999,
-  border: `1px dashed ${
-    theme.palette.mode === 'dark'
-      ? 'rgba(36,135,33,0.45)'
-      : 'rgba(74,103,65,0.3)'
-  }`,
+  border: `1px dashed ${theme.palette.primaryOutline}`,
   background: theme.palette.background.paper,
   color: theme.palette.primary.main,
   fontFamily: 'inherit',
@@ -153,10 +147,7 @@ export const addBtnSx: SxProps<Theme> = (theme) => ({
     lineHeight: 1,
   },
   '&:hover': {
-    background:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.12)'
-        : 'rgba(74,103,65,0.08)',
+    background: theme.palette.primarySoftHover,
     borderColor: theme.palette.primary.main,
   },
 });
@@ -234,9 +225,7 @@ export const conditionChipSx = (on: boolean): SxProps<Theme> => (theme) => ({
   padding: '6px 12px',
   border: 0,
   background: on
-    ? theme.palette.mode === 'dark'
-      ? '#248721'
-      : theme.palette.primary.main
+    ? theme.palette.primary.main
     : 'transparent',
   color: on ? '#fff' : theme.palette.text.secondary,
   fontWeight: 600,

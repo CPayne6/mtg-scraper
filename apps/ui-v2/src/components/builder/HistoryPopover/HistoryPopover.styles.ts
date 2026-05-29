@@ -47,11 +47,7 @@ export const entryDotSx = (isAdd: boolean): SxProps<Theme> => (theme) => ({
   height: 8,
   borderRadius: '50%',
   flexShrink: 0,
-  background: isAdd
-    ? theme.palette.primary.main
-    : theme.palette.mode === 'dark'
-      ? theme.palette.honey.main
-      : theme.palette.honey.dark,
+  background: isAdd ? theme.palette.primary.main : theme.palette.honeyText,
 });
 
 export const undoBtnSx: SxProps<Theme> = (theme) => ({
@@ -68,9 +64,6 @@ export const undoBtnSx: SxProps<Theme> = (theme) => ({
     'background 120ms cubic-bezier(0.4, 0, 0.2, 1), border-color 120ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
     background: theme.palette.background.default,
-    borderColor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.5)'
-        : 'rgba(74,103,65,0.35)',
+    borderColor: theme.palette.primaryOutline,
   },
 });

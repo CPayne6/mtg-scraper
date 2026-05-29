@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import AddShoppingCart from '@mui/icons-material/AddShoppingCart';
-import CheckIcon from '@mui/icons-material/Check';
-import OpenInNew from '@mui/icons-material/OpenInNew';
+import { AddShoppingCart } from '@mui/icons-material';
+import { Check as CheckIcon } from '@mui/icons-material';
+import { OpenInNew } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { useCart, cartItemId } from '@/components/cart/CartContext';
 import { gradientForCard } from '@/utils/cardGradient';

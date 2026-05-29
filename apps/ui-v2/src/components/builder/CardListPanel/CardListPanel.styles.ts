@@ -35,11 +35,7 @@ export const historyBtnSx = (historyOpen: boolean): SxProps<Theme> => (theme) =>
   height: 30,
   borderRadius: '8px',
   border: `1px solid ${
-    historyOpen
-      ? theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.5)'
-        : 'rgba(74,103,65,0.35)'
-      : theme.palette.divider
+    historyOpen ? theme.palette.primaryOutline : theme.palette.divider
   }`,
   background: historyOpen
     ? theme.palette.background.default
@@ -57,10 +53,7 @@ export const historyBtnSx = (historyOpen: boolean): SxProps<Theme> => (theme) =>
     'background 120ms cubic-bezier(0.4, 0, 0.2, 1), border-color 120ms cubic-bezier(0.4, 0, 0.2, 1), color 120ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
     background: theme.palette.background.default,
-    borderColor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.5)'
-        : 'rgba(74,103,65,0.35)',
+    borderColor: theme.palette.primaryOutline,
     color: theme.palette.text.primary,
   },
 });
@@ -173,7 +166,6 @@ export const cartBtnSx = (isOpen: boolean): SxProps<Theme> => (theme) => ({
   filter: isOpen ? 'brightness(0.92)' : 'none',
   transition: 'background 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
-    background:
-      theme.palette.mode === 'dark' ? '#1f7a1c' : '#3a5333',
+    background: theme.palette.primary.dark,
   },
 });

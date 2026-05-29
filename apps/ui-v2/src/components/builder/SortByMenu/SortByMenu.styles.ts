@@ -7,7 +7,7 @@ export const triggerSx = (open: boolean): SxProps<Theme> => (theme) => ({
   background: theme.palette.background.default,
   color: theme.palette.text.primary,
   border: `1px solid ${
-    open ? 'rgba(74, 103, 65, 0.35)' : theme.palette.divider
+    open ? theme.palette.primaryOutline : theme.palette.divider
   }`,
   borderRadius: '8px',
   padding: '5px 10px 5px 12px',
@@ -19,10 +19,7 @@ export const triggerSx = (open: boolean): SxProps<Theme> => (theme) => ({
     'background 200ms cubic-bezier(0.4, 0, 0.2, 1), border-color 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
     background: theme.palette.background.paper,
-    borderColor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36, 135, 33, 0.5)'
-        : 'rgba(74, 103, 65, 0.35)',
+    borderColor: theme.palette.primaryOutline,
   },
 });
 
@@ -55,10 +52,6 @@ export const optionSx = (isSelected: boolean): SxProps<Theme> => (theme) => ({
   cursor: 'pointer',
   fontSize: '13px',
   userSelect: 'none',
-  background: isSelected
-    ? theme.palette.mode === 'dark'
-      ? 'rgba(36, 135, 33, 0.18)'
-      : 'rgba(74, 103, 65, 0.08)'
-    : 'transparent',
+  background: isSelected ? theme.palette.primarySoft : 'transparent',
   '&:hover': { background: theme.palette.background.default },
 });

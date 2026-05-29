@@ -4,12 +4,12 @@ import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import Add from '@mui/icons-material/Add';
+import { Add } from '@mui/icons-material';
 import { useLists } from '@/components/lists/ListsContext';
 import { DeckCard } from '@/components/lists/DeckCard';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useConfirm } from '@/components/feedback/ConfirmDialog';
-import { DECK_META } from '@/data/sample';
+import { DECK_META, STORE_COUNT } from '@/data/sample';
 import { slugifyName } from '@/utils/slugify';
 
 export const Route = createFileRoute('/lists')({
@@ -91,7 +91,7 @@ function ListsRoute() {
       {count === 0 ? (
         <EmptyState
           title="No lists yet"
-          description="Upload a list or paste one from Arena / MTGO and we'll scout every card across all 7 stores."
+          description={`Upload a list or paste one from Arena / MTGO and we'll scout every card across all ${STORE_COUNT} stores.`}
           action={
             <Button variant="outlined" color="primary" onClick={() => navigate({ to: '/', search: { mode: 'deck' } })}>
               Upload a List

@@ -11,10 +11,7 @@ export const buttonSx: SxProps<Theme> = (theme) => ({
   '&:hover': {
     color: 'primary.main',
     borderColor: 'primary.main',
-    bgcolor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.14)'
-        : 'rgba(74,103,65,0.08)',
+    bgcolor: theme.palette.primarySoftHover,
   },
 });
 

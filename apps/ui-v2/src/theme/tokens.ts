@@ -73,9 +73,33 @@ declare module '@mui/material/styles' {
   interface Palette {
     honey: Palette['primary'];
     surfaceSunken: string;
+    primarySoft: string;
+    primarySoftHover: string;
+    primaryOutline: string;
+    primarySolidHover: string;
+    surfaceHover: string;
+    surfaceSubtleHover: string;
+    surfacePressed: string;
+    honeyText: string;
+    imageShadow: string;
+    iconShadow: string;
+    onImageOutline: string;
+    gradientWashOpacity: number;
   }
   interface PaletteOptions {
     honey?: PaletteOptions['primary'];
     surfaceSunken?: string;
+    primarySoft?: string;
+    primarySoftHover?: string;
+    primaryOutline?: string;
+    primarySolidHover?: string;
+    surfaceHover?: string;
+    surfaceSubtleHover?: string;
+    surfacePressed?: string;
+    honeyText?: string;
+    imageShadow?: string;
+    iconShadow?: string;
+    onImageOutline?: string;
+    gradientWashOpacity?: number;
   }
 }

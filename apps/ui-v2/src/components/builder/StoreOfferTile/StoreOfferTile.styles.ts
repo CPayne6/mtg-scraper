@@ -171,7 +171,7 @@ export const addToCartBtnSx: SxProps<Theme> = (theme) => ({
   boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
   transition: 'background 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
-    background: theme.palette.mode === 'dark' ? '#1f7a1c' : '#3a5333',
+    background: theme.palette.primary.dark,
   },
   '&:focus-visible': {
     outline: '2px solid #fff',

@@ -24,10 +24,7 @@ export const previewThumbSx = (previewImage: string): SxProps<Theme> => (theme) 
   borderRadius: '9px',
   flexShrink: 0,
   transition: 'background-image 120ms ease-in-out',
-  boxShadow:
-    theme.palette.mode === 'dark'
-      ? '0 10px 28px -4px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.22)'
-      : '0 8px 22px -4px rgba(0,0,0,0.16), 0 3px 10px rgba(0,0,0,0.08)',
+  boxShadow: theme.palette.imageShadow,
 });
 
 export const cartStatusBadgeSx = (anyOfferInCart: boolean): SxProps<Theme> => (theme) => ({
@@ -40,9 +37,7 @@ export const cartStatusBadgeSx = (anyOfferInCart: boolean): SxProps<Theme> => (t
   letterSpacing: '0.08em',
   color: anyOfferInCart
     ? theme.palette.text.secondary
-    : theme.palette.mode === 'dark'
-      ? theme.palette.honey.main
-      : theme.palette.honey.dark,
+    : theme.palette.honeyText,
 });
 
 export const cartStatusDotSx = (anyOfferInCart: boolean): SxProps<Theme> => (theme) => ({

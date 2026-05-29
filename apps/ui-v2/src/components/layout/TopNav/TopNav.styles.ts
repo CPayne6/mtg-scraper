@@ -18,17 +18,10 @@ export const navBtnSx = (active: boolean): SxProps<Theme> => (theme) => ({
   minWidth: 0,
   whiteSpace: 'nowrap',
   color: active ? 'primary.main' : 'text.secondary',
-  bgcolor: active
-    ? theme.palette.mode === 'dark'
-      ? 'rgba(36,135,33,0.18)'
-      : 'rgba(74,103,65,0.10)'
-    : 'transparent',
+  bgcolor: active ? theme.palette.primarySoft : 'transparent',
   transition: 'background 200ms, color 200ms',
   '&:hover': {
-    bgcolor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.14)'
-        : 'rgba(74,103,65,0.06)',
+    bgcolor: theme.palette.primarySoftHover,
     color: active ? 'primary.main' : 'text.primary',
   },
 });

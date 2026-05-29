@@ -5,8 +5,8 @@ import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
-import Alert from '@mui/material/Alert';
 import { useColorMode } from '@/components/ui/color-mode';
+import { DEFAULT_STORE_KEYS, STORE_FACETS } from '@/data/sample';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 export const Route = createFileRoute('/settings')({
@@ -55,10 +55,7 @@ function Segmented({
               '&:hover': on
                 ? {}
                 : {
-                    bgcolor:
-                      theme.palette.mode === 'dark'
-                        ? 'rgba(255,255,255,0.06)'
-                        : 'rgba(0,0,0,0.04)',
+                    bgcolor: theme.palette.surfaceHover,
                   },
             })}
           >
@@ -76,6 +73,22 @@ function SettingsRoute() {
     'scoutlgs:default-condition',
     'LP',
   );
+  const [defaultStores, setDefaultStores] = useLocalStorage<string[]>(
+    'scoutlgs:default-stores',
+    DEFAULT_STORE_KEYS,
+  );
+  const activeDefaultStores = defaultStores.length > 0 ? defaultStores : DEFAULT_STORE_KEYS;
+
+  const toggleDefaultStore = (storeKey: string) => {
+    setDefaultStores((current) => {
+      const active = current.length > 0 ? current : DEFAULT_STORE_KEYS;
+      if (active.includes(storeKey)) {
+        if (active.length === 1) return active;
+        return active.filter((key) => key !== storeKey);
+      }
+      return [...active, storeKey];
+    });
+  };
 
   return (
     <Container maxWidth={false} sx={{ maxWidth: 900 }}>
@@ -105,7 +118,20 @@ function SettingsRoute() {
                 Which stores to scout when you search.
               </Typography>
             </Box>
-            <Chip color="success" label="All 7 stores" />
+            <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {STORE_FACETS.map((store) => {
+                const selected = activeDefaultStores.includes(store.key);
+                return (
+                  <Chip
+                    key={store.key}
+                    color={selected ? 'success' : 'default'}
+                    variant={selected ? 'filled' : 'outlined'}
+                    label={store.label}
+                    onClick={() => toggleDefaultStore(store.key)}
+                  />
+                );
+              })}
+            </Stack>
           </Box>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -129,17 +155,6 @@ function SettingsRoute() {
           </Box>
         </Stack>
       </Paper>
-
-      <Alert
-        severity="warning"
-        sx={(theme) => ({
-          mt: 2,
-          borderRadius: 1.5,
-          borderLeft: `4px solid ${theme.palette.warning.main}`,
-        })}
-      >
-        Heads up — we couldn't reach House of Cards right now. Showing 6 of 7 stores in your last search.
-      </Alert>
     </Container>
   );
 }

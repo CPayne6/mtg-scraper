@@ -4,8 +4,8 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
-import ChevronLeft from '@mui/icons-material/ChevronLeft';
-import FilterAlt from '@mui/icons-material/FilterAlt';
+import { ChevronLeft } from '@mui/icons-material';
+import { FilterAlt } from '@mui/icons-material';
 import type { FiltersSidebarProps } from './FiltersSidebar.types';
 import { CONDITIONS } from './FiltersSidebar.utils';
 import {
@@ -45,9 +45,13 @@ export function FiltersSidebar({
   collapsed,
   onToggleCollapsed,
   storeCounts,
+  maxPrice,
+  onMaxPriceChange,
 }: FiltersSidebarProps) {
   if (collapsed) {
-    const activeCount = selectedStores.length + conditions.length;
+    const storeFilterCount =
+      selectedStores.length > 0 && selectedStores.length < stores.length ? selectedStores.length : 0;
+    const activeCount = storeFilterCount + conditions.length + (maxPrice.trim() ? 1 : 0);
     return (
       <Box component="aside" sx={{ display: 'flex', flexDirection: 'column' }}>
         <Tooltip title="Show filters">
@@ -136,7 +140,20 @@ export function FiltersSidebar({
 
       <Box>
         <SidebarHeading>Max price</SidebarHeading>
-        <TextField fullWidth size="small" placeholder="e.g. 50" helperText="Optional · CAD" />
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="e.g. 50"
+          helperText="Optional - CAD"
+          value={maxPrice}
+          onChange={(event) => onMaxPriceChange(event.target.value)}
+          inputMode="decimal"
+          slotProps={{
+            htmlInput: {
+              'aria-label': 'Maximum price in Canadian dollars',
+            },
+          }}
+        />
       </Box>
     </Box>
   );

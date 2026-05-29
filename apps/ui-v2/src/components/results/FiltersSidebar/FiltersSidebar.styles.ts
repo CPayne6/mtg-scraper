@@ -72,10 +72,7 @@ export const conditionBtnSx = (on: boolean, isFirst: boolean): SxProps<Theme> =>
   '&:hover': on
     ? {}
     : {
-        bgcolor:
-          theme.palette.mode === 'dark'
-            ? 'rgba(255,255,255,0.06)'
-            : 'rgba(0,0,0,0.04)',
+        bgcolor: theme.palette.surfaceHover,
       },
 });
 
@@ -89,10 +86,7 @@ export const storeLabelSx: SxProps<Theme> = (theme) => ({
   cursor: 'pointer',
   borderRadius: 0.75,
   '&:hover': {
-    bgcolor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(255,255,255,0.04)'
-        : 'rgba(0,0,0,0.03)',
+    bgcolor: theme.palette.surfaceSubtleHover,
   },
 });
 

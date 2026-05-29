@@ -9,10 +9,10 @@ import Stack from '@mui/material/Stack';
 import Paper from '@mui/material/Paper';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
-import ArrowForward from '@mui/icons-material/ArrowForward';
-import FilterAlt from '@mui/icons-material/FilterAlt';
-import ChevronLeft from '@mui/icons-material/ChevronLeft';
-import Construction from '@mui/icons-material/Construction';
+import { ArrowForward } from '@mui/icons-material';
+import { FilterAlt } from '@mui/icons-material';
+import { ChevronLeft } from '@mui/icons-material';
+import { Construction } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type { CardWithStore } from '@scoutlgs/shared';
 import { useLists } from '@/components/lists/ListsContext';
@@ -48,8 +48,8 @@ const CONDITION_LABELS: Record<string, string> = {
 function ListDetailRoute() {
   const { listId } = useParams({ from: '/list/$listId/$slug' });
   const navigate = useNavigate();
-  const { get, getList, remove: removeList, loading } = useLists();
-  const { add: addToCart } = useCart();
+  const { get, getList, remove: removeList, removeCardFromList, loading } = useLists();
+  const { add: addToCart, open: openCart } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const confirm = useConfirm();
   const cards = get(listId);
@@ -62,6 +62,7 @@ function ListDetailRoute() {
     results: Record<string, CardState>;
   }>({ key: '', results: {} });
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [showNeedsAttentionOnly, setShowNeedsAttentionOnly] = useState(false);
   const results = useMemo<Record<string, CardState>>(() => {
     if (entries.length === 0) return {};
     const pending = Object.fromEntries(
@@ -110,6 +111,16 @@ function ListDetailRoute() {
   const loadedCount = Object.values(results).filter((r) => r.state !== 'pending').length;
   const isLoaded = entries.length > 0 && loadedCount === entries.length;
   const anyErrors = Object.values(results).some((r) => r.state === 'error');
+  const displayedEntries = useMemo(
+    () =>
+      showNeedsAttentionOnly
+        ? entries.filter((entry) => {
+            const result = results[entry.name];
+            return !result || result.state !== 'success' || !result.cheapest;
+          })
+        : entries,
+    [entries, results, showNeedsAttentionOnly],
+  );
 
   const { deckTotal, inStockCount, uniqueStoreCount } = useMemo(() => {
     let total = 0;
@@ -137,6 +148,20 @@ function ListDetailRoute() {
     await removeList(listId);
     navigate({ to: '/lists' });
   }, [confirm, listName, listId, navigate, removeList]);
+
+  const handleRemoveCard = useCallback(
+    async (cardName: string) => {
+      const ok = await confirm({
+        title: `Remove ${cardName}?`,
+        description: 'This removes one copy from the list.',
+        confirmLabel: 'Remove',
+        tone: 'danger',
+      });
+      if (!ok) return;
+      await removeCardFromList(listId, cardName);
+    },
+    [confirm, listId, removeCardFromList],
+  );
 
   if (!list && !loading) {
     return (
@@ -168,6 +193,32 @@ function ListDetailRoute() {
       added ? `Added "${cardName}" to cart` : `"${cardName}" is already in your cart`,
       { variant: added ? 'success' : 'default' },
     );
+  };
+
+  const handleCheckout = () => {
+    if (!isLoaded) return;
+
+    let available = 0;
+    let added = 0;
+    for (const entry of entries) {
+      const r = results[entry.name];
+      if (!r || r.state !== 'success' || !r.cheapest) continue;
+      available += 1;
+      if (addToCart(r.cheapest)) added += 1;
+    }
+
+    if (available === 0) {
+      enqueueSnackbar('No priced cards are available to check out yet', { variant: 'warning' });
+      return;
+    }
+
+    enqueueSnackbar(
+      added > 0
+        ? `Added ${added} ${added === 1 ? 'card' : 'cards'} to cart`
+        : 'Every priced card is already in your cart',
+      { variant: added > 0 ? 'success' : 'default' },
+    );
+    openCart();
   };
 
   return (
@@ -244,6 +295,7 @@ function ListDetailRoute() {
             color="primary"
             endIcon={<ArrowForward />}
             disabled={!isLoaded || checkoutStores === 0}
+            onClick={handleCheckout}
           >
             {checkoutStores > 0
               ? `Check Out at ${checkoutStores} ${checkoutStores === 1 ? 'Store' : 'Stores'}`
@@ -260,10 +312,7 @@ function ListDetailRoute() {
             sx={{
               height: 4,
               borderRadius: 999,
-              bgcolor: (theme) =>
-                theme.palette.mode === 'dark'
-                  ? 'rgba(36,135,33,0.18)'
-                  : 'rgba(74,103,65,0.12)',
+              bgcolor: (theme) => theme.palette.primarySoft,
               '& .MuiLinearProgress-bar': { bgcolor: 'primary.main' },
             }}
           />
@@ -316,13 +365,21 @@ function ListDetailRoute() {
         <Box
           sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5 }}
         >
-          <Typography variant="h3">Cards · {entries.length}</Typography>
-          <Button color="primary" startIcon={<FilterAlt sx={{ fontSize: 14 }} />}>
-            Filter
+          <Typography variant="h3">
+            Cards - {displayedEntries.length}
+            {showNeedsAttentionOnly ? ` / ${entries.length}` : ''}
+          </Typography>
+          <Button
+            color="primary"
+            variant={showNeedsAttentionOnly ? 'contained' : 'text'}
+            startIcon={<FilterAlt sx={{ fontSize: 14 }} />}
+            onClick={() => setShowNeedsAttentionOnly((value) => !value)}
+          >
+            {showNeedsAttentionOnly ? 'Show All' : 'Needs Attention'}
           </Button>
         </Box>
         <Stack spacing={1}>
-          {entries.map(({ name, qty }) => {
+          {displayedEntries.map(({ name, qty }) => {
             const r = results[name];
             let meta = '—';
             let price = 0;
@@ -348,7 +405,8 @@ function ListDetailRoute() {
                 price={price}
                 store={store}
                 onStoreChange={() => handleAddRowToCart(name)}
-                onRemove={() => enqueueSnackbar(`Removed ${name}`, { variant: `default` })}
+                storeActionDisabled={!r || r.state !== 'success' || !r.cheapest}
+                onRemove={() => handleRemoveCard(name)}
               />
             );
           })}

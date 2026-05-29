@@ -5,5 +5,6 @@ export type DecklistRowProps = {
   price: number;
   store: string;
   onStoreChange?: () => void;
+  storeActionDisabled?: boolean;
   onRemove?: () => void;
 };

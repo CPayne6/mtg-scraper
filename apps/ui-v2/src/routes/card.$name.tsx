@@ -1,27 +1,42 @@
-import { useEffect, useMemo, useState } from 'react';
-import { createFileRoute, useParams } from '@tanstack/react-router';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
-import Add from '@mui/icons-material/Add';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import { Add } from '@mui/icons-material';
 import type { CardSearchResponse, StoreInfo } from '@scoutlgs/shared';
 import { fetchCard } from '@/api/cards';
 import { FiltersSidebar } from '@/components/results/FiltersSidebar';
 import { ProductTile } from '@/components/results/ProductTile';
 import { StaleNotice } from '@/components/results/StaleNotice';
-import { STORE_FACETS } from '@/data/sample';
+import { DEFAULT_STORE_KEYS, STORE_COUNT, STORE_FACETS } from '@/data/sample';
+import { useLists } from '@/components/lists/ListsContext';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
+import { slugifyName } from '@/utils/slugify';
+import { useSnackbar } from 'notistack';
 
 export const Route = createFileRoute('/card/$name')({
   component: CardRoute,
 });
 
+const CONDITION_ORDER = ['NM', 'LP', 'MP', 'HP', 'DMG'];
+
+function conditionsFromDefault(defaultCondition: string): string[] {
+  const index = CONDITION_ORDER.indexOf(defaultCondition);
+  if (index < 0) return [];
+  return CONDITION_ORDER.slice(0, index + 1);
+}
+
 function CardRoute() {
+  const navigate = useNavigate();
   const { name } = useParams({ from: '/card/$name' });
   const decoded = useMemo(() => {
     try {
@@ -36,9 +51,25 @@ function CardRoute() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const { push: pushRecent } = useRecentSearches();
+  const { lists, save, addCardToList } = useLists();
+  const { enqueueSnackbar } = useSnackbar();
 
-  const [selectedStores, setSelectedStores] = useState<string[]>([]);
-  const [conditions, setConditions] = useState<string[]>([]);
+  const [defaultStoreKeys] = useLocalStorage<string[]>(
+    'scoutlgs:default-stores',
+    DEFAULT_STORE_KEYS,
+  );
+  const [defaultCondition] = useLocalStorage<string>(
+    'scoutlgs:default-condition',
+    'LP',
+  );
+  const [selectedStores, setSelectedStores] = useState<string[]>(() =>
+    defaultStoreKeys.length > 0 ? defaultStoreKeys : DEFAULT_STORE_KEYS,
+  );
+  const [conditions, setConditions] = useState<string[]>(() =>
+    conditionsFromDefault(defaultCondition),
+  );
+  const [maxPrice, setMaxPrice] = useState('');
+  const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null);
   const [filtersCollapsed, setFiltersCollapsed] = useLocalStorage<boolean>(
     'scoutlgs:filters-collapsed',
     false,
@@ -103,17 +134,44 @@ function CardRoute() {
   const visibleResults = useMemo(() => {
     if (!response) return [];
     const condFilter = new Set(conditions.map((c) => conditionMap[c]).filter(Boolean));
+    const parsedMax = Number(maxPrice);
+    const maxPriceFilter = Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null;
     return [...response.results]
-      .filter((r) => selectedStores.length === 0 || selectedStores.includes(r.store_key))
+      .filter((r) => selectedStores.includes(r.store_key))
       .filter((r) => condFilter.size === 0 || condFilter.has(r.condition))
+      .filter((r) => maxPriceFilter == null || r.price <= maxPriceFilter)
       .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [response, selectedStores, conditions]);
+  }, [response, selectedStores, conditions, maxPrice]);
 
   const toggleStore = (n: string) =>
     setSelectedStores((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n]));
   const toggleCondition = (c: string) =>
     setConditions((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]));
+
+  const handleAddMenuOpen = (event: MouseEvent<HTMLElement>) => {
+    setAddMenuAnchor(event.currentTarget);
+  };
+
+  const handleAddMenuClose = () => setAddMenuAnchor(null);
+
+  const handleAddToList = async (listId: string, listName: string) => {
+    setAddMenuAnchor(null);
+    await addCardToList(listId, decoded);
+    enqueueSnackbar(`Added "${decoded}" to ${listName}`, { variant: 'success' });
+  };
+
+  const handleCreateList = async () => {
+    setAddMenuAnchor(null);
+    const listName = decoded;
+    const id = await save(listName, [decoded]);
+    if (!id) return;
+    enqueueSnackbar(`Created "${listName}"`, { variant: 'success' });
+    navigate({
+      to: '/list/$listId/$slug',
+      params: { listId: id, slug: slugifyName(listName) },
+    });
+  };
 
   return (
     <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
@@ -134,9 +192,30 @@ function CardRoute() {
             </Typography>
             <Typography variant="h2">{decoded}</Typography>
           </Box>
-          <Button variant="outlined" color="primary" startIcon={<Add />}>
-            Add to Deck
+          <Button variant="outlined" color="primary" startIcon={<Add />} onClick={handleAddMenuOpen}>
+            Add to List
           </Button>
+          <Menu
+            anchorEl={addMenuAnchor}
+            open={Boolean(addMenuAnchor)}
+            onClose={handleAddMenuClose}
+            slotProps={{ paper: { sx: { minWidth: 240, maxWidth: 320 } } }}
+          >
+            {lists.map((list) => (
+              <MenuItem key={list.id} onClick={() => handleAddToList(list.id, list.name)}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: 14, fontWeight: 600 }} noWrap>
+                    {list.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {list.cards.length} {list.cards.length === 1 ? 'card' : 'cards'}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+            {lists.length > 0 && <Divider />}
+            <MenuItem onClick={handleCreateList}>Create new list from this card</MenuItem>
+          </Menu>
         </Box>
 
         {loading ? (
@@ -145,15 +224,12 @@ function CardRoute() {
               sx={(theme) => ({
                 height: 4,
                 borderRadius: 999,
-                bgcolor:
-                  theme.palette.mode === 'dark'
-                    ? 'rgba(36,135,33,0.18)'
-                    : 'rgba(74,103,65,0.12)',
+                bgcolor: theme.palette.primarySoft,
                 '& .MuiLinearProgress-bar': { bgcolor: 'primary.main', borderRadius: 999 },
               })}
             />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Scouting {Math.min(7, stores.length)} of 7 stores… streaming results in.
+              Scouting {Math.min(STORE_COUNT, stores.length)} of {STORE_COUNT} stores... streaming results in.
             </Typography>
           </Box>
         ) : error ? (
@@ -190,6 +266,8 @@ function CardRoute() {
           collapsed={filtersCollapsed}
           onToggleCollapsed={() => setFiltersCollapsed((v) => !v)}
           storeCounts={storeCounts}
+          maxPrice={maxPrice}
+          onMaxPriceChange={setMaxPrice}
         />
         <Box
           sx={{

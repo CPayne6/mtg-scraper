@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import OpenInNew from '@mui/icons-material/OpenInNew';
+import { OpenInNew } from '@mui/icons-material';
 import { gradientForCard } from '@/utils/cardGradient';
 import type { StoreOfferTileProps } from './StoreOfferTile.types';
 import { CONDITION_DISPLAY, CONDITION_TOOLTIP, getCondVisual } from './StoreOfferTile.utils';

@@ -15,20 +15,14 @@ export const containerSx: SxProps<Theme> = (theme) => ({
   boxShadow: theme.shadows[1],
   transition: 'background 200ms',
   '&:hover': {
-    bgcolor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(36,135,33,0.08)'
-        : 'rgba(74,103,65,0.04)',
+    bgcolor: theme.palette.primarySoftHover,
   },
 });
 
 export const qtyBadgeSx: SxProps<Theme> = (theme) => ({
   width: { xs: 28, sm: 32 },
   height: { xs: 28, sm: 32 },
-  bgcolor:
-    theme.palette.mode === 'dark'
-      ? 'rgba(36,135,33,0.20)'
-      : 'rgba(74,103,65,0.12)',
+  bgcolor: theme.palette.primarySoft,
   color: 'primary.main',
   borderRadius: 1,
   display: 'flex',
@@ -38,29 +32,24 @@ export const qtyBadgeSx: SxProps<Theme> = (theme) => ({
   fontSize: { xs: 12, sm: 13 },
 });
 
-export const storeBtnSx: SxProps<Theme> = (theme) => ({
+export const storeBtnSx = (disabled = false): SxProps<Theme> => (theme) => ({
   display: { xs: 'none', sm: 'inline-flex' },
   alignItems: 'center',
   gap: 0.75,
   justifyContent: 'space-between',
-  bgcolor:
-    theme.palette.mode === 'dark'
-      ? 'rgba(255,255,255,0.05)'
-      : 'rgba(0,0,0,0.04)',
+  bgcolor: theme.palette.surfaceHover,
   border: `1px solid ${theme.palette.divider}`,
   py: '7px',
   px: 1.5,
   borderRadius: 1,
   fontSize: 13,
-  cursor: 'pointer',
+  cursor: disabled ? 'not-allowed' : 'pointer',
   color: 'inherit',
   fontWeight: 500,
   fontFamily: 'inherit',
+  opacity: disabled ? 0.55 : 1,
   transition: 'background 200ms',
   '&:hover': {
-    bgcolor:
-      theme.palette.mode === 'dark'
-        ? 'rgba(255,255,255,0.10)'
-        : 'rgba(0,0,0,0.07)',
+    bgcolor: disabled ? theme.palette.surfaceHover : theme.palette.surfacePressed,
   },
 });

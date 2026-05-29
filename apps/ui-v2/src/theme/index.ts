@@ -40,12 +40,20 @@ function buildTheme(mode: 'light' | 'dark') {
   const surf = isLight ? surfaceLight : surfaceDark;
   const shadow = isLight ? shadowsLight : shadowsDark;
   const primaryMain = isLight ? brand.forest : brand.forestBright;
+  const primaryDark = isLight ? brand.forestDeep : '#1f7a1c';
+  const primarySolidHover = isLight ? brand.forestDeep : '#2da028';
+  const primarySoft = isLight ? 'rgba(74,103,65,0.12)' : 'rgba(36,135,33,0.18)';
+  const primarySoftHover = isLight ? 'rgba(74,103,65,0.08)' : 'rgba(36,135,33,0.14)';
+  const primaryOutline = isLight ? 'rgba(74,103,65,0.35)' : 'rgba(36,135,33,0.5)';
+  const surfaceHover = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)';
+  const surfaceSubtleHover = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)';
+  const surfacePressed = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.10)';
   const honeyTint = isLight ? brand.honeyTintLight : brand.honeyTintDark;
 
   return createTheme({
     palette: {
       mode,
-      primary: { main: primaryMain, contrastText: '#fff' },
+      primary: { main: primaryMain, dark: primaryDark, contrastText: '#fff' },
       secondary: { main: brand.honey, contrastText: '#3d2a14' },
       honey: { main: brand.honey, dark: brand.honeyDeep, light: honeyTint, contrastText: '#3d2a14' },
       success: { main: primaryMain, contrastText: '#fff' },
@@ -54,6 +62,22 @@ function buildTheme(mode: 'light' | 'dark') {
       info: { main: '#0288d1' },
       background: { default: surf.default, paper: surf.paper },
       surfaceSunken: surf.sunken,
+      primarySoft,
+      primarySoftHover,
+      primaryOutline,
+      primarySolidHover,
+      surfaceHover,
+      surfaceSubtleHover,
+      surfacePressed,
+      honeyText: isLight ? brand.honeyDeep : brand.honey,
+      imageShadow: isLight
+        ? '0 8px 22px -4px rgba(0,0,0,0.16), 0 3px 10px rgba(0,0,0,0.08)'
+        : '0 10px 28px -4px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.22)',
+      iconShadow: isLight
+        ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.18))'
+        : 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+      onImageOutline: isLight ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.12)',
+      gradientWashOpacity: isLight ? 0.06 : 0.1,
       text: { primary: surf.fgPrimary, secondary: surf.fgSecondary, disabled: surf.fgDisabled },
       divider: surf.divider,
     },
@@ -108,18 +132,18 @@ function buildTheme(mode: 'light' | 'dark') {
             backgroundColor: primaryMain,
             color: '#fff',
             boxShadow: shadow.e1,
-            '&:hover': { backgroundColor: isLight ? brand.forestDeep : '#2da028' },
+            '&:hover': { backgroundColor: primarySolidHover },
           },
           outlinedPrimary: {
             borderColor: primaryMain,
             borderWidth: 1.5,
             color: primaryMain,
-            '&:hover': { borderWidth: 1.5, backgroundColor: isLight ? 'rgba(74,103,65,0.06)' : 'rgba(36,135,33,0.14)' },
+            '&:hover': { borderWidth: 1.5, backgroundColor: primarySoftHover },
           },
           textPrimary: {
             color: primaryMain,
             paddingLeft: 14, paddingRight: 14,
-            '&:hover': { backgroundColor: isLight ? 'rgba(74,103,65,0.08)' : 'rgba(36,135,33,0.14)' },
+            '&:hover': { backgroundColor: primarySoftHover },
           },
         },
       },

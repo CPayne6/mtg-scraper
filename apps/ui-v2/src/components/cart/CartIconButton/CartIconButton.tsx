@@ -1,6 +1,6 @@
 import IconButton from '@mui/material/IconButton';
 import Box from '@mui/material/Box';
-import ShoppingCartOutlined from '@mui/icons-material/ShoppingCartOutlined';
+import { ShoppingCartOutlined } from '@mui/icons-material';
 import { useCart } from '@/components/cart/CartContext';
 import { buttonSx, badgeSx } from './CartIconButton.styles';
 
