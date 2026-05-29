@@ -136,25 +136,25 @@ services:
   ui:
     build:
       context: .
-      dockerfile: apps/ui/Dockerfile.dev
+      dockerfile: apps/ui-v2/Dockerfile.dev
     container_name: scoutlgs-ui-dev
     ports:
       - "3000:3000"
     env_file:
-      - apps/ui/.env
+      - apps/ui-v2/.env
     environment:
       - NODE_ENV=development
     volumes:
       # Mount source code for hot reload
-      - ./apps/ui/src:/app/apps/ui/src:delegated
-      - ./apps/ui/public:/app/apps/ui/public:delegated
+      - ./apps/ui-v2/src:/app/apps/ui-v2/src:delegated
+      - ./apps/ui-v2/public:/app/apps/ui-v2/public:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
       - ./packages/shared/dist:/app/packages/shared/dist:delegated
       # Mount config files
-      - ./apps/ui/vite.config.ts:/app/apps/ui/vite.config.ts:ro
-      - ./apps/ui/tsconfig.json:/app/apps/ui/tsconfig.json:ro
-      - ./apps/ui/tsconfig.app.json:/app/apps/ui/tsconfig.app.json:ro
-      - ./apps/ui/index.html:/app/apps/ui/index.html:ro
+      - ./apps/ui-v2/vite.config.ts:/app/apps/ui-v2/vite.config.ts:ro
+      - ./apps/ui-v2/tsconfig.json:/app/apps/ui-v2/tsconfig.json:ro
+      - ./apps/ui-v2/tsconfig.app.json:/app/apps/ui-v2/tsconfig.app.json:ro
+      - ./apps/ui-v2/index.html:/app/apps/ui-v2/index.html:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
     depends_on:
       - api

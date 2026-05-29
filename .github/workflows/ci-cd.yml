@@ -126,7 +126,7 @@ jobs:
           path: |
             apps/api/dist
             apps/auth/dist
-            apps/ui/dist
+            apps/ui-v2/dist
             apps/scraper/dist
             apps/scheduler/dist
             packages/core/dist
@@ -141,7 +141,7 @@ jobs:
           path: |
             apps/api/dist
             apps/auth/dist
-            apps/ui/dist
+            apps/ui-v2/dist
             apps/scraper/dist
             apps/scheduler/dist
             packages/core/dist
@@ -167,7 +167,7 @@ jobs:
           - name: auth
             dockerfile: apps/auth/Dockerfile
           - name: ui
-            dockerfile: apps/ui/Dockerfile
+            dockerfile: apps/ui-v2/Dockerfile
           - name: scraper
             dockerfile: apps/scraper/Dockerfile
           - name: scheduler
