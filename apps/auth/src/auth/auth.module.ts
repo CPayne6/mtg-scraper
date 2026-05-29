@@ -12,7 +12,9 @@ import { UserSession } from '../database/entities/user-session.entity';
 import { User } from '../database/entities/user.entity';
 import { AuthController } from './auth.controller';
 import { AuthSessionService } from './auth-session.service';
+import { GoogleOAuthService } from './google-oauth.service';
 import { JwtService } from './jwt.service';
+import { OAuthSignInService } from './oauth-sign-in.service';
 import { PasswordHashService } from './password-hash.service';
 import { TokenHashService } from './token-hash.service';
 import { UserAuthService } from './user-auth.service';
@@ -36,6 +38,8 @@ import { UserAuthService } from './user-auth.service';
   providers: [
     AuthSessionService,
     UserAuthService,
+    GoogleOAuthService,
+    OAuthSignInService,
     JwtService,
     TokenHashService,
     PasswordHashService,

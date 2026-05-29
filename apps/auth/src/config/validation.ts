@@ -40,5 +40,11 @@ export const validationSchema = Joi.object({
       .default('dev-only-change-this-secret-value-32-chars'),
   }),
   AUTH_TOKEN_HASH_SECRET_FILE: Joi.string().optional(),
+  AUTH_OAUTH_STATE_COOKIE_NAME: Joi.string().default('scoutlgs_oauth_state'),
+  AUTH_OAUTH_STATE_TTL_SECONDS: Joi.number().min(60).default(600),
+  AUTH_GOOGLE_CLIENT_ID: Joi.string().optional(),
+  AUTH_GOOGLE_CLIENT_SECRET: Joi.string().optional(),
+  AUTH_GOOGLE_CLIENT_SECRET_FILE: Joi.string().optional(),
+  AUTH_GOOGLE_CALLBACK_URL: Joi.string().uri().optional(),
   LOG_LEVEL: Joi.string().optional(),
 });

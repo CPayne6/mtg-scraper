@@ -85,39 +85,49 @@ export function getSession(): Promise<SessionResponse> {
   );
 }
 
-export type SignupInput = {
-  email: string;
-  password: string;
-  displayName?: string;
-};
+// Email/password auth is disabled until email verification is in place.
+// Keep the input types and helpers around so they can be re-enabled later.
+// export type SignupInput = {
+//   email: string;
+//   password: string;
+//   displayName?: string;
+// };
+//
+// export function signup(input: SignupInput): Promise<SessionResponse> {
+//   const body: SignupInput = {
+//     email: input.email,
+//     password: input.password,
+//   };
+//   if (input.displayName && input.displayName.trim()) {
+//     body.displayName = input.displayName.trim();
+//   }
+//
+//   return authFetch<SessionResponse>(
+//     '/auth/signup',
+//     { method: 'POST', body: JSON.stringify(body) },
+//     'Signup failed',
+//   );
+// }
+//
+// export type LoginInput = {
+//   email: string;
+//   password: string;
+// };
+//
+// export function login(input: LoginInput): Promise<SessionResponse> {
+//   return authFetch<SessionResponse>(
+//     '/auth/login',
+//     { method: 'POST', body: JSON.stringify(input) },
+//     'Login failed',
+//   );
+// }
 
-export function signup(input: SignupInput): Promise<SessionResponse> {
-  const body: SignupInput = {
-    email: input.email,
-    password: input.password,
-  };
-  if (input.displayName && input.displayName.trim()) {
-    body.displayName = input.displayName.trim();
+export function googleSignInUrl(redirect?: string): string {
+  const trimmed = redirect?.trim();
+  if (trimmed && trimmed.startsWith('/')) {
+    return `${AUTH_BASE}/auth/google?redirect=${encodeURIComponent(trimmed)}`;
   }
-
-  return authFetch<SessionResponse>(
-    '/auth/signup',
-    { method: 'POST', body: JSON.stringify(body) },
-    'Signup failed',
-  );
-}
-
-export type LoginInput = {
-  email: string;
-  password: string;
-};
-
-export function login(input: LoginInput): Promise<SessionResponse> {
-  return authFetch<SessionResponse>(
-    '/auth/login',
-    { method: 'POST', body: JSON.stringify(input) },
-    'Login failed',
-  );
+  return `${AUTH_BASE}/auth/google`;
 }
 
 export function logout(): Promise<{ success: true }> {

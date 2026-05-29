@@ -1,13 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ensureAnonymousSession,
-  login as loginRequest,
+  // login as loginRequest,
   logout as logoutRequest,
   resetAnonymousSessionCache,
-  signup as signupRequest,
+  // signup as signupRequest,
   type SessionResponse,
 } from '@/api/auth';
-import type { AuthContextValue, AuthStatus, LoginInput, SignupInput } from './AuthContext.types';
+import type { AuthContextValue, AuthStatus } from './AuthContext.types';
+// import type { LoginInput, SignupInput } from './AuthContext.types';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -34,19 +35,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signup = useCallback(async (input: SignupInput) => {
-    const next = await signupRequest(input);
-    setSession(next);
-    setStatus('ready');
-    return next;
-  }, []);
-
-  const login = useCallback(async (input: LoginInput) => {
-    const next = await loginRequest(input);
-    setSession(next);
-    setStatus('ready');
-    return next;
-  }, []);
+  // Email/password auth disabled until email verification ships.
+  // const signup = useCallback(async (input: SignupInput) => {
+  //   const next = await signupRequest(input);
+  //   setSession(next);
+  //   setStatus('ready');
+  //   return next;
+  // }, []);
+  //
+  // const login = useCallback(async (input: LoginInput) => {
+  //   const next = await loginRequest(input);
+  //   setSession(next);
+  //   setStatus('ready');
+  //   return next;
+  // }, []);
 
   const logout = useCallback(async () => {
     await logoutRequest();
@@ -67,11 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status,
       session,
       principalId: session?.principal?.uuid ?? null,
-      signup,
-      login,
+      // signup,
+      // login,
       logout,
     }),
-    [session, status, signup, login, logout],
+    [session, status, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
