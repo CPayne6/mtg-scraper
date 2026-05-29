@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ListsRouteImport } from './routes/lists'
@@ -18,11 +17,6 @@ import { Route as CardNameRouteImport } from './routes/card.$name'
 import { Route as ListListIdSlugRouteImport } from './routes/list.$listId.$slug'
 import { Route as BuildListIdSlugRouteImport } from './routes/build.$listId.$slug'
 
-const SignupRoute = SignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -64,7 +58,6 @@ export interface FileRoutesByFullPath {
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
-  '/signup': typeof SignupRoute
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/list/$listId/$slug': typeof ListListIdSlugRoute
@@ -74,7 +67,6 @@ export interface FileRoutesByTo {
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
-  '/signup': typeof SignupRoute
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/list/$listId/$slug': typeof ListListIdSlugRoute
@@ -85,7 +77,6 @@ export interface FileRoutesById {
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
-  '/signup': typeof SignupRoute
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/list/$listId/$slug': typeof ListListIdSlugRoute
@@ -97,7 +88,6 @@ export interface FileRouteTypes {
     | '/lists'
     | '/login'
     | '/settings'
-    | '/signup'
     | '/card/$name'
     | '/build/$listId/$slug'
     | '/list/$listId/$slug'
@@ -107,7 +97,6 @@ export interface FileRouteTypes {
     | '/lists'
     | '/login'
     | '/settings'
-    | '/signup'
     | '/card/$name'
     | '/build/$listId/$slug'
     | '/list/$listId/$slug'
@@ -117,7 +106,6 @@ export interface FileRouteTypes {
     | '/lists'
     | '/login'
     | '/settings'
-    | '/signup'
     | '/card/$name'
     | '/build/$listId/$slug'
     | '/list/$listId/$slug'
@@ -128,7 +116,6 @@ export interface RootRouteChildren {
   ListsRoute: typeof ListsRoute
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
-  SignupRoute: typeof SignupRoute
   CardNameRoute: typeof CardNameRoute
   BuildListIdSlugRoute: typeof BuildListIdSlugRoute
   ListListIdSlugRoute: typeof ListListIdSlugRoute
@@ -136,13 +123,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/signup': {
-      id: '/signup'
-      path: '/signup'
-      fullPath: '/signup'
-      preLoaderRoute: typeof SignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -200,7 +180,6 @@ const rootRouteChildren: RootRouteChildren = {
   ListsRoute: ListsRoute,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
-  SignupRoute: SignupRoute,
   CardNameRoute: CardNameRoute,
   BuildListIdSlugRoute: BuildListIdSlugRoute,
   ListListIdSlugRoute: ListListIdSlugRoute,
