@@ -66,7 +66,6 @@ services:
       - DATABASE_PORT=5432
       - DATABASE_NAME=scoutlgs
       - DATABASE_USER=postgres
-      - DATABASE_SYNCHRONIZE=false
       - USE_DOCKER_SECRETS=true
       - FRONTEND_URL=https://scoutlgs.ca
       - LOG_LEVEL=error,fatal
@@ -140,10 +139,17 @@ services:
       - DATABASE_PORT=5432
       - DATABASE_NAME=scoutlgs
       - DATABASE_USER=postgres
-      - DATABASE_SYNCHRONIZE=false
       - PORT=5001
       - USE_DOCKER_SECRETS=true
-      - EDHREC_PAGES=100
+      - EXTRACTION_ENABLED=true
+      - EXTRACTION_CRON_TIME=0 1 * * *
+      # Hourly incremental disabled — updated_at clusters tightly (stores'
+      # price-sync jobs touch every product daily), so the `updated_at:>cutoff`
+      # filter doesn't actually narrow the result set. The bucket flow's full
+      # nightly run handles freshness adequately.
+      - INCREMENTAL_EXTRACTION_ENABLED=false
+      - INCREMENTAL_EXTRACTION_CRON_TIME=0 9-21 * * *
+      - SCHEDULE_TIMEZONE=America/Toronto
       - LOG_LEVEL=log,warn,error,fatal
     ports:
       - "5001:5001"

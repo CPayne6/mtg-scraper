@@ -3,6 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Store } from '../database/store.entity';
 
+/**
+ * Listener fired after the store cache is refreshed with the current
+ * cached list. Use this to react to store config changes (e.g. validate
+ * that all scraperTypes have known extractors).
+ */
+export type StoreCacheListener = (stores: Store[]) => void | Promise<void>;
+
 @Injectable()
 export class StoreService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StoreService.name);
@@ -13,6 +20,19 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
   private isReady = false;
   private readyPromise: Promise<void>;
   private resolveReady!: () => void;
+  private readonly cacheListeners: StoreCacheListener[] = [];
+
+  /**
+   * Register a listener that fires after every cache refresh.
+   * Returns an unsubscribe function.
+   */
+  onCacheRefreshed(listener: StoreCacheListener): () => void {
+    this.cacheListeners.push(listener);
+    return () => {
+      const idx = this.cacheListeners.indexOf(listener);
+      if (idx >= 0) this.cacheListeners.splice(idx, 1);
+    };
+  }
 
   constructor(
     @InjectRepository(Store)
@@ -106,6 +126,15 @@ export class StoreService implements OnModuleInit, OnModuleDestroy {
       });
       this.cacheTimestamp = Date.now();
       this.logger.debug(`Store cache refreshed with ${this.cachedStores.length} stores`);
+
+      // Notify listeners (e.g. extractor registry) of the refresh
+      for (const listener of this.cacheListeners) {
+        try {
+          await listener(this.cachedStores);
+        } catch (error) {
+          this.logger.error('Store cache listener threw:', error);
+        }
+      }
     } catch (error) {
       this.logger.error('Failed to refresh store cache:', error);
       throw error;

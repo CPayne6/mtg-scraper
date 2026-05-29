@@ -89,12 +89,15 @@ function CardRoute() {
     return counts;
   }, [response]);
 
+  // Maps the displayed filter label to the offer's condition slug. Keep aligned
+  // with packages/shared Condition + FiltersSidebar.utils CONDITIONS.
   const conditionMap: Record<string, string> = {
     NM: 'nm',
-    LP: 'pl',
+    LP: 'lp',
     MP: 'mp',
     HP: 'hp',
-    DMG: 'unknown',
+    DMG: 'dmg',
+    Unknown: 'unknown',
   };
 
   const visibleResults = useMemo(() => {

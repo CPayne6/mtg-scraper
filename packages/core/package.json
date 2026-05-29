@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run",
     "watch": "tsc --watch --project tsconfig.build.json",
     "clean": "rm -rf dist"
   },
@@ -31,12 +32,15 @@
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.0.1",
     "@nestjs/typeorm": "^10.0.1",
     "@scoutlgs/shared": "workspace:*",
     "bullmq": "^5.66.4",
     "ioredis": "^5.8.2",
     "reflect-metadata": "^0.2.2",
-    "typeorm": "^0.3.19"
+    "typeorm": "^0.3.19",
+    "lru-cache": "^11.2.5",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
