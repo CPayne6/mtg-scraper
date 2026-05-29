@@ -28,6 +28,7 @@ function RootLayout() {
           flexDirection: 'column',
           bgcolor: 'background.default',
           color: 'text.primary',
+          overflowX: 'hidden',
         }}
       >
         <TopNav />

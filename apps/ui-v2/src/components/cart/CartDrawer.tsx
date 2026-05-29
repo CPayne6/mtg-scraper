@@ -8,6 +8,8 @@ import Stack from '@mui/material/Stack';
 import Close from '@mui/icons-material/Close';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import ShoppingCartOutlined from '@mui/icons-material/ShoppingCartOutlined';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import { useCart, cartItemId, type CartItem } from '@/components/cart/CartContext';
 
@@ -30,6 +32,8 @@ function hashIndex(key: string, mod: number): number {
 export function CartDrawer() {
   const { items, isOpen, close, remove, clear } = useCart();
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const byStore = useMemo(() => {
     const groups: Record<string, CartItem[]> = {};
@@ -71,31 +75,56 @@ export function CartDrawer() {
 
   return (
     <Drawer
-      anchor="right"
+      anchor={isMobile ? 'bottom' : 'right'}
       open={isOpen}
       onClose={close}
       slotProps={{
         paper: {
           sx: {
-            width: 'min(420px, 100vw)',
             display: 'flex',
             flexDirection: 'column',
+            ...(isMobile
+              ? {
+                  width: '100%',
+                  maxWidth: '100%',
+                  height: '85vh',
+                  borderTopLeftRadius: 16,
+                  borderTopRightRadius: 16,
+                  boxSizing: 'border-box',
+                }
+              : {
+                  width: 'min(420px, 100%)',
+                  boxSizing: 'border-box',
+                }),
           },
         },
       }}
     >
+      {isMobile && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', pt: 1, pb: 0.5, flexShrink: 0 }}>
+          <Box
+            sx={(t) => ({
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              bgcolor: t.palette.divider,
+            })}
+          />
+        </Box>
+      )}
       <Box
-        sx={(theme) => ({
+        sx={(t) => ({
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'space-between',
           px: 2.5,
-          pt: 2.5,
+          pt: isMobile ? 1.25 : 2.5,
           pb: 1.75,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          borderBottom: `1px solid ${t.palette.divider}`,
+          flexShrink: 0,
         })}
       >
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.78rem', mt: '2px' }}>
             {items.length} {items.length === 1 ? 'card' : 'cards'} from {storeKeys.length}{' '}
@@ -107,7 +136,7 @@ export function CartDrawer() {
         </IconButton>
       </Box>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, py: 1.75 }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, py: 1.75, minHeight: 0 }}>
         {items.length === 0 ? (
           <Stack alignItems="center" spacing={1.5} sx={{ py: 6, textAlign: 'center' }}>
             <ShoppingCartOutlined sx={{ fontSize: 36, opacity: 0.4 }} />
@@ -122,19 +151,30 @@ export function CartDrawer() {
             return (
               <Box key={store} sx={{ mb: 2.5 }}>
                 <Box
-                  sx={(theme) => ({
+                  sx={(t) => ({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    gap: 1,
                     mb: 1,
                     py: 0.75,
-                    borderBottom: `1px dashed ${theme.palette.divider}`,
+                    borderBottom: `1px dashed ${t.palette.divider}`,
                   })}
                 >
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: 'primary.main' }}>
+                  <Typography
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      color: 'primary.main',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      minWidth: 0,
+                    }}
+                  >
                     {store}
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 }}>
                     CA${subtotal.toFixed(2)}
                   </Typography>
                 </Box>
@@ -171,7 +211,13 @@ export function CartDrawer() {
                           {c.title}
                         </Typography>
                         <Typography
-                          sx={{ fontSize: '0.72rem', color: 'text.secondary' }}
+                          sx={{
+                            fontSize: '0.72rem',
+                            color: 'text.secondary',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
                         >
                           {c.set} · {c.condition}
                         </Typography>
@@ -190,7 +236,7 @@ export function CartDrawer() {
                             enqueueSnackbar(`No store link for ${c.title}`, { variant: 'warning' });
                           }
                         }}
-                        sx={{ width: 28, height: 28 }}
+                        sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
                         <OpenInNew sx={{ fontSize: 14 }} />
                       </IconButton>
@@ -198,7 +244,7 @@ export function CartDrawer() {
                         size="small"
                         aria-label="Remove"
                         onClick={() => remove(id)}
-                        sx={{ width: 28, height: 28 }}
+                        sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
                         <Close sx={{ fontSize: 14 }} />
                       </IconButton>
@@ -213,12 +259,13 @@ export function CartDrawer() {
 
       {items.length > 0 && (
         <Box
-          sx={(theme) => ({
-            borderTop: `1px solid ${theme.palette.divider}`,
+          sx={(t) => ({
+            borderTop: `1px solid ${t.palette.divider}`,
             bgcolor: 'background.default',
             px: 2.5,
             pt: 1.75,
-            pb: 2.25,
+            pb: 'calc(18px + env(safe-area-inset-bottom))',
+            flexShrink: 0,
           })}
         >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
@@ -230,16 +277,27 @@ export function CartDrawer() {
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
-            <Button variant="outlined" color="primary" sx={{ flex: 1 }} onClick={clear}>
+          <Stack
+            direction={{ xs: 'column-reverse', sm: 'row' }}
+            spacing={1}
+            sx={{ mt: 1.25 }}
+          >
+            <Button
+              variant="outlined"
+              color="primary"
+              sx={{ flex: { xs: 'unset', sm: 1 } }}
+              onClick={clear}
+              fullWidth
+            >
               Clear
             </Button>
             <Button
               variant="contained"
               color="primary"
-              sx={{ flex: 1 }}
+              sx={{ flex: { xs: 'unset', sm: 1 }, whiteSpace: 'nowrap' }}
               disabled={!hasAnyLink}
               onClick={openAllStores}
+              fullWidth
             >
               Open All Stores ({storeKeys.length})
             </Button>
