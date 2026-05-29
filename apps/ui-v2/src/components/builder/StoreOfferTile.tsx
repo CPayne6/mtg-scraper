@@ -23,9 +23,10 @@ type CondVisual = {
 
 const CONDITION_DISPLAY: Record<Condition, string> = {
   nm: 'NM',
-  pl: 'LP',
+  lp: 'LP',
   mp: 'MP',
   hp: 'HP',
+  dmg: 'DMG',
   unknown: 'DMG',
 };
 

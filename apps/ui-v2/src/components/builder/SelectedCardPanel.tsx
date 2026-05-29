@@ -19,9 +19,10 @@ type Props = {
 
 const CONDITION_TO_LABEL: Record<Condition, string> = {
   nm: 'NM',
-  pl: 'LP',
+  lp: 'LP',
   mp: 'MP',
   hp: 'HP',
+  dmg: 'DMG',
   unknown: 'DMG',
 };
 
