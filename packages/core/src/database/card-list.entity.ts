@@ -9,8 +9,10 @@ import {
 } from 'typeorm';
 import { CardListEntry } from './card-list-entry.entity';
 
+export type CardListVisibility = 'private' | 'unlisted' | 'public';
+
 @Entity('card_lists')
-@Index('idx_card_lists_owner_cookie', ['ownerCookie'])
+@Index('idx_card_lists_owner_principal_uuid', ['ownerPrincipalUuid'])
 @Index('idx_card_lists_expires_at', ['expiresAt'])
 export class CardList {
   @PrimaryGeneratedColumn()
@@ -19,8 +21,11 @@ export class CardList {
   @Column({ type: 'uuid', unique: true, default: () => 'gen_random_uuid()' })
   uuid: string;
 
-  @Column({ name: 'owner_cookie', type: 'uuid' })
-  ownerCookie: string;
+  @Column({ name: 'owner_principal_uuid', type: 'uuid' })
+  ownerPrincipalUuid: string;
+
+  @Column({ type: 'varchar', length: 16, default: 'unlisted' })
+  visibility: CardListVisibility;
 
   @Column({ length: 100 })
   name: string;

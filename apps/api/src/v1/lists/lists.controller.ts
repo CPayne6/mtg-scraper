@@ -6,21 +6,21 @@ import {
   Delete,
   Param,
   Body,
-  Res,
   HttpCode,
   HttpStatus,
   UsePipes,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
-import { randomUUID } from 'crypto';
-import { OwnerCookie, COOKIE_NAME } from './decorators/owner-cookie.decorator';
+import { CurrentPrincipal } from '../../auth/current-principal.decorator';
+import { OptionalPrincipalGuard } from '../../auth/optional-principal.guard';
+import { PrincipalGuard } from '../../auth/principal.guard';
+import type { PrincipalContext } from '../../auth/principal.types';
 import { ListsService } from './lists.service';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
-
-const COOKIE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+import { UpdateNameDto } from './dto/update-name.dto';
 
 @Controller('lists')
 export class ListsController {
@@ -28,76 +28,90 @@ export class ListsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(PrincipalGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async createList(
     @Body() dto: CreateListDto,
-    @OwnerCookie() cookie: string | undefined,
-    @Res({ passthrough: true }) res: Response,
+    @CurrentPrincipal() principal: PrincipalContext,
   ) {
-    const ownerCookie = cookie ?? randomUUID();
-
-    if (!cookie) {
-      res.cookie(COOKIE_NAME, ownerCookie, {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: COOKIE_MAX_AGE_MS,
-      });
-    }
-
-    return this.listsService.createList(dto, ownerCookie);
+    return this.listsService.createList(dto, principal.principalUuid);
   }
 
   @Get()
-  async getLists(@OwnerCookie() cookie: string | undefined) {
-    if (!cookie) {
-      return { lists: [] };
-    }
-    const lists = await this.listsService.getListsForOwner(cookie);
+  @UseGuards(PrincipalGuard)
+  async getLists(@CurrentPrincipal() principal: PrincipalContext) {
+    const lists = await this.listsService.getListsForOwner(
+      principal.principalUuid,
+    );
     return { lists };
   }
 
   @Get(':listId')
-  async getListWithPrices(@Param('listId') listId: string) {
-    return this.listsService.getListWithPrices(listId);
+  @UseGuards(OptionalPrincipalGuard)
+  async getListWithPrices(
+    @Param('listId') listId: string,
+    @CurrentPrincipal() principal?: PrincipalContext,
+  ) {
+    return this.listsService.getListWithPrices(
+      listId,
+      principal?.principalUuid,
+    );
   }
 
   @Put(':listId/filters')
+  @UseGuards(PrincipalGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async updateFilters(
     @Param('listId') listId: string,
     @Body() dto: UpdateFiltersDto,
-    @OwnerCookie() cookie: string | undefined,
+    @CurrentPrincipal() principal: PrincipalContext,
   ) {
-    if (!cookie) {
-      return { message: 'No owner cookie' };
-    }
-    await this.listsService.updateFilters(listId, cookie, dto);
+    await this.listsService.updateFilters(
+      listId,
+      principal.principalUuid,
+      dto,
+    );
     return { message: 'Filters updated' };
   }
 
   @Put(':listId/cards')
+  @UseGuards(PrincipalGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async replaceCards(
     @Param('listId') listId: string,
     @Body() dto: ReplaceCardsDto,
-    @OwnerCookie() cookie: string | undefined,
+    @CurrentPrincipal() principal: PrincipalContext,
   ) {
-    if (!cookie) {
-      return { message: 'No owner cookie' };
-    }
-    return this.listsService.replaceCards(listId, cookie, dto.cards);
+    return this.listsService.replaceCards(
+      listId,
+      principal.principalUuid,
+      dto.cards,
+    );
+  }
+
+  @Put(':listId/name')
+  @UseGuards(PrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async updateName(
+    @Param('listId') listId: string,
+    @Body() dto: UpdateNameDto,
+    @CurrentPrincipal() principal: PrincipalContext,
+  ) {
+    await this.listsService.updateName(
+      listId,
+      principal.principalUuid,
+      dto.name,
+    );
+    return { message: 'Name updated' };
   }
 
   @Delete(':listId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(PrincipalGuard)
   async deleteList(
     @Param('listId') listId: string,
-    @OwnerCookie() cookie: string | undefined,
+    @CurrentPrincipal() principal: PrincipalContext,
   ) {
-    if (!cookie) {
-      return;
-    }
-    await this.listsService.deleteList(listId, cookie);
+    await this.listsService.deleteList(listId, principal.principalUuid);
   }
 }

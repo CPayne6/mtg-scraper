@@ -15,6 +15,7 @@ import {
   CardList,
   CardListEntry,
 } from '@scoutlgs/core';
+import { AuthModule } from '../auth/auth.module';
 import { CardsController } from './cards/cards.controller';
 import { CardsService } from './cards/cards.service';
 import { TokensController } from './tokens/tokens.controller';
@@ -32,6 +33,7 @@ import { CardNameResolverService } from './shared/card-name-resolver.service';
       CardList, CardListEntry,
     ]),
     StoreModule,
+    AuthModule,
   ],
   controllers: [CardsController, TokensController, ListsController],
   providers: [CardsService, TokensService, ListsService, CardNameResolverService],

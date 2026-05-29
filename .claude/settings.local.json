@@ -13,7 +13,29 @@
       "Bash(curl:*)",
       "Bash(grep:*)",
       "Bash(npx nx run:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(docker volume *)",
+      "Bash(git ls-tree *)",
+      "Bash(npx nx *)",
+      "Bash(docker restart mtg-scraper-scraper-1 *)",
+      "Bash(docker restart mtg-scraper-scraper-2 *)",
+      "Bash(docker stop mtg-scraper-scraper-2 *)",
+      "WebSearch",
+      "WebFetch(domain:shopify.dev)",
+      "Bash(gh run *)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Read(//tmp/**)",
+      "Bash(mkdir -p extracted)",
+      "Bash(tar -xf design -C extracted)",
+      "Bash(cygpath -w /tmp/design-fetch/extracted/scoutlgs-design-system/README.md)",
+      "Bash(cygpath -w /tmp/design-fetch/extracted/scoutlgs-design-system/project/README.md)",
+      "Bash(cygpath -w /tmp/design-fetch/extracted/scoutlgs-design-system/project/ui_kits/web-app/README.md)",
+      "Bash(git -C C:/Users/cpayn/Documents/projects/mtg-scraper/.claude/worktrees/design-system-ui branch --show-current)",
+      "Bash(git -C C:/Users/cpayn/Documents/projects/mtg-scraper/.claude/worktrees/design-system-ui log --oneline -3)",
+      "Bash(pnpm --filter @scoutlgs/shared build)",
+      "Bash(pnpm --filter ui-v2 build)",
+      "Bash(pnpm *)",
+      "Read(//c/Users/cpayn/AppData/Local/Temp/claude/C--Users-cpayn-Documents-projects-mtg-scraper/15d43f50-612e-463b-bdec-5b7a5c391b44/tasks/**)"
     ]
   }
 }

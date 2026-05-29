@@ -11,6 +11,7 @@ export const mockCardWithStore: CardWithStore = {
   card_number: '1',
   scryfall_id: 'abc123',
   store: 'Test Store',
+  store_key: 'teststore',
 };
 
 export const mockCardSearchResponse: CardSearchResponse = {
@@ -40,16 +41,19 @@ export const mockMultipleCards: CardWithStore[] = [
     ...mockCardWithStore,
     price: 100,
     store: 'Store A',
+    store_key: 'store-a',
   },
   {
     ...mockCardWithStore,
     price: 200,
     store: 'Store B',
+    store_key: 'store-b',
   },
   {
     ...mockCardWithStore,
     price: 150,
     store: 'Store C',
+    store_key: 'store-c',
   },
 ];
 
@@ -64,6 +68,7 @@ export const createMockCards = (count: number): CardWithStore[] => {
       title: `Card ${i + 1}`,
       price: (i + 1) * 100,
       store: `Store ${i + 1}`,
+      store_key: `store-${i + 1}`,
     }),
   );
 };
