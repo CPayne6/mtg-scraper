@@ -106,7 +106,6 @@ export function Footer() {
           <FooterHeading>Account</FooterHeading>
           <Stack>
             <FooterLink href="/login">Sign in</FooterLink>
-            <FooterLink href="/signup">Create account</FooterLink>
             <FooterLink href="https://github.com/CPayne6/mtg-scraper/issues" external>
               Contact
             </FooterLink>

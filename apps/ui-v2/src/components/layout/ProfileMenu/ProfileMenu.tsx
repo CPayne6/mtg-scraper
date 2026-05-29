@@ -66,7 +66,7 @@ export function ProfileMenu() {
   const subLabel = user?.email ?? null;
   const userInitials = user ? initialsFor(displayLabel) : null;
 
-  const go = (path: '/lists' | '/settings' | '/login' | '/signup') => {
+  const go = (path: '/lists' | '/settings' | '/login') => {
     setAnchor(null);
     navigate({ to: path });
   };
@@ -137,12 +137,9 @@ export function ProfileMenu() {
       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
         Save lists and sync across devices.
       </Typography>
-      <Stack direction={{ xs: 'row', sm: 'column' }} spacing={1} sx={{ mt: 1.5 }}>
+      <Stack sx={{ mt: 1.5 }}>
         <Button variant="contained" onClick={() => go('/login')} fullWidth>
           Sign in
-        </Button>
-        <Button variant="outlined" onClick={() => go('/signup')} fullWidth>
-          Create account
         </Button>
       </Stack>
     </Box>
