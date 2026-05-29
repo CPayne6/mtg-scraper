@@ -60,7 +60,11 @@ export default () => ({
       process.env.AUTH_OAUTH_STATE_COOKIE_NAME ?? 'scoutlgs_oauth_state',
     stateTtlSeconds: seconds(process.env.AUTH_OAUTH_STATE_TTL_SECONDS, 600),
     google: {
-      clientId: process.env.AUTH_GOOGLE_CLIENT_ID,
+      clientId: readSecret(
+        process.env.AUTH_GOOGLE_CLIENT_ID,
+        process.env.AUTH_GOOGLE_CLIENT_ID_FILE,
+        '',
+      ),
       clientSecret: readSecret(
         process.env.AUTH_GOOGLE_CLIENT_SECRET,
         process.env.AUTH_GOOGLE_CLIENT_SECRET_FILE,

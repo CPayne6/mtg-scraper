@@ -150,11 +150,16 @@ services:
       - AUTH_INTERNAL_ALLOWED_HOSTS=auth,localhost,127.0.0.1
       - AUTH_JWT_PRIVATE_KEY_FILE=/run/secrets/auth_jwt_private_key
       - AUTH_TOKEN_HASH_SECRET_FILE=/run/secrets/auth_token_hash_secret
+      - AUTH_GOOGLE_CLIENT_ID_FILE=/run/secrets/auth_google_client_id
+      - AUTH_GOOGLE_CLIENT_SECRET_FILE=/run/secrets/auth_google_client_secret
+      - AUTH_GOOGLE_CALLBACK_URL=https://scoutlgs.ca/auth/google/callback
       - LOG_LEVEL=error,warn,fatal
     secrets:
       - auth_database_password
       - auth_jwt_private_key
       - auth_token_hash_secret
+      - auth_google_client_id
+      - auth_google_client_secret
     networks:
       - auth-postgres-network
       - auth-network
@@ -379,6 +384,12 @@ secrets:
   auth_token_hash_secret:
     external: true
     name: auth_token_hash_secret
+  auth_google_client_id:
+    external: true
+    name: auth_google_client_id
+  auth_google_client_secret:
+    external: true
+    name: auth_google_client_secret
 
   # UI secrets
   ui_vite_api_url:
