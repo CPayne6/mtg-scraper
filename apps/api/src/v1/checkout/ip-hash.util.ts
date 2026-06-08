@@ -1,16 +1,10 @@
 import { createHash } from 'crypto';
 import type { Request } from 'express';
 
-// Resolves the real client IP behind Cloudflare / reverse proxies.
-// Matches apps/auth/src/auth/auth-session.service.ts:extractIp so the same
-// principal produces the same ipHash across both services.
+// Express resolves req.ip from trusted proxy headers only when main.ts has
+// configured `trust proxy`. Do not read forwarding headers here directly;
+// direct clients can spoof them.
 export function extractClientIp(req: Request): string {
-  const cf = req.header('cf-connecting-ip');
-  if (cf) return cf;
-
-  const forwarded = req.header('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 

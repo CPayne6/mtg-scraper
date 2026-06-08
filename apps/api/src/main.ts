@@ -4,14 +4,28 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseLogLevel } from '@scoutlgs/core';
 
+function parseTrustProxy(value: string): boolean | number | string {
+  const trimmed = value.trim();
+  if (trimmed === 'true') return 1;
+  if (trimmed === 'false') return false;
+  const asNumber = Number(trimmed);
+  return Number.isFinite(asNumber) ? asNumber : trimmed;
+}
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: parseLogLevel(process.env.LOG_LEVEL),
   });
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
+
+  const trustProxy = configService.get<string>('trustProxy');
+  if (trustProxy?.trim()) {
+    app.set('trust proxy', parseTrustProxy(trustProxy));
+  }
 
   // Cookie parser
   app.use(cookieParser());

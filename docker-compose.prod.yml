@@ -91,6 +91,7 @@ services:
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
       - PORT=5000
+      - TRUST_PROXY=1
       - DATABASE_PORT=5432
       - DATABASE_NAME=scoutlgs
       - DATABASE_USER=postgres
@@ -136,6 +137,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5002
+      - TRUST_PROXY=1
       - DATABASE_HOST=auth-postgres
       - DATABASE_PORT=5432
       - DATABASE_NAME=scoutlgs_auth
