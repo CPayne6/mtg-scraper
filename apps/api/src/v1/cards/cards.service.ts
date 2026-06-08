@@ -33,6 +33,7 @@ export interface ListingResult {
   quantity?: number;
   productLink: string;
   imageUrl?: string;
+  variantId: string | null;
 }
 
 export interface StoreCount {
@@ -373,6 +374,7 @@ export class CardsService {
         quantity: variant.quantity,
         productLink,
         imageUrl: listing.imageUrl,
+        variantId: variant.platformVariantId ?? null,
       };
     });
   }

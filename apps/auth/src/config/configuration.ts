@@ -16,7 +16,7 @@ const readSecret = (
 
 export default () => ({
   port: seconds(process.env.PORT, 5002),
-  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3001',
+  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   cookies: {
     secure: process.env.COOKIE_SECURE !== 'false',
     domain: process.env.COOKIE_DOMAIN || undefined,

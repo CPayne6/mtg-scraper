@@ -14,12 +14,51 @@ export type CartResponse = {
   updatedAt: string | null;
 };
 
+export type BuildCheckoutLine = {
+  variantId: string;
+  quantity: number;
+};
+
+export type BuildCheckoutStoreInput = {
+  storeKey: string;
+  lines: BuildCheckoutLine[];
+};
+
+export type BuildCheckoutStoreResult = {
+  storeKey: string;
+  checkoutUrl: string;
+};
+
+export type BuildCheckoutResponse = {
+  stores: BuildCheckoutStoreResult[];
+};
+
 export class CartApiError extends Error {
   status: number;
 
   constructor(message: string, status: number) {
     super(message);
     this.status = status;
+  }
+}
+
+export class CheckoutBuildError extends Error {
+  status: number;
+  errorCode: string;
+  retryAfterSec?: number;
+  storeKey?: string;
+
+  constructor(
+    message: string,
+    status: number,
+    errorCode: string,
+    extras: { retryAfterSec?: number; storeKey?: string } = {},
+  ) {
+    super(message);
+    this.status = status;
+    this.errorCode = errorCode;
+    this.retryAfterSec = extras.retryAfterSec;
+    this.storeKey = extras.storeKey;
   }
 }
 
@@ -77,4 +116,60 @@ export function clearCart(signal?: AbortSignal): Promise<CartResponse> {
     method: 'DELETE',
     signal,
   });
+}
+
+// X-Requested-With is the CSRF gate enforced by apps/api -- browsers preflight
+// it on cross-origin requests, so a malicious form POST cannot set it. Setting
+// it explicitly here keeps the gate one source-control hop away from the
+// fetch.
+export async function buildCheckout(
+  stores: BuildCheckoutStoreInput[],
+  signal?: AbortSignal,
+): Promise<BuildCheckoutResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/checkout/build`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: JSON.stringify({ stores }),
+    signal,
+  });
+
+  if (res.ok) {
+    return (await res.json()) as BuildCheckoutResponse;
+  }
+
+  let errorCode = 'unknown';
+  let retryAfterSec: number | undefined;
+  let storeKey: string | undefined;
+  try {
+    const body = (await res.json()) as {
+      error?: string;
+      retryAfterSec?: number;
+      storeKey?: string;
+    };
+    if (body.error) errorCode = body.error;
+    if (typeof body.retryAfterSec === 'number') retryAfterSec = body.retryAfterSec;
+    if (typeof body.storeKey === 'string') storeKey = body.storeKey;
+  } catch {
+    // non-JSON body -- keep defaults
+  }
+
+  if (res.status === 429 && retryAfterSec == null) {
+    const headerValue = res.headers.get('retry-after');
+    if (headerValue) {
+      const parsed = parseInt(headerValue, 10);
+      if (Number.isFinite(parsed)) retryAfterSec = parsed;
+    }
+  }
+
+  throw new CheckoutBuildError(
+    `Checkout build failed (${res.status})`,
+    res.status,
+    errorCode,
+    { retryAfterSec, storeKey },
+  );
 }

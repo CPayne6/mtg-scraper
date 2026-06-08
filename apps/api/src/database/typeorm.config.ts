@@ -17,6 +17,7 @@ import {
   CardCart,
   CardList,
   CardListEntry,
+  CheckoutBuild,
 } from '@scoutlgs/core';
 
 // TypeORM CLI configuration for migrations
@@ -49,6 +50,7 @@ export default new DataSource({
     CardCart,
     CardList,
     CardListEntry,
+    CheckoutBuild,
   ],
   migrations: isProduction
     ? ['dist/database/migrations/*.js']
