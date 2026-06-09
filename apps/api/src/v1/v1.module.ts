@@ -12,12 +12,14 @@ import {
   TokenPrinting,
   TokenListing,
   TokenVariant,
+  CardCart,
   CardList,
   CardListEntry,
 } from '@scoutlgs/core';
 import { AuthModule } from '../auth/auth.module';
 import { CardsController } from './cards/cards.controller';
 import { CardsService } from './cards/cards.service';
+import { CartModule } from './cart/cart.module';
 import { TokensController } from './tokens/tokens.controller';
 import { TokensService } from './tokens/tokens.service';
 import { ListsController } from './lists/lists.controller';
@@ -30,10 +32,11 @@ import { CardNameResolverService } from './shared/card-name-resolver.service';
       CardName, CardPrinting, CardListing, CardVariant,
       ScryfallSet, Store,
       TokenName, TokenPrinting, TokenListing, TokenVariant,
-      CardList, CardListEntry,
+      CardCart, CardList, CardListEntry,
     ]),
     StoreModule,
     AuthModule,
+    CartModule,
   ],
   controllers: [CardsController, TokensController, ListsController],
   providers: [CardsService, TokensService, ListsService, CardNameResolverService],
