@@ -1,15 +1,20 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { CheckoutBuild, StoreModule } from '@scoutlgs/core';
+import { StoreModule } from '@scoutlgs/core';
 import { AuthModule } from '../../auth/auth.module';
+import { CheckoutAuditService } from './checkout-audit.service';
 import { CheckoutController } from './checkout.controller';
 import { CheckoutRateLimiterService } from './checkout-rate-limiter.service';
 import { CheckoutService } from './checkout.service';
 import { XRequestedWithGuard } from './csrf.guard';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CheckoutBuild]), AuthModule, StoreModule],
+  imports: [AuthModule, StoreModule],
   controllers: [CheckoutController],
-  providers: [CheckoutService, CheckoutRateLimiterService, XRequestedWithGuard],
+  providers: [
+    CheckoutService,
+    CheckoutRateLimiterService,
+    CheckoutAuditService,
+    XRequestedWithGuard,
+  ],
 })
 export class CheckoutModule {}

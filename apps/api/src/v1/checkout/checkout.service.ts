@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CheckoutBuild, StoreService } from '@scoutlgs/core';
+import { StoreService } from '@scoutlgs/core';
 import type { PrincipalContext } from '../../auth/principal.types';
+import { CheckoutAuditService } from './checkout-audit.service';
 import { CheckoutRateLimiterService } from './checkout-rate-limiter.service';
 import { BuildCheckoutDto } from './dto/build-checkout.dto';
 import {
@@ -39,10 +38,9 @@ export class CheckoutService {
   private readonly logger = new Logger(CheckoutService.name);
 
   constructor(
-    @InjectRepository(CheckoutBuild)
-    private readonly auditRepo: Repository<CheckoutBuild>,
     private readonly storeService: StoreService,
     private readonly rateLimiter: CheckoutRateLimiterService,
+    private readonly auditService: CheckoutAuditService,
   ) {}
 
   async buildCheckout(
@@ -121,10 +119,10 @@ export class CheckoutService {
       );
       return { kind: 'error' };
     } finally {
-      // Fire-and-forget audit -- the response shouldn't wait on the insert,
-      // and a slow audit row is preferable to a slow checkout.
+      // Fire-and-forget short-lived audit -- the response shouldn't wait on
+      // Redis, and a dropped cache log is preferable to a slow checkout.
       const durationMs = Date.now() - startedAt;
-      void this.writeAudit({
+      void this.auditService.record({
         principalUuid: principal.principalUuid,
         principalKind: principal.kind,
         ipHash,
@@ -137,25 +135,9 @@ export class CheckoutService {
         errorClass: errorClass ?? undefined,
       }).catch((err) => {
         this.logger.error(
-          `audit row write failed: ${(err as Error).message}`,
+          `checkout audit cache write failed: ${(err as Error).message}`,
         );
       });
     }
-  }
-
-  private async writeAudit(data: {
-    principalUuid: string;
-    principalKind: 'anonymous' | 'user';
-    ipHash: string;
-    uaHash?: string;
-    storeCount: number;
-    totalLines: number;
-    totalSucceededStores: number;
-    totalFailedStores: number;
-    requestDurationMs: number;
-    errorClass?: string;
-  }): Promise<void> {
-    const entry = this.auditRepo.create(data);
-    await this.auditRepo.save(entry);
   }
 }

@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CheckoutBuild, StoreService } from '@scoutlgs/core';
+import { StoreService } from '@scoutlgs/core';
 import type { PrincipalContext } from '../../auth/principal.types';
+import { CheckoutAuditService } from './checkout-audit.service';
 import { CheckoutRateLimiterService } from './checkout-rate-limiter.service';
 import { CheckoutService } from './checkout.service';
 import { BuildCheckoutDto } from './dto/build-checkout.dto';
@@ -46,10 +46,7 @@ describe('CheckoutService', () => {
   let service: CheckoutService;
   let storeService: { findAllActive: ReturnType<typeof vi.fn> };
   let rateLimiter: { check: ReturnType<typeof vi.fn> };
-  let auditRepo: {
-    create: ReturnType<typeof vi.fn>;
-    save: ReturnType<typeof vi.fn>;
-  };
+  let auditService: { record: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     storeService = {
@@ -58,9 +55,8 @@ describe('CheckoutService', () => {
     rateLimiter = {
       check: vi.fn().mockResolvedValue(allowed()),
     };
-    auditRepo = {
-      create: vi.fn((data) => data),
-      save: vi.fn().mockResolvedValue(undefined),
+    auditService = {
+      record: vi.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -68,7 +64,7 @@ describe('CheckoutService', () => {
         CheckoutService,
         { provide: StoreService, useValue: storeService },
         { provide: CheckoutRateLimiterService, useValue: rateLimiter },
-        { provide: getRepositoryToken(CheckoutBuild), useValue: auditRepo },
+        { provide: CheckoutAuditService, useValue: auditService },
       ],
     }).compile();
 
@@ -233,10 +229,10 @@ describe('CheckoutService', () => {
     }
   });
 
-  it('writes an audit row for successful builds', async () => {
+  it('writes a cache audit entry for successful builds', async () => {
     await service.buildCheckout(makeDto(), ANON_PRINCIPAL, 'iph', 'uah');
     await new Promise((resolve) => setImmediate(resolve));
-    expect(auditRepo.create).toHaveBeenCalledWith(
+    expect(auditService.record).toHaveBeenCalledWith(
       expect.objectContaining({
         principalUuid: ANON_PRINCIPAL.principalUuid,
         principalKind: 'anonymous',
@@ -249,14 +245,13 @@ describe('CheckoutService', () => {
         errorClass: undefined,
       }),
     );
-    expect(auditRepo.save).toHaveBeenCalled();
   });
 
-  it('writes an audit row tagged rate-limited when the limiter blocks', async () => {
+  it('writes a cache audit entry tagged rate-limited when the limiter blocks', async () => {
     rateLimiter.check.mockResolvedValueOnce(blocked(60));
     await service.buildCheckout(makeDto(), ANON_PRINCIPAL, 'iph', null);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(auditRepo.create).toHaveBeenCalledWith(
+    expect(auditService.record).toHaveBeenCalledWith(
       expect.objectContaining({
         errorClass: 'rate-limited',
         totalSucceededStores: 0,
@@ -264,12 +259,12 @@ describe('CheckoutService', () => {
     );
   });
 
-  it('writes an audit row tagged unknown when the URL builder throws', async () => {
+  it('writes a cache audit entry tagged unknown when the URL builder throws', async () => {
     storeService.findAllActive.mockRejectedValueOnce(new Error('db down'));
     const result = await service.buildCheckout(makeDto(), ANON_PRINCIPAL, 'iph', null);
     await new Promise((resolve) => setImmediate(resolve));
     expect(result).toEqual({ kind: 'error' });
-    expect(auditRepo.create).toHaveBeenCalledWith(
+    expect(auditService.record).toHaveBeenCalledWith(
       expect.objectContaining({ errorClass: 'unknown' }),
     );
   });
