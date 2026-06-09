@@ -11,6 +11,9 @@ export enum Condition {
 }
 
 export interface Card {
+  // Internal CardVariant.id from the ScoutLGS database. This is the stable ID
+  // used for persisted carts.
+  id?: number;
   price: number;
   condition: Condition;
   foil?: boolean;
@@ -21,6 +24,8 @@ export interface Card {
   set: string;
   card_number: string;
   scryfall_id?: string;
+  // Numeric Shopify variant ID. Drives per-store cart permalinks.
+  variant_id?: string;
 }
 
 // `store` is the store's displayName (human-readable, e.g. "Face to Face Games").

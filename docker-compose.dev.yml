@@ -177,6 +177,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
+      - AUTH_DATABASE_HOST=auth-postgres
+      - AUTH_DATABASE_PORT=5432
+      - AUTH_DATABASE_NAME=scoutlgs_auth
+      - AUTH_DATABASE_USER=postgres
+      - AUTH_DATABASE_PASSWORD=postgres
     volumes:
       # Mount source code for hot reload
       - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
@@ -190,6 +195,10 @@ services:
       - ./tsconfig.json:/app/tsconfig.json:ro
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      auth-postgres:
         condition: service_healthy
     networks:
       - scoutlgs-network-dev

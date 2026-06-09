@@ -1,6 +1,6 @@
 import type { CardWithStore } from '@scoutlgs/shared';
 
-export type CartItem = CardWithStore & { addedAt: number };
+export type CartItem = CardWithStore & { id: number; addedAt: number };
 
 export type CartContextValue = {
   items: CartItem[];
@@ -13,4 +13,5 @@ export type CartContextValue = {
   remove: (id: string) => void;
   clear: () => void;
   has: (id: string) => boolean;
+  sync: () => Promise<void>;
 };

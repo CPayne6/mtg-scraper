@@ -74,6 +74,7 @@ export class CardService {
 
       for (const variant of listing.variants ?? []) {
         cardResults.push({
+          id: variant.id,
           price: Number(variant.price),
           condition: (variant.condition?.code ?? 'unknown') as Condition,
           foil: variant.foil,
@@ -84,6 +85,7 @@ export class CardService {
           set: setName,
           card_number: collectorNumber,
           scryfall_id: scryfallId,
+          variant_id: variant.platformVariantId,
           store: listing.store.displayName,
           store_key: listing.store.name,
         });
