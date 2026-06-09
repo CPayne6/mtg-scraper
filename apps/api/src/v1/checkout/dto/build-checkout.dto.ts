@@ -35,7 +35,7 @@ export class StoreEntryDto {
 
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(50)
+  @ArrayMaxSize(150)
   @ValidateNested({ each: true })
   @Type(() => CartLineDto)
   lines!: CartLineDto[];

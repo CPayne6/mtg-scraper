@@ -181,7 +181,7 @@ describe('CheckoutService', () => {
     expect(result).toEqual({ kind: 'unknown-store', storeKey: 'totally-fake' });
   });
 
-  it('rejects requests where total lines exceeds 200', async () => {
+  it('rejects requests where total card quantity exceeds 150', async () => {
     const lines = Array.from({ length: 50 }, (_, i) => ({
       variantId: String(i + 1),
       quantity: 1,
@@ -200,7 +200,33 @@ describe('CheckoutService', () => {
       'iph',
       null,
     );
-    expect(result).toEqual({ kind: 'too-many-lines', total: 250, max: 200 });
+    expect(result).toEqual({ kind: 'too-many-lines', total: 250, max: 150 });
+  });
+
+  it('counts quantities, not just variant lines, against the 150-card limit', async () => {
+    const result = await service.buildCheckout(
+      makeDto({
+        stores: [
+          {
+            storeKey: '401-games',
+            lines: [
+              { variantId: '1', quantity: 20 },
+              { variantId: '2', quantity: 20 },
+              { variantId: '3', quantity: 20 },
+              { variantId: '4', quantity: 20 },
+              { variantId: '5', quantity: 20 },
+              { variantId: '6', quantity: 20 },
+              { variantId: '7', quantity: 20 },
+              { variantId: '8', quantity: 11 },
+            ],
+          },
+        ],
+      }),
+      ANON_PRINCIPAL,
+      'iph',
+      null,
+    );
+    expect(result).toEqual({ kind: 'too-many-lines', total: 151, max: 150 });
   });
 
   it('dedupes duplicate variantIds and sums quantities', async () => {

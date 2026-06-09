@@ -30,7 +30,7 @@ const RATE_LIMIT_WINDOW_SEC = 60;
 const RATE_LIMIT_PER_ANON = 5;
 const RATE_LIMIT_PER_USER = 20;
 const RATE_LIMIT_PER_IP = 30;
-const MAX_TOTAL_LINES = 200;
+const MAX_TOTAL_CARDS = 150;
 const MAX_QUANTITY_PER_LINE = 20;
 
 @Injectable()
@@ -52,6 +52,10 @@ export class CheckoutService {
     const startedAt = Date.now();
     const storeCount = dto.stores.length;
     const totalLines = dto.stores.reduce((sum, s) => sum + s.lines.length, 0);
+    const totalCards = dto.stores.reduce(
+      (sum, s) => sum + s.lines.reduce((lineSum, l) => lineSum + l.quantity, 0),
+      0,
+    );
     let totalSucceeded = 0;
     let errorClass: string | null = null;
 
@@ -82,9 +86,9 @@ export class CheckoutService {
         };
       }
 
-      if (totalLines > MAX_TOTAL_LINES) {
+      if (totalCards > MAX_TOTAL_CARDS) {
         errorClass = 'validation';
-        return { kind: 'too-many-lines', total: totalLines, max: MAX_TOTAL_LINES };
+        return { kind: 'too-many-lines', total: totalCards, max: MAX_TOTAL_CARDS };
       }
 
       const stores = await this.storeService.findAllActive();
