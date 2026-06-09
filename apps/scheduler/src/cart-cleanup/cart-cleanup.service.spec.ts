@@ -42,15 +42,18 @@ describe('CartCleanupService', () => {
     expect(cartRepository.find).toHaveBeenCalledWith({
       select: { id: true, ownerPrincipalUuid: true },
       where: {
-        createdAt: expect.any(FindOperator),
+        updatedAt: expect.any(FindOperator),
       },
     });
-    expect(authDataSource.query).toHaveBeenCalledWith(expect.stringContaining('FROM users u'), [
+    expect(authDataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('INNER JOIN users u ON u.principal_id = p.id'),
       [
-        '11111111-1111-1111-1111-111111111111',
-        '22222222-2222-2222-2222-222222222222',
+        [
+          '11111111-1111-1111-1111-111111111111',
+          '22222222-2222-2222-2222-222222222222',
+        ],
       ],
-    ]);
+    );
     expect(cartRepository.delete).toHaveBeenCalledWith({
       id: expect.any(FindOperator),
     });

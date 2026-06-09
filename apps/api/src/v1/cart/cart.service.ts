@@ -48,33 +48,39 @@ export class CartService {
     const variantsById = await this.findVariantsById(normalizedIds);
     const existingIds = normalizedIds.filter((id) => variantsById.has(id));
 
-    const cart =
-      (await this.cartRepository.findOne({
-        where: { ownerPrincipalUuid: principal.principalUuid },
-      })) ??
-      this.cartRepository.create({
-        ownerPrincipalUuid: principal.principalUuid,
-        cardVariantIds: [],
-      });
-
-    cart.cardVariantIds = existingIds;
-    const saved = await this.cartRepository.save(cart);
+    const saved = await this.upsertCart(principal, existingIds);
 
     return this.buildResponse(saved, variantsById);
   }
 
   async clearCart(principal: PrincipalContext): Promise<CartResponse> {
+    const saved = await this.upsertCart(principal, []);
+    return this.buildResponse(saved, new Map());
+  }
+
+  private async upsertCart(
+    principal: PrincipalContext,
+    cardVariantIds: number[],
+  ): Promise<CardCart> {
+    await this.cartRepository.upsert(
+      {
+        ownerPrincipalUuid: principal.principalUuid,
+        cardVariantIds,
+      },
+      {
+        conflictPaths: ['ownerPrincipalUuid'],
+      },
+    );
+
     const cart = await this.cartRepository.findOne({
       where: { ownerPrincipalUuid: principal.principalUuid },
     });
 
     if (!cart) {
-      return this.emptyResponse();
+      throw new Error('Cart upsert completed without a persisted row');
     }
 
-    cart.cardVariantIds = [];
-    const saved = await this.cartRepository.save(cart);
-    return this.buildResponse(saved, new Map());
+    return cart;
   }
 
   private emptyResponse(): CartResponse {

@@ -8,20 +8,10 @@ import { XRequestedWithGuard } from './csrf.guard';
 import { PrincipalGuard } from '../../auth/principal.guard';
 import { PrincipalJwtService } from '../../auth/principal-jwt.service';
 import type { PrincipalContext } from '../../auth/principal.types';
-import type { BuildCheckoutDto } from './dto/build-checkout.dto';
 
 const PRINCIPAL: PrincipalContext = {
   principalUuid: '11111111-1111-1111-1111-111111111111',
   kind: 'anonymous',
-};
-
-const DTO: BuildCheckoutDto = {
-  stores: [
-    {
-      storeKey: '401-games',
-      lines: [{ variantId: '12345', quantity: 1 }],
-    },
-  ],
 };
 
 function mockReq(): Request {
@@ -70,8 +60,13 @@ describe('CheckoutController.build', () => {
     });
     const { res } = mockRes();
 
-    const result = await controller.build(DTO, PRINCIPAL, mockReq(), res);
+    const result = await controller.build(PRINCIPAL, mockReq(), res);
 
+    expect(service.buildCheckout).toHaveBeenCalledWith(
+      PRINCIPAL,
+      expect.any(String),
+      expect.any(String),
+    );
     expect(result).toEqual({
       stores: [
         { storeKey: '401-games', checkoutUrl: 'https://store.401games.ca/cart/12345:1' },
@@ -86,7 +81,7 @@ describe('CheckoutController.build', () => {
     });
     const { res, setHeader } = mockRes();
 
-    await expect(controller.build(DTO, PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
+    await expect(controller.build(PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
       status: HttpStatus.TOO_MANY_REQUESTS,
       response: { error: 'rate-limited', retryAfterSec: 90 },
     });
@@ -97,19 +92,29 @@ describe('CheckoutController.build', () => {
     service.buildCheckout.mockResolvedValue({ kind: 'unknown-store', storeKey: 'fake' });
     const { res } = mockRes();
 
-    await expect(controller.build(DTO, PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
+    await expect(controller.build(PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
       status: HttpStatus.BAD_REQUEST,
       response: { error: 'unknown-store', storeKey: 'fake' },
     });
   });
 
   it('responds 400 for too many lines', async () => {
-    service.buildCheckout.mockResolvedValue({ kind: 'too-many-lines', total: 250, max: 200 });
+    service.buildCheckout.mockResolvedValue({ kind: 'too-many-lines', total: 250, max: 150 });
     const { res } = mockRes();
 
-    await expect(controller.build(DTO, PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
+    await expect(controller.build(PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
       status: HttpStatus.BAD_REQUEST,
-      response: { error: 'too-many-lines', total: 250, max: 200 },
+      response: { error: 'too-many-lines', total: 250, max: 150 },
+    });
+  });
+
+  it('responds 400 for an empty checkoutable cart', async () => {
+    service.buildCheckout.mockResolvedValue({ kind: 'empty-cart' });
+    const { res } = mockRes();
+
+    await expect(controller.build(PRINCIPAL, mockReq(), res)).rejects.toMatchObject({
+      status: HttpStatus.BAD_REQUEST,
+      response: { error: 'empty-cart' },
     });
   });
 
@@ -117,7 +122,7 @@ describe('CheckoutController.build', () => {
     service.buildCheckout.mockResolvedValue({ kind: 'error' });
     const { res } = mockRes();
 
-    await expect(controller.build(DTO, PRINCIPAL, mockReq(), res)).rejects.toBeInstanceOf(
+    await expect(controller.build(PRINCIPAL, mockReq(), res)).rejects.toBeInstanceOf(
       HttpException,
     );
   });

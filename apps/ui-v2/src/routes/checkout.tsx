@@ -13,7 +13,7 @@ import { useSnackbar } from 'notistack';
 import {
   buildCheckout,
   CheckoutBuildError,
-  type BuildCheckoutStoreInput,
+  replaceCart,
 } from '@/api/cart';
 import {
   cartItemId,
@@ -243,18 +243,16 @@ function CheckoutRoute() {
   useEffect(() => {
     if (groups.length === 0) return;
 
-    const payload: BuildCheckoutStoreInput[] = groups.map((g) => ({
-      storeKey: g.storeKey,
-      lines: Array.from(g.lines.entries()).map(([variantId, quantity]) => ({
-        variantId,
-        quantity,
-      })),
-    }));
-
+    const controller = new AbortController();
     let cancelled = false;
     setState({ kind: 'loading' });
 
-    buildCheckout(payload)
+    const variantIds = snapshot
+      .map((item) => item.id)
+      .filter((id): id is number => Number.isInteger(id) && id > 0);
+
+    replaceCart(variantIds, controller.signal)
+      .then(() => buildCheckout(controller.signal))
       .then((result) => {
         if (cancelled) return;
         const urls: Record<string, string> = {};
@@ -277,6 +275,11 @@ function CheckoutRoute() {
               kind: 'error',
               message: `Unknown store "${err.storeKey ?? ''}" -- refresh the page and try again.`,
             });
+          } else if (err.errorCode === 'empty-cart') {
+            setState({
+              kind: 'error',
+              message: 'Cart is empty -- add cards and try again.',
+            });
           } else if (err.status === 401) {
             setState({
               kind: 'error',
@@ -297,8 +300,9 @@ function CheckoutRoute() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [groups]);
+  }, [groups, snapshot]);
 
   // Redirect home if cart is empty (e.g. user navigated to /checkout directly).
   useEffect(() => {

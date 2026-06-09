@@ -1,20 +1,10 @@
-import {
-  Body,
-  Controller,
-  HttpException,
-  HttpStatus,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, HttpException, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CurrentPrincipal } from '../../auth/current-principal.decorator';
 import { PrincipalGuard } from '../../auth/principal.guard';
 import type { PrincipalContext } from '../../auth/principal.types';
 import { CheckoutService } from './checkout.service';
 import { XRequestedWithGuard } from './csrf.guard';
-import { BuildCheckoutDto } from './dto/build-checkout.dto';
 import { hashIp, hashUserAgent } from './ip-hash.util';
 
 // Authz model (also documented in the PR description):
@@ -33,13 +23,11 @@ export class CheckoutController {
 
   @Post('build')
   async build(
-    @Body() dto: BuildCheckoutDto,
     @CurrentPrincipal() principal: PrincipalContext,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.checkoutService.buildCheckout(
-      dto,
       principal,
       hashIp(req),
       hashUserAgent(req),
@@ -65,6 +53,12 @@ export class CheckoutController {
       case 'too-many-lines':
         throw new HttpException(
           { error: 'too-many-lines', total: result.total, max: result.max },
+          HttpStatus.BAD_REQUEST,
+        );
+
+      case 'empty-cart':
+        throw new HttpException(
+          { error: 'empty-cart' },
           HttpStatus.BAD_REQUEST,
         );
 

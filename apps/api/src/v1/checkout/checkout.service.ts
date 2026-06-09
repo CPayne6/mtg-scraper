@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StoreService } from '@scoutlgs/core';
 import type { PrincipalContext } from '../../auth/principal.types';
+import { CartService, type CartItemResponse } from '../cart/cart.service';
 import { CheckoutAuditService } from './checkout-audit.service';
 import { CheckoutRateLimiterService } from './checkout-rate-limiter.service';
-import { BuildCheckoutDto } from './dto/build-checkout.dto';
 import {
   buildCartPermalink,
   normalizeLines,
@@ -20,7 +20,13 @@ export type BuildCheckoutResult =
   | { kind: 'rate-limited'; retryAfterSec: number }
   | { kind: 'unknown-store'; storeKey: string }
   | { kind: 'too-many-lines'; total: number; max: number }
+  | { kind: 'empty-cart' }
   | { kind: 'error' };
+
+interface CheckoutStoreInput {
+  storeKey: string;
+  lines: Array<{ variantId: string; quantity: number }>;
+}
 
 // Per-principal budget: anonymous principals get a tight bucket, signed-in
 // users get a looser one. Both bucketed in a single 1-minute window because
@@ -41,21 +47,17 @@ export class CheckoutService {
     private readonly storeService: StoreService,
     private readonly rateLimiter: CheckoutRateLimiterService,
     private readonly auditService: CheckoutAuditService,
+    private readonly cartService: CartService,
   ) {}
 
   async buildCheckout(
-    dto: BuildCheckoutDto,
     principal: PrincipalContext,
     ipHash: string,
     uaHash: string | null,
   ): Promise<BuildCheckoutResult> {
     const startedAt = Date.now();
-    const storeCount = dto.stores.length;
-    const totalLines = dto.stores.reduce((sum, s) => sum + s.lines.length, 0);
-    const totalCards = dto.stores.reduce(
-      (sum, s) => sum + s.lines.reduce((lineSum, l) => lineSum + l.quantity, 0),
-      0,
-    );
+    let storeCount = 0;
+    let totalLines = 0;
     let totalSucceeded = 0;
     let errorClass: string | null = null;
 
@@ -86,6 +88,29 @@ export class CheckoutService {
         };
       }
 
+      const cart = await this.cartService.getCart(principal);
+      if (cart.variantIds.length > MAX_TOTAL_CARDS) {
+        errorClass = 'validation';
+        return {
+          kind: 'too-many-lines',
+          total: cart.variantIds.length,
+          max: MAX_TOTAL_CARDS,
+        };
+      }
+
+      const checkoutStores = this.buildStoreInputs(cart.items);
+      storeCount = checkoutStores.length;
+      totalLines = checkoutStores.reduce((sum, s) => sum + s.lines.length, 0);
+      const totalCards = checkoutStores.reduce(
+        (sum, s) => sum + s.lines.reduce((lineSum, l) => lineSum + l.quantity, 0),
+        0,
+      );
+
+      if (totalCards === 0) {
+        errorClass = 'validation';
+        return { kind: 'empty-cart' };
+      }
+
       if (totalCards > MAX_TOTAL_CARDS) {
         errorClass = 'validation';
         return { kind: 'too-many-lines', total: totalCards, max: MAX_TOTAL_CARDS };
@@ -96,14 +121,14 @@ export class CheckoutService {
 
       // Whitelist pass before any URL building so we never return a
       // partial-success body to the client.
-      for (const entry of dto.stores) {
+      for (const entry of checkoutStores) {
         if (!byKey.has(entry.storeKey)) {
           errorClass = 'validation';
           return { kind: 'unknown-store', storeKey: entry.storeKey };
         }
       }
 
-      const results: StoreCheckoutEntry[] = dto.stores.map((entry) => {
+      const results: StoreCheckoutEntry[] = checkoutStores.map((entry) => {
         const store = byKey.get(entry.storeKey)!;
         const host = resolveStoreHost(store);
         const lines = normalizeLines(entry.lines, MAX_QUANTITY_PER_LINE);
@@ -143,5 +168,28 @@ export class CheckoutService {
         );
       });
     }
+  }
+
+  private buildStoreInputs(items: CartItemResponse[]): CheckoutStoreInput[] {
+    const byStore = new Map<string, CheckoutStoreInput>();
+
+    for (const item of items) {
+      if (!item.variant_id) continue;
+
+      let entry = byStore.get(item.store_key);
+      if (!entry) {
+        entry = { storeKey: item.store_key, lines: [] };
+        byStore.set(item.store_key, entry);
+      }
+
+      const existing = entry.lines.find((line) => line.variantId === item.variant_id);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        entry.lines.push({ variantId: item.variant_id, quantity: 1 });
+      }
+    }
+
+    return Array.from(byStore.values());
   }
 }

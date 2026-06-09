@@ -30,7 +30,7 @@ export class CartCleanupService {
         ownerPrincipalUuid: true,
       },
       where: {
-        createdAt: LessThan(threshold),
+        updatedAt: LessThan(threshold),
       },
     });
 
@@ -54,7 +54,7 @@ export class CartCleanupService {
 
     if (deleted > 0) {
       this.logger.log(
-        `Deleted ${deleted} anonymous cart(s) created before ${threshold.toISOString()}`,
+        `Deleted ${deleted} inactive anonymous cart(s) updated before ${threshold.toISOString()}`,
       );
     }
 
@@ -71,10 +71,14 @@ export class CartCleanupService {
       const batch = uniquePrincipalUuids.slice(i, i + AUTH_QUERY_BATCH_SIZE);
       const rows = (await this.authDataSource.query(
         `
+        WITH candidate_principals AS (
+          SELECT id, uuid
+          FROM principals
+          WHERE uuid = ANY($1::uuid[])
+        )
         SELECT p.uuid::text AS uuid
-        FROM users u
-        INNER JOIN principals p ON p.id = u.principal_id
-        WHERE p.uuid = ANY($1::uuid[])
+        FROM candidate_principals p
+        INNER JOIN users u ON u.principal_id = p.id
         `,
         [batch],
       )) as Array<{ uuid: string }>;

@@ -12,6 +12,7 @@ import {
   unique: true,
 })
 @Index('idx_card_carts_created_at', ['createdAt'])
+@Index('idx_card_carts_updated_at', ['updatedAt'])
 export class CardCart {
   @PrimaryGeneratedColumn()
   id: number;

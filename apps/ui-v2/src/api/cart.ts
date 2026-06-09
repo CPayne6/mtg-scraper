@@ -14,16 +14,6 @@ export type CartResponse = {
   updatedAt: string | null;
 };
 
-export type BuildCheckoutLine = {
-  variantId: string;
-  quantity: number;
-};
-
-export type BuildCheckoutStoreInput = {
-  storeKey: string;
-  lines: BuildCheckoutLine[];
-};
-
 export type BuildCheckoutStoreResult = {
   storeKey: string;
   checkoutUrl: string;
@@ -123,7 +113,6 @@ export function clearCart(signal?: AbortSignal): Promise<CartResponse> {
 // it explicitly here keeps the gate one source-control hop away from the
 // fetch.
 export async function buildCheckout(
-  stores: BuildCheckoutStoreInput[],
   signal?: AbortSignal,
 ): Promise<BuildCheckoutResponse> {
   const res = await fetch(`${API_BASE}/api/v1/checkout/build`, {
@@ -131,10 +120,8 @@ export async function buildCheckout(
     credentials: 'include',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
     },
-    body: JSON.stringify({ stores }),
     signal,
   });
 
