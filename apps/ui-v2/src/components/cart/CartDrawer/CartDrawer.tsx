@@ -74,7 +74,7 @@ export function CartDrawer() {
       <Box sx={headerSx(isMobile)}>
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.78rem', mt: '2px' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.78rem', display: 'block', mt: 0.5 }}>
             {items.length} {items.length === 1 ? 'card' : 'cards'} from {storeKeys.length}{' '}
             {storeKeys.length === 1 ? 'store' : 'stores'}
           </Typography>
@@ -123,7 +123,7 @@ export function CartDrawer() {
                   const gradient = ART_GRADIENTS[hashIndex(id, ART_GRADIENTS.length)];
 
                   return (
-                    <Stack key={id} direction="row" alignItems="center" spacing={1.25} sx={{ py: 1 }}>
+                    <Stack key={id} direction="row" alignItems="center" spacing={1.25} sx={{ py: 1.25 }}>
                       <Box
                         sx={{
                           width: 36,
@@ -194,16 +194,16 @@ export function CartDrawer() {
 
       {items.length > 0 && (
         <Box sx={footerSx}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
             <Typography sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>Total</Typography>
             <Typography sx={{ fontSize: '1.25rem', fontWeight: 700, color: 'primary.main' }}>
               CA${total.toFixed(2)}
             </Typography>
           </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem', display: 'block', lineHeight: 1.45 }}>
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
-          <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 1.25 }}>
+          <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
             <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} fullWidth>
               Clear
             </Button>
