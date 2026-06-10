@@ -5,7 +5,8 @@ export const validationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   PORT: Joi.number().default(5002),
-  FRONTEND_URL: Joi.string().default('http://localhost:3001'),
+  FRONTEND_URL: Joi.string().default('http://localhost:3000'),
+  TRUST_PROXY: Joi.string().optional(),
   COOKIE_SECURE: Joi.boolean().truthy('true').falsy('false').default(true),
   COOKIE_DOMAIN: Joi.string().optional(),
   DATABASE_HOST: Joi.string().default('localhost'),

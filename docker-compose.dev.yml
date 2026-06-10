@@ -71,7 +71,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
-      - FRONTEND_URL=http://localhost:3001,http://localhost:3002
+      - FRONTEND_URL=http://localhost:3000
       - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
       - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     volumes:
@@ -109,7 +109,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=5002
-      - FRONTEND_URL=http://localhost:3001,http://localhost:3002
+      - FRONTEND_URL=http://localhost:3000
       - COOKIE_SECURE=false
       - DATABASE_HOST=auth-postgres
       - DATABASE_PORT=5432

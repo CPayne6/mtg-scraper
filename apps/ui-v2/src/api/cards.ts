@@ -1,5 +1,11 @@
 import type { CardSearchResponse } from '@scoutlgs/shared';
 
+// TODO: migrate ui-v2 to GET /api/v1/cards/search and drop the legacy
+// /api/card/:cardName endpoint. The v1 endpoint returns a different shape
+// (ListingResult[] / SearchResponse) -- CartContext, ProductTile, and the
+// card.$name route would need to be reworked to consume it. Tracked separately
+// from the storefront-cart-checkout PR to keep scope contained.
+
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
 export class CardFetchError extends Error {

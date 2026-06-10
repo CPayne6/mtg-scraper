@@ -20,6 +20,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CardsController } from './cards/cards.controller';
 import { CardsService } from './cards/cards.service';
 import { CartModule } from './cart/cart.module';
+import { CheckoutModule } from './checkout/checkout.module';
 import { TokensController } from './tokens/tokens.controller';
 import { TokensService } from './tokens/tokens.service';
 import { ListsController } from './lists/lists.controller';
@@ -37,6 +38,7 @@ import { CardNameResolverService } from './shared/card-name-resolver.service';
     StoreModule,
     AuthModule,
     CartModule,
+    CheckoutModule,
   ],
   controllers: [CardsController, TokensController, ListsController],
   providers: [CardsService, TokensService, ListsService, CardNameResolverService],

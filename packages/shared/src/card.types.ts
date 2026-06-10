@@ -24,7 +24,8 @@ export interface Card {
   set: string;
   card_number: string;
   scryfall_id?: string;
-  // Numeric Shopify variant ID. Drives per-store cart permalinks.
+  // Numeric Shopify variant ID. Drives per-store cart permalinks
+  // (`https://{shop}/cart/{variant_id}:{qty}`) on POST /api/v1/checkout/build.
   variant_id?: string;
 }
 

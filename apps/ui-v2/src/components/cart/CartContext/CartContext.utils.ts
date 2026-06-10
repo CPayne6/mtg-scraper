@@ -21,3 +21,15 @@ export function cartVariantIds(items: CardWithStore[]): number[] {
   }
   return ids;
 }
+
+// Render-friendly name for a cart item: drops the "[Set Name]" suffix that
+// the legacy /api/card endpoint appends in card.service.ts (set is shown
+// separately as metadata, so duplicating it is noise) and surfaces variant
+// modifiers like Foil parenthetically. Extend as the extraction pipeline
+// starts capturing borderless / etched / surge / etc.
+export function formatCartItemName(card: CardWithStore): string {
+  const base = card.title.replace(/\s*\[[^\]]+\]\s*$/, '').trim();
+  const modifiers: string[] = [];
+  if (card.foil) modifiers.push('Foil');
+  return modifiers.length > 0 ? `${base} (${modifiers.join(', ')})` : base;
+}

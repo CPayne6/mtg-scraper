@@ -16,6 +16,7 @@ import { UserSession } from '../database/entities/user-session.entity';
 import { UserRole } from '../database/entities/user.entity';
 import { JwtService } from './jwt.service';
 import { TokenHashService } from './token-hash.service';
+import { extractClientIp } from './client-ip.util';
 
 export interface SessionResponse {
   authenticated: boolean;
@@ -355,26 +356,12 @@ export class AuthSessionService {
   }
 
   private hashIp(req: Request): string {
-    return this.tokenHashService.hash(this.extractIp(req));
+    return this.tokenHashService.hash(extractClientIp(req));
   }
 
   private hashUserAgent(req: Request): string | null {
     const userAgent = req.header('user-agent');
     return userAgent ? this.tokenHashService.hash(userAgent) : null;
-  }
-
-  private extractIp(req: Request): string {
-    const cfConnectingIp = req.header('cf-connecting-ip');
-    if (cfConnectingIp) {
-      return cfConnectingIp;
-    }
-
-    const forwardedFor = req.header('x-forwarded-for');
-    if (forwardedFor) {
-      return forwardedFor.split(',')[0].trim();
-    }
-
-    return req.ip || req.socket.remoteAddress || 'unknown';
   }
 
   private newOpaqueToken(): string {

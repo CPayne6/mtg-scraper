@@ -56,8 +56,7 @@ function makeVariant(id: number): CardVariant {
 describe('CartService', () => {
   let cartRepository: {
     findOne: ReturnType<typeof vi.fn>;
-    create: ReturnType<typeof vi.fn>;
-    save: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
   };
   let cardVariantRepository: {
     find: ReturnType<typeof vi.fn>;
@@ -67,13 +66,7 @@ describe('CartService', () => {
   beforeEach(() => {
     cartRepository = {
       findOne: vi.fn(),
-      create: vi.fn((data) => makeCart(data)),
-      save: vi.fn(async (cart) => ({
-        ...cart,
-        uuid: cart.uuid ?? '33333333-3333-3333-3333-333333333333',
-        createdAt: cart.createdAt ?? new Date('2026-01-01T00:00:00.000Z'),
-        updatedAt: new Date('2026-01-02T00:00:00.000Z'),
-      })),
+      upsert: vi.fn().mockResolvedValue({}),
     };
     cardVariantRepository = {
       find: vi.fn(),
@@ -82,22 +75,21 @@ describe('CartService', () => {
   });
 
   it('stores ordered, unique, existing variant ids for a principal', async () => {
-    cartRepository.findOne.mockResolvedValue(null);
+    cartRepository.findOne.mockResolvedValue(makeCart({ cardVariantIds: [1, 2] }));
     cardVariantRepository.find.mockResolvedValue([makeVariant(1), makeVariant(2)]);
 
     const result = await service.replaceCart(ANON_PRINCIPAL, [1, 1, 999, 2]);
 
-    expect(cartRepository.create).toHaveBeenCalledWith({
-      ownerPrincipalUuid: ANON_PRINCIPAL.principalUuid,
-      cardVariantIds: [],
-    });
-    expect(cartRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(cartRepository.upsert).toHaveBeenCalledWith(
+      {
+        ownerPrincipalUuid: ANON_PRINCIPAL.principalUuid,
         cardVariantIds: [1, 2],
-      }),
+      },
+      { conflictPaths: ['ownerPrincipalUuid'] },
     );
     expect(result.variantIds).toEqual([1, 2]);
     expect(result.items.map((item) => item.id)).toEqual([1, 2]);
+    expect(result.updatedAt).toEqual(new Date('2026-01-02T00:00:00.000Z'));
   });
 
   it('hydrates an existing cart without mutating identity state', async () => {
@@ -107,21 +99,30 @@ describe('CartService', () => {
 
     const result = await service.getCart(USER_PRINCIPAL);
 
-    expect(cartRepository.save).not.toHaveBeenCalled();
+    expect(cartRepository.upsert).not.toHaveBeenCalled();
     expect(result.variantIds).toEqual([1]);
   });
 
-  it('clears a cart without deleting its owner row', async () => {
-    cartRepository.findOne.mockResolvedValue(makeCart({ cardVariantIds: [1, 2] }));
+  it('clears a cart by updating the owner row to an empty card id array', async () => {
+    cartRepository.findOne.mockResolvedValue(
+      makeCart({
+        ownerPrincipalUuid: USER_PRINCIPAL.principalUuid,
+        cardVariantIds: [],
+        updatedAt: new Date('2026-01-03T00:00:00.000Z'),
+      }),
+    );
 
     const result = await service.clearCart(USER_PRINCIPAL);
 
-    expect(cartRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(cartRepository.upsert).toHaveBeenCalledWith(
+      {
+        ownerPrincipalUuid: USER_PRINCIPAL.principalUuid,
         cardVariantIds: [],
-      }),
+      },
+      { conflictPaths: ['ownerPrincipalUuid'] },
     );
     expect(result.items).toEqual([]);
     expect(result.variantIds).toEqual([]);
+    expect(result.updatedAt).toEqual(new Date('2026-01-03T00:00:00.000Z'));
   });
 });

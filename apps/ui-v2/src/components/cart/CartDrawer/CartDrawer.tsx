@@ -11,7 +11,8 @@ import { ShoppingCartOutlined } from '@mui/icons-material';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
-import { cartItemId, type CartItem, useCart } from '@/components/cart/CartContext';
+import { useNavigate } from '@tanstack/react-router';
+import { cartItemId, formatCartItemName, type CartItem, useCart } from '@/components/cart/CartContext';
 import {
   footerSx,
   headerSx,
@@ -25,9 +26,12 @@ import { ART_GRADIENTS, hashIndex } from './CartDrawer.utils';
 export function CartDrawer() {
   const { items, isOpen, close, remove, clear } = useCart();
   const { enqueueSnackbar } = useSnackbar();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  // Group display by displayName (`item.store`) but keep `store_key` for the
+  // payload to the API (that's what stores.name is in the DB).
   const byStore = useMemo(() => {
     const groups: Record<string, CartItem[]> = {};
     for (const item of items) {
@@ -38,33 +42,18 @@ export function CartDrawer() {
 
   const storeKeys = Object.keys(byStore);
   const total = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
-  const hasAnyLink = items.some((item) => item.link && item.link.trim().length > 0);
+  const hasAnyVariant = items.some((item) => item.variant_id);
 
-  const openAllStores = () => {
-    const opened = new Set<string>();
-    let openedCount = 0;
-
-    for (const store of storeKeys) {
-      const candidate = (byStore[store] ?? []).find((item) => item.link && item.link.trim().length > 0);
-      if (!candidate?.link || opened.has(candidate.link)) continue;
-
-      const win = window.open(candidate.link, '_blank', 'noopener,noreferrer');
-      if (win) {
-        opened.add(candidate.link);
-        openedCount += 1;
-      }
-    }
-
-    if (openedCount === 0) {
-      enqueueSnackbar('No store links available yet - try again once prices have loaded.', {
-        variant: 'warning',
-      });
+  const goToCheckout = () => {
+    if (!hasAnyVariant) {
+      enqueueSnackbar(
+        'No items with a known Shopify variant yet - try again once prices have loaded.',
+        { variant: 'warning' },
+      );
       return;
     }
-
-    enqueueSnackbar(`Opening ${openedCount} ${openedCount === 1 ? 'store' : 'stores'}...`, {
-      variant: 'success',
-    });
+    close();
+    navigate({ to: '/checkout' });
   };
 
   return (
@@ -154,7 +143,7 @@ export function CartDrawer() {
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {item.title}
+                          {formatCartItemName(item)}
                         </Typography>
                         <Typography
                           sx={{
@@ -222,11 +211,11 @@ export function CartDrawer() {
               variant="contained"
               color="primary"
               sx={{ flex: { xs: 'unset', sm: 1 }, whiteSpace: 'nowrap' }}
-              disabled={!hasAnyLink}
-              onClick={openAllStores}
+              disabled={!hasAnyVariant}
+              onClick={goToCheckout}
               fullWidth
             >
-              Open All Stores ({storeKeys.length})
+              Check out at {storeKeys.length} {storeKeys.length === 1 ? 'store' : 'stores'}
             </Button>
           </Stack>
         </Box>

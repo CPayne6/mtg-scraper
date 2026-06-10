@@ -285,7 +285,7 @@ describe('AuthSessionService', () => {
     expect(entityManager.transaction).not.toHaveBeenCalled();
     expect(anonymousSessionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        ipHash: 'hash:203.0.113.10',
+        ipHash: 'hash:198.51.100.25',
         userAgentHash: 'hash:Vitest',
       }),
     );
@@ -346,7 +346,7 @@ describe('AuthSessionService', () => {
 
     expect(transactionContext.manager.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO anonymous_creation_quotas'),
-      ['hash:203.0.113.20'],
+      ['hash:198.51.100.25'],
     );
     expect(transactionContext.principalRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -359,7 +359,7 @@ describe('AuthSessionService', () => {
       expect.objectContaining({
         principalId: 1,
         tokenHash: expect.stringMatching(/^hash:/),
-        ipHash: 'hash:203.0.113.20',
+        ipHash: 'hash:198.51.100.25',
         userAgentHash: 'hash:Vitest',
       }),
     );

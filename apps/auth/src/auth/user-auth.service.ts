@@ -18,6 +18,7 @@ import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { normalizeEmail } from './email.utils';
 import type { SessionResponse } from './auth-session.service';
+import { extractClientIp } from './client-ip.util';
 import { JwtService } from './jwt.service';
 import { PasswordHashService } from './password-hash.service';
 import { TokenHashService } from './token-hash.service';
@@ -330,26 +331,12 @@ export class UserAuthService {
   }
 
   private hashIp(req: Request): string {
-    return this.tokenHashService.hash(this.extractIp(req));
+    return this.tokenHashService.hash(extractClientIp(req));
   }
 
   private hashUserAgent(req: Request): string | null {
     const userAgent = req.header('user-agent');
     return userAgent ? this.tokenHashService.hash(userAgent) : null;
-  }
-
-  private extractIp(req: Request): string {
-    const cfConnectingIp = req.header('cf-connecting-ip');
-    if (cfConnectingIp) {
-      return cfConnectingIp;
-    }
-
-    const forwardedFor = req.header('x-forwarded-for');
-    if (forwardedFor) {
-      return forwardedFor.split(',')[0].trim();
-    }
-
-    return req.ip || req.socket.remoteAddress || 'unknown';
   }
 
   private newOpaqueToken(): string {
