@@ -37,8 +37,8 @@ export const headerSx = (isMobile: boolean): SxProps<Theme> => (theme) => ({
   alignItems: 'flex-start',
   justifyContent: 'space-between',
   px: 2.5,
-  pt: isMobile ? 1.25 : 2.5,
-  pb: 1.75,
+  pt: isMobile ? 1.5 : 2.5,
+  pb: 2.25,
   borderBottom: `1px solid ${theme.palette.divider}`,
   flexShrink: 0,
 });
@@ -48,8 +48,8 @@ export const storeHeaderSx: SxProps<Theme> = (theme) => ({
   justifyContent: 'space-between',
   alignItems: 'center',
   gap: 1,
-  mb: 1,
-  py: 0.75,
+  mb: 1.5,
+  py: 1,
   borderBottom: `1px dashed ${theme.palette.divider}`,
 });
 
@@ -57,7 +57,7 @@ export const footerSx: SxProps<Theme> = (theme) => ({
   borderTop: `1px solid ${theme.palette.divider}`,
   bgcolor: 'background.default',
   px: 2.5,
-  pt: 1.75,
-  pb: 'calc(18px + env(safe-area-inset-bottom))',
+  pt: 2,
+  pb: 'calc(20px + env(safe-area-inset-bottom))',
   flexShrink: 0,
 });
