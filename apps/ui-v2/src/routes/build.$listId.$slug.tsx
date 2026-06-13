@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -15,6 +15,8 @@ import { useListEditor } from '@/hooks/useListEditor';
 import { BuilderFilterBar } from '@/components/builder/BuilderFilterBar';
 import { SelectedCardPanel } from '@/components/builder/SelectedCardPanel';
 import { CardListPanel } from '@/components/builder/CardListPanel';
+import { sortCardListEntries } from '@/components/builder/CardListPanel/CardListPanel.utils';
+import type { SortBy } from '@/components/builder/SortByMenu';
 import { STORE_FACETS } from '@/data/sample';
 
 export const Route = createFileRoute('/build/$listId/$slug')({
@@ -52,6 +54,15 @@ function BuilderRoute() {
   );
 
   const { results } = useListPrices(uniqueNames);
+  const [sortBy, setSortBy] = useState<SortBy>('name');
+  const sortedEntries = useMemo(
+    () => sortCardListEntries(entries, sortBy, results),
+    [entries, sortBy, results],
+  );
+  const sortedNames = useMemo(
+    () => sortedEntries.map((entry) => entry.name),
+    [sortedEntries],
+  );
 
   // Persisted UI state
   const [selectedName, setSelectedName] = useLocalStorage<string | null>(
@@ -159,6 +170,20 @@ function BuilderRoute() {
     },
     [addToCart, enqueueSnackbar],
   );
+
+  const selectedIndex = selectedName ? sortedNames.indexOf(selectedName) : -1;
+  const selectedPosition =
+    selectedIndex >= 0 ? `${selectedIndex + 1} of ${sortedNames.length}` : undefined;
+
+  const handleSelectPrevious = useCallback(() => {
+    if (selectedIndex <= 0) return;
+    setSelectedName(sortedNames[selectedIndex - 1]);
+  }, [selectedIndex, setSelectedName, sortedNames]);
+
+  const handleSelectNext = useCallback(() => {
+    if (selectedIndex < 0 || selectedIndex >= sortedNames.length - 1) return;
+    setSelectedName(sortedNames[selectedIndex + 1]);
+  }, [selectedIndex, setSelectedName, sortedNames]);
 
   // Undo a specific entry and surface any block warning.
   const performUndo = useCallback(
@@ -317,12 +342,19 @@ function BuilderRoute() {
             conditions={conditions}
             inCartByOffer={inCartByOffer}
             onAddOffer={handleAddOffer}
+            positionLabel={selectedPosition}
+            canSelectPrevious={selectedIndex > 0}
+            canSelectNext={selectedIndex >= 0 && selectedIndex < sortedNames.length - 1}
+            onSelectPrevious={handleSelectPrevious}
+            onSelectNext={handleSelectNext}
           />
         </Box>
         <CardListPanel
           entries={entries}
           selectedName={selectedName}
           onSelect={setSelectedName}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
           results={results}
           inCartByName={inCartByName}
           history={history}

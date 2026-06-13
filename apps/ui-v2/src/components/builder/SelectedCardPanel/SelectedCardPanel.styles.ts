@@ -70,6 +70,33 @@ export const metaRowSx: SxProps<Theme> = {
   gap: '6px',
 };
 
+export const cardNavSx: SxProps<Theme> = {
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '8px',
+  mt: '12px',
+};
+
+export const cardNavButtonSx: SxProps<Theme> = {
+  borderRadius: '8px',
+  minHeight: 34,
+  px: 1.35,
+  fontSize: '12px',
+  fontWeight: 700,
+  textTransform: 'none',
+  whiteSpace: 'nowrap',
+};
+
+export const cardNavPositionSx: SxProps<Theme> = {
+  color: 'text.secondary',
+  fontSize: '12px',
+  fontWeight: 700,
+  fontVariantNumeric: 'tabular-nums',
+  minWidth: { xs: '100%', sm: 'auto' },
+  order: { xs: -1, sm: 0 },
+};
+
 export const sectionHeaderSx: SxProps<Theme> = {
   display: 'flex',
   justifyContent: 'space-between',

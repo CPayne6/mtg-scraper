@@ -53,7 +53,7 @@ function HomeRoute() {
     const id = await save(listName, cards);
     if (!id) return;
     navigate({
-      to: '/list/$listId/$slug',
+      to: '/build/$listId/$slug',
       params: { listId: id, slug: slugifyName(listName) },
     });
   };
@@ -206,7 +206,7 @@ function HomeRoute() {
             >
               <Tip>Paste a Commander list — Arena, MTGO, or plain. We'll figure out the format.</Tip>
               <Button variant="contained" size="large" color="primary" onClick={handleScoutDeck}>
-                Scout Deck
+                Continue
               </Button>
             </Box>
           </>

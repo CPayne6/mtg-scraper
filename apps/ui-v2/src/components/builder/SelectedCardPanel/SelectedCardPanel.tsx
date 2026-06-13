@@ -4,6 +4,8 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
+import { KeyboardArrowLeft, KeyboardArrowRight } from '@mui/icons-material';
 import type { CardWithStore } from '@scoutlgs/shared';
 import { StoreOfferTile } from '../StoreOfferTile';
 import type { SelectedCardPanelProps } from './SelectedCardPanel.types';
@@ -14,6 +16,9 @@ import {
 } from './SelectedCardPanel.utils';
 import {
   cardNameSx,
+  cardNavButtonSx,
+  cardNavPositionSx,
+  cardNavSx,
   cartStatusBadgeSx,
   cartStatusDotSx,
   emptyListPaperSx,
@@ -33,6 +38,11 @@ export function SelectedCardPanel({
   conditions,
   inCartByOffer,
   onAddOffer,
+  positionLabel,
+  canSelectPrevious = false,
+  canSelectNext = false,
+  onSelectPrevious,
+  onSelectNext,
 }: SelectedCardPanelProps) {
   const [hoveredOfferKey, setHoveredOfferKey] = useState<string | null>(null);
 
@@ -106,6 +116,38 @@ export function SelectedCardPanel({
               {storeCount} {storeCount === 1 ? 'store' : 'stores'} scouted
             </Box>
           </Box>
+
+          {positionLabel && (
+            <Box sx={cardNavSx}>
+              <Button
+                type="button"
+                variant="outlined"
+                color="primary"
+                size="small"
+                startIcon={<KeyboardArrowLeft sx={{ fontSize: 17 }} />}
+                disabled={!canSelectPrevious}
+                onClick={onSelectPrevious}
+                sx={cardNavButtonSx}
+              >
+                Previous Card
+              </Button>
+              <Box component="span" sx={cardNavPositionSx}>
+                {positionLabel}
+              </Box>
+              <Button
+                type="button"
+                variant="outlined"
+                color="primary"
+                size="small"
+                endIcon={<KeyboardArrowRight sx={{ fontSize: 17 }} />}
+                disabled={!canSelectNext}
+                onClick={onSelectNext}
+                sx={cardNavButtonSx}
+              >
+                Next Card
+              </Button>
+            </Box>
+          )}
         </Box>
       </Box>
 
