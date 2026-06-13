@@ -29,6 +29,7 @@ const DEFAULT_OPTIMIZATION_MINIMUM_CONDITION = Condition.LP;
 const MAX_OPTIMIZATION_LIST_ENTRIES = 150;
 const MAX_OPTIMIZATION_CANDIDATES_PER_CARD = 40;
 const MAX_OPTIMIZATION_PREFERRED_SET_CANDIDATES_PER_CARD = 20;
+const MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD = 80;
 
 export interface ListSummary {
   id: string;
@@ -569,6 +570,27 @@ export class ListsService {
           AND ($2::text[] IS NULL OR s.name = ANY($2))
           AND ($3::text IS NULL OR ps.code = $3)
           AND (v.quantity IS NULL OR v.quantity > 0)
+      ),
+      bounded_candidates AS (
+        SELECT *
+        FROM ranked_candidates
+        WHERE price_rank <= $6
+          OR (
+            requested_set_code IS NOT NULL
+            AND set_price_rank <= $7
+          )
+      ),
+      final_candidates AS (
+        SELECT
+          *,
+          ROW_NUMBER() OVER (
+            PARTITION BY card_name_id
+            ORDER BY
+              CASE WHEN requested_set_code IS NOT NULL THEN 0 ELSE 1 END,
+              price ASC,
+              variant_id ASC
+          ) AS final_rank
+        FROM bounded_candidates
       )
       SELECT
         card_name_id,
@@ -589,12 +611,8 @@ export class ListsService {
         image_uri,
         set_code,
         set_name
-      FROM ranked_candidates
-      WHERE price_rank <= $6
-        OR (
-          requested_set_code IS NOT NULL
-          AND set_price_rank <= $7
-        )
+      FROM final_candidates
+      WHERE final_rank <= $8
       ORDER BY card_name_id ASC, price ASC, variant_id ASC
       `,
       [
@@ -605,6 +623,7 @@ export class ListsService {
         preferredSetCodes,
         MAX_OPTIMIZATION_CANDIDATES_PER_CARD,
         MAX_OPTIMIZATION_PREFERRED_SET_CANDIDATES_PER_CARD,
+        MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD,
       ],
     );
   }

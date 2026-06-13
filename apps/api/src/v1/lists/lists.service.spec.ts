@@ -516,6 +516,7 @@ describe('ListsService', () => {
       const candidateParams = entityManager.query.mock.calls[1][1];
       expect(candidateSql).toContain('ROW_NUMBER() OVER');
       expect(candidateSql).toContain('price_rank <= $6');
+      expect(candidateSql).toContain('final_rank <= $8');
       expect(candidateParams).toEqual([
         [10, 20],
         null,
@@ -524,6 +525,7 @@ describe('ListsService', () => {
         ['lea'],
         40,
         20,
+        80,
       ]);
     });
   });
