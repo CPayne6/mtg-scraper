@@ -137,6 +137,33 @@ describe('ListsService', () => {
       ]);
     });
 
+    it('should preserve preferred set codes from card input', async () => {
+      cardNameResolver.resolveCardNames.mockResolvedValue({
+        resolved: [
+          {
+            input: 'Lightning Bolt (LEA) 161',
+            cardNameId: 1,
+            resolvedName: 'Lightning Bolt',
+            fuzzy: false,
+          },
+        ],
+        unresolved: [],
+      });
+
+      await service.createList(
+        { name: 'Alpha Bolt', cards: ['Lightning Bolt (LEA) 161'] },
+        OWNER_COOKIE,
+      );
+
+      expect(cardListEntryRepo.save).toHaveBeenCalledWith([
+        expect.objectContaining({
+          cardNameId: 1,
+          position: 1,
+          preferredSetCode: 'lea',
+        }),
+      ]);
+    });
+
     it('should include fuzzy match warnings', async () => {
       cardNameResolver.resolveCardNames.mockResolvedValue({
         resolved: [
@@ -405,6 +432,99 @@ describe('ListsService', () => {
         expect(params[2]).toEqual(['NM', 'LP']); // conditions
         expect(params[3]).toBe('lea'); // setCode
       }
+    });
+  });
+
+  describe('getOptimizedListOptions', () => {
+    it('should query bounded candidate rows and return ranked optimizer options', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+
+      entityManager.query
+        .mockResolvedValueOnce([
+          {
+            position: '1',
+            card_name_id: '10',
+            card_name: 'Sol Ring',
+            preferred_set_code: null,
+          },
+          {
+            position: '2',
+            card_name_id: '20',
+            card_name: 'Counterspell',
+            preferred_set_code: 'lea',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            card_name_id: '10',
+            variant_id: '100',
+            platform_variant_id: '900',
+            price: '2.00',
+            foil: false,
+            quantity: 4,
+            condition_code: 'nm',
+            currency: 'CAD',
+            image_url: null,
+            store_slug: 'store-a',
+            store_display_name: 'Store A',
+            store_base_url: 'https://store-a.test',
+            product_handle: 'sol-ring',
+            scryfall_id: 'sol',
+            collector_number: '1',
+            image_uri: null,
+            set_code: 'cmm',
+            set_name: 'Commander Masters',
+          },
+          {
+            card_name_id: '20',
+            variant_id: '200',
+            platform_variant_id: '901',
+            price: '1.00',
+            foil: false,
+            quantity: 2,
+            condition_code: 'lp',
+            currency: 'CAD',
+            image_url: null,
+            store_slug: 'store-a',
+            store_display_name: 'Store A',
+            store_base_url: 'https://store-a.test',
+            product_handle: 'counterspell',
+            scryfall_id: 'counter',
+            collector_number: '55',
+            image_uri: null,
+            set_code: 'lea',
+            set_name: 'Limited Edition Alpha',
+          },
+        ]);
+
+      const result = await service.getOptimizedListOptions(LIST_UUID, OWNER_COOKIE, {
+        maxOptions: 2,
+        minimumCondition: 'lp',
+      });
+
+      expect(result.id).toBe(LIST_UUID);
+      expect(result.options).toHaveLength(1);
+      expect(result.options[0].status).toBe('complete');
+      expect(result.options[0].stores).toHaveLength(1);
+      expect(result.options[0].totals.estimatedTotal).toBe(6);
+
+      expect(entityManager.query).toHaveBeenCalledTimes(2);
+      expect(entityManager.query.mock.calls[0][0]).toContain('LIMIT $2');
+      expect(entityManager.query.mock.calls[0][1]).toEqual([1, 150]);
+
+      const candidateSql = entityManager.query.mock.calls[1][0] as string;
+      const candidateParams = entityManager.query.mock.calls[1][1];
+      expect(candidateSql).toContain('ROW_NUMBER() OVER');
+      expect(candidateSql).toContain('price_rank <= $6');
+      expect(candidateParams).toEqual([
+        [10, 20],
+        null,
+        null,
+        [20],
+        ['lea'],
+        40,
+        20,
+      ]);
     });
   });
 

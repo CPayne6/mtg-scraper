@@ -1,6 +1,6 @@
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import { describe, expect, it } from 'vitest';
-import { optimizeCart } from './cart-optimizer';
+import { optimizeCart, optimizeCartOptions } from './cart-optimizer';
 import type {
   CartOptimizationCandidate,
   CartOptimizationWantedCard,
@@ -210,5 +210,97 @@ describe('optimizeCart', () => {
       reason: 'capacity-exhausted',
     });
     expect(result.totals.estimatedTotal).toBe(4);
+  });
+
+  it('can return multiple ranked cart options', () => {
+    const results = optimizeCartOptions({
+      wantedCards: [wanted('Sol Ring'), wanted('Counterspell')],
+      candidates: [
+        candidate('Sol Ring', { price: 2, store: 'Store A', store_key: 'store-a' }),
+        candidate('Sol Ring', { price: 2.25, store: 'Store B', store_key: 'store-b' }),
+        candidate('Counterspell', { price: 3.5, store: 'Store A', store_key: 'store-a' }),
+        candidate('Counterspell', { price: 1, store: 'Store B', store_key: 'store-b' }),
+      ],
+      options: {
+        maxResults: 2,
+      },
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results[0].selectedOffers.map((item) => item.storeKey)).toEqual([
+      'store-b',
+      'store-b',
+    ]);
+    expect(results[0].totals.estimatedTotal).toBe(6.25);
+    expect(results[1].selectedOffers.map((item) => item.storeKey)).toEqual([
+      'store-a',
+      'store-a',
+    ]);
+    expect(results[1].totals.estimatedTotal).toBe(8.5);
+  });
+
+  it('supports a required set preference for a wanted card', () => {
+    const result = optimizeCart({
+      wantedCards: [
+        {
+          ...wanted('Lightning Bolt', Condition.LP),
+          preferredSetCode: 'lea',
+          setPreference: 'required',
+        },
+      ],
+      candidates: [
+        candidate('Lightning Bolt', {
+          price: 1,
+          condition: Condition.NM,
+          set: 'Magic 2010',
+        }),
+        {
+          ...candidate('Lightning Bolt', {
+            price: 3,
+            condition: Condition.LP,
+            set: 'Limited Edition Alpha',
+          }),
+          setCode: 'lea',
+          setName: 'Limited Edition Alpha',
+        },
+      ],
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.selectedOffers[0]).toMatchObject({
+      price: 3,
+      setCode: 'lea',
+      setName: 'Limited Edition Alpha',
+      preferredSetCode: 'lea',
+      meetsSetPreference: true,
+    });
+  });
+
+  it('shares finite offer quantity across duplicate wanted card entries', () => {
+    const first = candidate('Island 1', {
+      id: 99,
+      price: 1,
+      title: 'Island',
+      link: 'https://example.com/store-a/island',
+    });
+    first.availableQuantity = 1;
+
+    const second = {
+      ...first,
+      wantedCardKey: 'Island 2',
+    };
+
+    const result = optimizeCart({
+      wantedCards: [
+        { ...wanted('Island 1'), name: 'Island' },
+        { ...wanted('Island 2'), name: 'Island' },
+      ],
+      candidates: [first, second],
+    });
+
+    expect(result.status).toBe('partial');
+    expect(result.selectedOffers).toHaveLength(1);
+    expect(result.missingCards).toHaveLength(1);
+    expect(result.missingCards[0].reason).toBe('capacity-exhausted');
   });
 });

@@ -5,6 +5,7 @@ import {
   Put,
   Delete,
   Param,
+  Query,
   Body,
   HttpCode,
   HttpStatus,
@@ -21,6 +22,7 @@ import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
 import { UpdateNameDto } from './dto/update-name.dto';
+import { OptimizeListQueryDto } from './dto/optimize-list-query.dto';
 
 @Controller('lists')
 export class ListsController {
@@ -55,6 +57,21 @@ export class ListsController {
     return this.listsService.getListWithPrices(
       listId,
       principal?.principalUuid,
+    );
+  }
+
+  @Get(':listId/optimizations')
+  @UseGuards(OptionalPrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async getOptimizedListOptions(
+    @Param('listId') listId: string,
+    @Query() query: OptimizeListQueryDto,
+    @CurrentPrincipal() principal?: PrincipalContext,
+  ) {
+    return this.listsService.getOptimizedListOptions(
+      listId,
+      principal?.principalUuid,
+      query,
     );
   }
 

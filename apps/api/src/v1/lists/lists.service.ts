@@ -7,12 +7,28 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import { CardList, CardListEntry } from '@scoutlgs/core';
+import {
+  CardList,
+  CardListEntry,
+  normalizeCondition,
+  optimizeCartOptions,
+  type CartOptimizationCandidate,
+  type CartOptimizationResult,
+  type CartOptimizationWantedCard,
+  type ConditionFlexibilityMode,
+} from '@scoutlgs/core';
+import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 
 const MAX_LISTS_PER_OWNER = 5;
+const DEFAULT_OPTIMIZATION_OPTIONS = 3;
+const MAX_OPTIMIZATION_OPTIONS = 5;
+const DEFAULT_OPTIMIZATION_MINIMUM_CONDITION = Condition.LP;
+const MAX_OPTIMIZATION_LIST_ENTRIES = 150;
+const MAX_OPTIMIZATION_CANDIDATES_PER_CARD = 40;
+const MAX_OPTIMIZATION_PREFERRED_SET_CANDIDATES_PER_CARD = 20;
 
 export interface ListSummary {
   id: string;
@@ -73,6 +89,49 @@ export interface CreateListResponse {
   warnings: string[];
 }
 
+export interface OptimizeListOptions {
+  maxOptions?: number;
+  minimumCondition?: string;
+  conditionFlexibility?: ConditionFlexibilityMode;
+  maxDowngradeSteps?: number;
+  downgradePenaltyPerStep?: number;
+}
+
+export interface ListOptimizationResponse {
+  id: string;
+  name: string;
+  generatedAt: number;
+  options: CartOptimizationResult[];
+}
+
+interface OptimizationEntryRow {
+  position: string;
+  card_name_id: string;
+  card_name: string;
+  preferred_set_code: string | null;
+}
+
+interface OptimizationCandidateRow {
+  card_name_id: string;
+  variant_id: string;
+  platform_variant_id: string | null;
+  price: string;
+  foil: boolean;
+  quantity: string | number | null;
+  condition_code: string;
+  currency: string;
+  image_url: string | null;
+  store_slug: string;
+  store_display_name: string;
+  store_base_url: string;
+  product_handle: string | null;
+  scryfall_id: string | null;
+  collector_number: string | null;
+  image_uri: string | null;
+  set_code: string | null;
+  set_name: string | null;
+}
+
 @Injectable()
 export class ListsService {
   private readonly logger = new Logger(ListsService.name);
@@ -126,6 +185,7 @@ export class ListsService {
           cardListId: savedList.id,
           cardNameId: r.cardNameId,
           position: index + 1,
+          preferredSetCode: this.parsePreferredSetCode(r.input),
         }),
       );
       await this.cardListEntryRepository.save(entries);
@@ -261,6 +321,63 @@ export class ListsService {
     };
   }
 
+  async getOptimizedListOptions(
+    listUuid: string,
+    principalUuid: string | undefined,
+    options: OptimizeListOptions = {},
+  ): Promise<ListOptimizationResponse> {
+    const list = await this.findVisibleList(listUuid, principalUuid);
+    const storeFilter = this.parseCsvFilter(list.filterStores);
+    const setFilter = list.filterSetCode ?? null;
+    const minimumCondition = this.resolveMinimumCondition(
+      options.minimumCondition,
+      list.filterConditions,
+    );
+    const maxOptions = this.normalizeMaxOptions(options.maxOptions);
+
+    const entries = await this.getOptimizationEntries(list.id);
+    if (entries.length === 0) {
+      return {
+        id: list.uuid,
+        name: list.name,
+        generatedAt: Date.now(),
+        options: [],
+      };
+    }
+
+    const cardNameIds = [...new Set(entries.map((entry) => parseInt(entry.card_name_id, 10)))];
+    const candidateRows = await this.getOptimizationCandidates(
+      cardNameIds,
+      storeFilter,
+      setFilter,
+      this.getPreferredSetPairs(entries),
+    );
+    const candidatesByCardNameId = this.groupCandidatesByCardNameId(candidateRows);
+    const wantedCards = this.mapOptimizationWantedCards(entries, minimumCondition);
+    const candidates = this.mapOptimizationCandidates(entries, candidatesByCardNameId);
+
+    return {
+      id: list.uuid,
+      name: list.name,
+      generatedAt: Date.now(),
+      options: optimizeCartOptions({
+        wantedCards,
+        candidates,
+        options: {
+          defaultMinimumCondition: minimumCondition,
+          defaultShippingCost: 3,
+          maxResults: maxOptions,
+          maxCandidatesPerWantedCard: MAX_OPTIMIZATION_CANDIDATES_PER_CARD,
+          conditionFlexibility: {
+            mode: options.conditionFlexibility ?? 'strict',
+            maxDowngradeSteps: options.maxDowngradeSteps,
+            downgradePenaltyPerStep: options.downgradePenaltyPerStep,
+          },
+        },
+      }),
+    };
+  }
+
   async updateFilters(
     listUuid: string,
     ownerPrincipalUuid: string,
@@ -305,6 +422,7 @@ export class ListsService {
           cardListId: list.id,
           cardNameId: r.cardNameId,
           position: index + 1,
+          preferredSetCode: this.parsePreferredSetCode(r.input),
         }),
       );
       await this.cardListEntryRepository.save(entries);
@@ -353,6 +471,245 @@ export class ListsService {
     }
 
     return list;
+  }
+
+  private async findVisibleList(
+    listUuid: string,
+    principalUuid?: string,
+  ): Promise<CardList> {
+    const list = await this.cardListRepository.findOne({
+      where: { uuid: listUuid },
+    });
+
+    if (!list || list.expiresAt < new Date()) {
+      throw new NotFoundException('List not found');
+    }
+
+    if (list.visibility === 'private' && list.ownerPrincipalUuid !== principalUuid) {
+      throw new NotFoundException('List not found');
+    }
+
+    return list;
+  }
+
+  private async getOptimizationEntries(listId: number): Promise<OptimizationEntryRow[]> {
+    return this.entityManager.query(
+      `
+      SELECT
+        e.position,
+        e.card_name_id,
+        cn.name AS card_name,
+        e.preferred_set_code
+      FROM card_list_entries e
+      JOIN card_names cn ON cn.id = e.card_name_id
+      WHERE e.card_list_id = $1
+      ORDER BY e.position ASC
+      LIMIT $2
+      `,
+      [listId, MAX_OPTIMIZATION_LIST_ENTRIES],
+    );
+  }
+
+  private async getOptimizationCandidates(
+    cardNameIds: number[],
+    stores: string[] | null,
+    setCode: string | null,
+    preferredSetPairs: Array<{ cardNameId: number; setCode: string }>,
+  ): Promise<OptimizationCandidateRow[]> {
+    if (cardNameIds.length === 0) return [];
+    const preferredCardNameIds = preferredSetPairs.map((pair) => pair.cardNameId);
+    const preferredSetCodes = preferredSetPairs.map((pair) => pair.setCode);
+
+    return this.entityManager.query(
+      `
+      WITH preferred_sets AS (
+        SELECT DISTINCT card_name_id, set_code
+        FROM unnest($4::int[], $5::text[]) AS preferred(card_name_id, set_code)
+      ),
+      ranked_candidates AS (
+        SELECT
+          l.card_name_id,
+          v.id AS variant_id,
+          v.platform_variant_id,
+          v.price,
+          v.foil,
+          v.quantity,
+          c.code AS condition_code,
+          l.currency,
+          l.image_url,
+          s.name AS store_slug,
+          s.display_name AS store_display_name,
+          s.base_url AS store_base_url,
+          pu.handle AS product_handle,
+          p.scryfall_id,
+          p.collector_number,
+          p.image_uri,
+          ps.code AS set_code,
+          ps.name AS set_name,
+          preferred_sets.set_code AS requested_set_code,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id
+            ORDER BY v.price ASC, v.id ASC
+          ) AS price_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, ps.code
+            ORDER BY v.price ASC, v.id ASC
+          ) AS set_price_rank
+        FROM card_listings l
+        JOIN card_variants v ON v.card_listing_id = l.id
+        JOIN stores s ON s.id = l.store_id
+        JOIN card_conditions c ON c.id = v.condition_id
+        LEFT JOIN product_urls pu ON pu.id = l.product_url_id
+        LEFT JOIN card_printings p ON p.id = l.card_printing_id
+        LEFT JOIN sets ps ON ps.id = p.set_id
+        LEFT JOIN preferred_sets
+          ON preferred_sets.card_name_id = l.card_name_id
+          AND preferred_sets.set_code = ps.code
+        WHERE l.card_name_id = ANY($1::int[])
+          AND ($2::text[] IS NULL OR s.name = ANY($2))
+          AND ($3::text IS NULL OR ps.code = $3)
+          AND (v.quantity IS NULL OR v.quantity > 0)
+      )
+      SELECT
+        card_name_id,
+        variant_id,
+        platform_variant_id,
+        price,
+        foil,
+        quantity,
+        condition_code,
+        currency,
+        image_url,
+        store_slug,
+        store_display_name,
+        store_base_url,
+        product_handle,
+        scryfall_id,
+        collector_number,
+        image_uri,
+        set_code,
+        set_name
+      FROM ranked_candidates
+      WHERE price_rank <= $6
+        OR (
+          requested_set_code IS NOT NULL
+          AND set_price_rank <= $7
+        )
+      ORDER BY card_name_id ASC, price ASC, variant_id ASC
+      `,
+      [
+        cardNameIds,
+        stores,
+        setCode,
+        preferredCardNameIds,
+        preferredSetCodes,
+        MAX_OPTIMIZATION_CANDIDATES_PER_CARD,
+        MAX_OPTIMIZATION_PREFERRED_SET_CANDIDATES_PER_CARD,
+      ],
+    );
+  }
+
+  private groupCandidatesByCardNameId(
+    rows: OptimizationCandidateRow[],
+  ): Map<number, OptimizationCandidateRow[]> {
+    const grouped = new Map<number, OptimizationCandidateRow[]>();
+    for (const row of rows) {
+      const cardNameId = parseInt(row.card_name_id, 10);
+      const existing = grouped.get(cardNameId) ?? [];
+      existing.push(row);
+      grouped.set(cardNameId, existing);
+    }
+    return grouped;
+  }
+
+  private getPreferredSetPairs(
+    entries: OptimizationEntryRow[],
+  ): Array<{ cardNameId: number; setCode: string }> {
+    const seen = new Set<string>();
+    const pairs: Array<{ cardNameId: number; setCode: string }> = [];
+
+    for (const entry of entries) {
+      if (!entry.preferred_set_code) continue;
+      const cardNameId = parseInt(entry.card_name_id, 10);
+      const setCode = entry.preferred_set_code.toLowerCase();
+      const key = `${cardNameId}|${setCode}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push({ cardNameId, setCode });
+    }
+
+    return pairs;
+  }
+
+  private mapOptimizationWantedCards(
+    entries: OptimizationEntryRow[],
+    minimumCondition: Condition,
+  ): CartOptimizationWantedCard[] {
+    return entries.map((entry) => ({
+      key: entry.position,
+      name: entry.card_name,
+      minimumCondition,
+      preferredSetCode: entry.preferred_set_code ?? undefined,
+      setPreference: entry.preferred_set_code ? 'required' : 'any',
+    }));
+  }
+
+  private mapOptimizationCandidates(
+    entries: OptimizationEntryRow[],
+    candidatesByCardNameId: Map<number, OptimizationCandidateRow[]>,
+  ): CartOptimizationCandidate[] {
+    const candidates: CartOptimizationCandidate[] = [];
+
+    for (const entry of entries) {
+      const cardNameId = parseInt(entry.card_name_id, 10);
+      const rows = candidatesByCardNameId.get(cardNameId) ?? [];
+      for (const row of rows) {
+        candidates.push({
+          wantedCardKey: entry.position,
+          offer: this.mapOptimizationCandidateOffer(row, entry.card_name),
+          availableQuantity: this.parseAvailableQuantity(row.quantity),
+          setCode: row.set_code ?? undefined,
+          setName: row.set_name ?? undefined,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  private mapOptimizationCandidateOffer(
+    row: OptimizationCandidateRow,
+    cardName: string,
+  ): CardWithStore {
+    const setName = row.set_name ?? '';
+    const productLink = row.product_handle
+      ? `${row.store_base_url}/products/${row.product_handle}`
+      : row.store_base_url;
+
+    return {
+      id: parseInt(row.variant_id, 10),
+      price: parseFloat(row.price),
+      condition: normalizeCondition(row.condition_code),
+      foil: row.foil,
+      image: row.image_url ?? row.image_uri ?? '',
+      title: `${cardName}${setName ? ` [${setName}]` : ''}`,
+      currency: row.currency,
+      link: productLink,
+      set: setName,
+      card_number: row.collector_number ?? '',
+      scryfall_id: row.scryfall_id ?? undefined,
+      variant_id: row.platform_variant_id ?? undefined,
+      store: row.store_display_name,
+      store_key: row.store_slug,
+    };
+  }
+
+  private parseAvailableQuantity(
+    quantity: string | number | null,
+  ): number | undefined {
+    if (quantity == null) return undefined;
+    const parsed = Number(quantity);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
 
   private async getCheapestVariants(
@@ -462,5 +819,62 @@ export class ListsService {
     const d = new Date();
     d.setDate(d.getDate() + 30);
     return d;
+  }
+
+  private parseCsvFilter(value?: string | null): string[] | null {
+    const parsed = value
+      ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
+      : [];
+    return parsed.length > 0 ? parsed : null;
+  }
+
+  private resolveMinimumCondition(
+    requestedMinimumCondition: string | undefined,
+    filterConditions: string | undefined,
+  ): Condition {
+    if (requestedMinimumCondition) {
+      return normalizeCondition(requestedMinimumCondition);
+    }
+
+    const parsedConditions = this.parseCsvFilter(filterConditions);
+    if (!parsedConditions) return DEFAULT_OPTIMIZATION_MINIMUM_CONDITION;
+
+    return parsedConditions
+      .map((condition) => normalizeCondition(condition))
+      .filter((condition) => condition !== Condition.UNKNOWN)
+      .sort((a, b) => this.conditionRank(a) - this.conditionRank(b))[0]
+      ?? DEFAULT_OPTIMIZATION_MINIMUM_CONDITION;
+  }
+
+  private conditionRank(condition: Condition): number {
+    switch (condition) {
+      case Condition.NM:
+        return 5;
+      case Condition.LP:
+        return 4;
+      case Condition.MP:
+        return 3;
+      case Condition.HP:
+        return 2;
+      case Condition.DMG:
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  private normalizeMaxOptions(maxOptions: number | undefined): number {
+    if (maxOptions == null || !Number.isFinite(maxOptions)) {
+      return DEFAULT_OPTIMIZATION_OPTIONS;
+    }
+    return Math.min(
+      MAX_OPTIMIZATION_OPTIONS,
+      Math.max(1, Math.floor(maxOptions)),
+    );
+  }
+
+  private parsePreferredSetCode(input: string): string | undefined {
+    const match = /(?:\(|\[)\s*([a-zA-Z0-9]{2,10})\s*(?:\)|\])/.exec(input);
+    return match?.[1]?.toLowerCase();
   }
 }

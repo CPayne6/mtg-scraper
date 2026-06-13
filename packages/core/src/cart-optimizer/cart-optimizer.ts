@@ -8,11 +8,13 @@ import type {
   MissingWantedCard,
   OptimizeCartInput,
   SelectedCartOffer,
+  SetPreferenceMode,
   StoreCartPlan,
 } from './cart-optimizer.types';
 
 const DEFAULT_SHIPPING_COST = 3;
 const DEFAULT_MINIMUM_CONDITION = Condition.DMG;
+const DEFAULT_MAX_RESULTS = 1;
 const MISSING_CARD_SEARCH_PENALTY = 1_000_000_000_000;
 
 const CONDITION_RANK: Record<Condition, number> = {
@@ -45,6 +47,12 @@ interface CandidateEvaluation {
   meetsMinimumCondition: boolean;
   conditionDowngradeSteps: number;
   conditionPenalty: number;
+  setCode?: string;
+  setName?: string;
+  preferredSetCode?: string;
+  setPreference: SetPreferenceMode;
+  meetsSetPreference: boolean;
+  setPreferencePenalty: number;
   effectiveCost: number;
 }
 
@@ -52,6 +60,7 @@ interface CandidateGroup {
   wanted: ExpandedWantedCard;
   candidates: CandidateEvaluation[];
   rejectedBelowMinimum: CandidateEvaluation[];
+  rejectedSetMismatch: CandidateEvaluation[];
   invalidCandidates: number;
 }
 
@@ -70,12 +79,29 @@ interface SearchState {
   usedCandidateCounts: Map<string, number>;
 }
 
+interface SearchResult {
+  cost: number;
+  selected: SearchSelection[];
+  key: string;
+}
+
 export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
+  return optimizeCartOptions({
+    ...input,
+    options: {
+      ...input.options,
+      maxResults: 1,
+    },
+  })[0] ?? buildResult([], input.options ?? {});
+}
+
+export function optimizeCartOptions(input: OptimizeCartInput): CartOptimizationResult[] {
   const options = input.options ?? {};
+  const maxResults = normalizeMaxResults(options.maxResults);
   const groups = buildCandidateGroups(input.wantedCards, input.candidates, options);
 
   if (groups.length === 0) {
-    return buildResult([], options);
+    return [buildResult([], options)];
   }
 
   groups.sort((a, b) => {
@@ -85,19 +111,20 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
   });
 
   const suffixLowerBounds = buildSuffixLowerBounds(groups);
-  let bestCost = Number.POSITIVE_INFINITY;
-  let bestSelected: SearchSelection[] = [];
+  const bestResults: SearchResult[] = [];
+  const seenResultKeys = new Set<string>();
 
   const search = (state: SearchState): void => {
     if (state.groupIndex === groups.length) {
-      if (state.cost < bestCost) {
-        bestCost = state.cost;
-        bestSelected = [...state.selected];
-      }
+      addSearchResult(bestResults, seenResultKeys, {
+        cost: state.cost,
+        selected: [...state.selected],
+        key: searchResultKey(state.selected),
+      }, maxResults);
       return;
     }
 
-    if (state.cost + suffixLowerBounds[state.groupIndex] >= bestCost) {
+    if (cannotBeatCurrentResults(state.cost + suffixLowerBounds[state.groupIndex], bestResults, maxResults)) {
       return;
     }
 
@@ -113,7 +140,7 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
         : shippingCostForStore(candidate.storeKey, options);
       const nextCost = state.cost + candidate.effectiveCost + shippingDelta;
 
-      if (nextCost + suffixLowerBounds[state.groupIndex + 1] >= bestCost) {
+      if (cannotBeatCurrentResults(nextCost + suffixLowerBounds[state.groupIndex + 1], bestResults, maxResults)) {
         continue;
       }
 
@@ -133,7 +160,7 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
     }
 
     const missingCost = state.cost + MISSING_CARD_SEARCH_PENALTY;
-    if (missingCost + suffixLowerBounds[state.groupIndex + 1] < bestCost) {
+    if (!cannotBeatCurrentResults(missingCost + suffixLowerBounds[state.groupIndex + 1], bestResults, maxResults)) {
       search({
         groupIndex: state.groupIndex + 1,
         cost: missingCost,
@@ -152,7 +179,9 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
     usedCandidateCounts: new Map(),
   });
 
-  return buildResult(bestSelected, options);
+  return keepBestStatusResults(
+    bestResults.map((result) => buildResult(result.selected, options)),
+  );
 }
 
 export function normalizeCondition(condition: Condition | string | null | undefined): Condition {
@@ -208,12 +237,20 @@ function buildCandidateGroups(
     const rejectedBelowMinimum = evaluated.filter(
       (candidate) => !candidate.meetsMinimumCondition,
     );
-    const candidatesForMode = applyConditionFlexibility(evaluated, options.conditionFlexibility);
+    const setFiltered = applySetPreference(evaluated);
+    const rejectedSetMismatch = evaluated.filter(
+      (candidate) => candidate.setPreference === 'required' && !candidate.meetsSetPreference,
+    );
+    const candidatesForMode = applyConditionFlexibility(
+      setFiltered,
+      options.conditionFlexibility,
+    );
 
     return {
       wanted,
       candidates: limitCandidates(candidatesForMode, options.maxCandidatesPerWantedCard),
       rejectedBelowMinimum,
+      rejectedSetMismatch,
       invalidCandidates,
     };
   });
@@ -246,6 +283,30 @@ function normalizeQuantity(quantity: number | undefined): number {
   return Math.floor(quantity);
 }
 
+function normalizeMaxResults(maxResults: number | undefined): number {
+  if (maxResults == null) return DEFAULT_MAX_RESULTS;
+  if (!Number.isFinite(maxResults) || maxResults < 1) return DEFAULT_MAX_RESULTS;
+  return Math.floor(maxResults);
+}
+
+function normalizeSetCode(setCode: string | null | undefined): string | undefined {
+  const normalized = setCode?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function normalizeSetPreference(
+  setPreference: SetPreferenceMode | undefined,
+  preferredSetCode: string | undefined,
+): SetPreferenceMode {
+  if (!preferredSetCode) return 'any';
+  return setPreference ?? 'required';
+}
+
+function normalizePenalty(penalty: number | undefined): number {
+  if (penalty == null) return 0;
+  return Number.isFinite(penalty) && penalty > 0 ? penalty : 0;
+}
+
 function evaluateCandidate(
   wanted: ExpandedWantedCard,
   candidate: CartOptimizationCandidate,
@@ -265,12 +326,23 @@ function evaluateCandidate(
   const conditionPenalty = meetsMinimumCondition
     ? 0
     : calculateConditionPenalty(downgradeSteps, options.conditionFlexibility);
+  const setCode = normalizeSetCode(candidate.setCode);
+  const setName = candidate.setName;
+  const preferredSetCode = normalizeSetCode(wanted.preferredSetCode);
+  const setPreference = normalizeSetPreference(wanted.setPreference, preferredSetCode);
+  const meetsSetPreference =
+    setPreference === 'any' ||
+    (preferredSetCode != null && setCode === preferredSetCode);
+  const setPreferencePenalty =
+    setPreference === 'preferred' && !meetsSetPreference
+      ? normalizePenalty(wanted.setMismatchPenalty)
+      : 0;
 
   return {
     wantedCardKey: wanted.expandedKey,
     wantedCardName: wanted.name,
     wantedOrder: wanted.order,
-    candidateKey: candidateKey(wanted.key, candidate),
+    candidateKey: candidateKey(candidate),
     offer: candidate.offer,
     availableQuantity: normalizeAvailableQuantity(candidate.availableQuantity),
     storeKey,
@@ -281,7 +353,13 @@ function evaluateCandidate(
     meetsMinimumCondition,
     conditionDowngradeSteps: downgradeSteps,
     conditionPenalty,
-    effectiveCost: price + conditionPenalty,
+    setCode,
+    setName,
+    preferredSetCode,
+    setPreference,
+    meetsSetPreference,
+    setPreferencePenalty,
+    effectiveCost: price + conditionPenalty + setPreferencePenalty,
   };
 }
 
@@ -291,13 +369,9 @@ function normalizeAvailableQuantity(quantity: number | undefined): number {
   return Math.floor(quantity);
 }
 
-function candidateKey(
-  wantedCardKey: string,
-  candidate: CartOptimizationCandidate,
-): string {
+function candidateKey(candidate: CartOptimizationCandidate): string {
   const offer = candidate.offer;
   return [
-    wantedCardKey,
     offer.id ?? '',
     offer.variant_id ?? '',
     offer.store_key,
@@ -306,6 +380,7 @@ function candidateKey(
     offer.condition,
     offer.foil ? 'foil' : 'nonfoil',
     offer.price,
+    candidate.setCode ?? '',
     offer.link,
   ].join('|');
 }
@@ -341,6 +416,13 @@ function applyConditionFlexibility(
   return [...strictCandidates, ...flexibleCandidates];
 }
 
+function applySetPreference(candidates: CandidateEvaluation[]): CandidateEvaluation[] {
+  return candidates.filter(
+    (candidate) =>
+      candidate.setPreference !== 'required' || candidate.meetsSetPreference,
+  );
+}
+
 function limitCandidates(
   candidates: CandidateEvaluation[],
   maxCandidates: number | undefined,
@@ -365,10 +447,15 @@ function compareCandidatesByEffectiveCost(
 }
 
 function buildMissingWantedCard(group: CandidateGroup): MissingWantedCard {
-  const bestRejected = [...group.rejectedBelowMinimum].sort(compareCandidatesByEffectiveCost)[0];
+  const bestRejected = [
+    ...group.rejectedBelowMinimum,
+    ...group.rejectedSetMismatch,
+  ].sort(compareCandidatesByEffectiveCost)[0];
   const reason =
     group.candidates.length > 0
       ? 'capacity-exhausted'
+      : group.rejectedSetMismatch.length > 0
+        ? 'set-mismatch-only'
       : group.rejectedBelowMinimum.length > 0
       ? 'below-minimum-only'
       : group.invalidCandidates > 0
@@ -398,6 +485,46 @@ function buildSuffixLowerBounds(groups: CandidateGroup[]): number[] {
     lowerBounds[index] = lowerBounds[index + 1] + cheapestEffectiveCost(groups[index]);
   }
   return lowerBounds;
+}
+
+function addSearchResult(
+  bestResults: SearchResult[],
+  seenResultKeys: Set<string>,
+  result: SearchResult,
+  maxResults: number,
+): void {
+  if (seenResultKeys.has(result.key)) return;
+
+  seenResultKeys.add(result.key);
+  bestResults.push(result);
+  bestResults.sort((a, b) => a.cost - b.cost || a.key.localeCompare(b.key));
+
+  while (bestResults.length > maxResults) {
+    const removed = bestResults.pop();
+    if (removed) seenResultKeys.delete(removed.key);
+  }
+}
+
+function cannotBeatCurrentResults(
+  lowerBound: number,
+  bestResults: SearchResult[],
+  maxResults: number,
+): boolean {
+  if (bestResults.length < maxResults) return false;
+  const worstBestCost = bestResults[bestResults.length - 1]?.cost ?? Number.POSITIVE_INFINITY;
+  return lowerBound > worstBestCost;
+}
+
+function searchResultKey(selected: SearchSelection[]): string {
+  return selected
+    .map((selection) => {
+      if (isMissingSelection(selection)) {
+        return `${selection.group.wanted.expandedKey}:missing`;
+      }
+      return `${selection.wantedCardKey}:${selection.candidateKey}`;
+    })
+    .sort()
+    .join('||');
 }
 
 function orderCandidatesForState(
@@ -442,8 +569,11 @@ function buildResult(
   const conditionPenalty = roundMoney(
     selectedOffers.reduce((sum, item) => sum + item.conditionPenalty, 0),
   );
+  const setPreferencePenalty = roundMoney(
+    selectedOffers.reduce((sum, item) => sum + item.setPreferencePenalty, 0),
+  );
   const estimatedTotal = roundMoney(subtotal + shipping);
-  const objectiveTotal = roundMoney(estimatedTotal + conditionPenalty);
+  const objectiveTotal = roundMoney(estimatedTotal + conditionPenalty + setPreferencePenalty);
   const status =
     selectedOffers.length === 0
       ? 'empty'
@@ -461,9 +591,20 @@ function buildResult(
       shipping,
       estimatedTotal,
       conditionPenalty,
+      setPreferencePenalty,
       objectiveTotal,
     },
   };
+}
+
+function keepBestStatusResults(results: CartOptimizationResult[]): CartOptimizationResult[] {
+  if (results.some((result) => result.status === 'complete')) {
+    return results.filter((result) => result.status === 'complete');
+  }
+  if (results.some((result) => result.status === 'partial')) {
+    return results.filter((result) => result.status === 'partial');
+  }
+  return results;
 }
 
 function isCandidateEvaluation(selection: SearchSelection): selection is CandidateEvaluation {
@@ -487,6 +628,11 @@ function toSelectedCartOffer(candidate: CandidateEvaluation): SelectedCartOffer 
     meetsMinimumCondition: candidate.meetsMinimumCondition,
     conditionDowngradeSteps: candidate.conditionDowngradeSteps,
     conditionPenalty: candidate.conditionPenalty,
+    setCode: candidate.setCode,
+    setName: candidate.setName,
+    preferredSetCode: candidate.preferredSetCode,
+    meetsSetPreference: candidate.meetsSetPreference,
+    setPreferencePenalty: candidate.setPreferencePenalty,
   };
 }
 

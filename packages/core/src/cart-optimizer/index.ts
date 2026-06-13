@@ -3,6 +3,7 @@ export {
   isConditionAtLeast,
   normalizeCondition,
   optimizeCart,
+  optimizeCartOptions,
 } from './cart-optimizer';
 export type {
   CartOptimizationCandidate,
@@ -16,5 +17,6 @@ export type {
   MissingWantedCardReason,
   OptimizeCartInput,
   SelectedCartOffer,
+  SetPreferenceMode,
   StoreCartPlan,
 } from './cart-optimizer.types';

@@ -1,7 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ListsController } from './lists.controller';
-import { ListsService, CreateListResponse, ListWithPricesResponse } from './lists.service';
+import {
+  ListsService,
+  CreateListResponse,
+  ListOptimizationResponse,
+  ListWithPricesResponse,
+} from './lists.service';
 import type { PrincipalContext } from '../../auth/principal.types';
 import { PrincipalGuard } from '../../auth/principal.guard';
 import { OptionalPrincipalGuard } from '../../auth/optional-principal.guard';
@@ -36,6 +41,13 @@ const mockListWithPrices: ListWithPricesResponse = {
   unresolved: [],
 };
 
+const mockListOptimization: ListOptimizationResponse = {
+  id: LIST_UUID,
+  name: 'Test Deck',
+  generatedAt: 1770000000000,
+  options: [],
+};
+
 describe('ListsController', () => {
   let controller: ListsController;
   let listsService: Record<string, ReturnType<typeof vi.fn>>;
@@ -45,6 +57,7 @@ describe('ListsController', () => {
       createList: vi.fn(),
       getListsForOwner: vi.fn(),
       getListWithPrices: vi.fn(),
+      getOptimizedListOptions: vi.fn(),
       updateFilters: vi.fn(),
       updateName: vi.fn(),
       replaceCards: vi.fn(),
@@ -105,6 +118,25 @@ describe('ListsController', () => {
         PRINCIPAL_UUID,
       );
       expect(result).toEqual(mockListWithPrices);
+    });
+  });
+
+  describe('GET /v1/lists/:listId/optimizations', () => {
+    it('should return optimized list options', async () => {
+      listsService.getOptimizedListOptions.mockResolvedValue(mockListOptimization);
+
+      const result = await controller.getOptimizedListOptions(
+        LIST_UUID,
+        { maxOptions: 2, minimumCondition: 'lp' },
+        PRINCIPAL,
+      );
+
+      expect(listsService.getOptimizedListOptions).toHaveBeenCalledWith(
+        LIST_UUID,
+        PRINCIPAL_UUID,
+        expect.objectContaining({ maxOptions: 2, minimumCondition: 'lp' }),
+      );
+      expect(result).toEqual(mockListOptimization);
     });
   });
 

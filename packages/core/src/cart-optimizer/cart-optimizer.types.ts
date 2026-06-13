@@ -5,6 +5,8 @@ export type ConditionFlexibilityMode =
   | 'allow-if-needed'
   | 'allow-if-cheaper';
 
+export type SetPreferenceMode = 'any' | 'preferred' | 'required';
+
 export interface CartOptimizationWantedCard {
   /**
    * Stable caller-owned key for this wanted card entry. For saved lists this can
@@ -15,11 +17,16 @@ export interface CartOptimizationWantedCard {
   name: string;
   quantity?: number;
   minimumCondition?: Condition;
+  preferredSetCode?: string;
+  setPreference?: SetPreferenceMode;
+  setMismatchPenalty?: number;
 }
 
 export interface CartOptimizationCandidate {
   wantedCardKey: string;
   offer: CardWithStore;
+  setCode?: string;
+  setName?: string;
   /**
    * Optional inventory available for this exact offer. If omitted, the optimizer
    * treats the offer as reusable, which matches the current shared CardWithStore
@@ -41,6 +48,7 @@ export interface CartOptimizationOptions {
   shippingCostByStoreKey?: Record<string, number>;
   conditionFlexibility?: ConditionFlexibilityOptions;
   maxCandidatesPerWantedCard?: number;
+  maxResults?: number;
 }
 
 export interface OptimizeCartInput {
@@ -61,6 +69,11 @@ export interface SelectedCartOffer {
   meetsMinimumCondition: boolean;
   conditionDowngradeSteps: number;
   conditionPenalty: number;
+  setCode?: string;
+  setName?: string;
+  preferredSetCode?: string;
+  meetsSetPreference: boolean;
+  setPreferencePenalty: number;
 }
 
 export interface StoreCartPlan {
@@ -75,6 +88,7 @@ export interface StoreCartPlan {
 export type MissingWantedCardReason =
   | 'no-candidates'
   | 'below-minimum-only'
+  | 'set-mismatch-only'
   | 'invalid-candidates'
   | 'capacity-exhausted';
 
@@ -91,6 +105,7 @@ export interface CartOptimizationTotals {
   shipping: number;
   estimatedTotal: number;
   conditionPenalty: number;
+  setPreferencePenalty: number;
   objectiveTotal: number;
 }
 
