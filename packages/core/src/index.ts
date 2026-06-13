@@ -27,3 +27,6 @@ export { parseLogLevel } from './logger/index';
 
 // Web Bot Auth
 export { WebBotAuthModule, WebBotAuthService } from './web-bot-auth/index';
+
+// Cart Optimizer
+export * from './cart-optimizer/index';
