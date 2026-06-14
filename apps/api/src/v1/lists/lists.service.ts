@@ -27,9 +27,8 @@ const DEFAULT_OPTIMIZATION_OPTIONS = 3;
 const MAX_OPTIMIZATION_OPTIONS = 5;
 const DEFAULT_OPTIMIZATION_MINIMUM_CONDITION = Condition.LP;
 const MAX_OPTIMIZATION_LIST_ENTRIES = 150;
-const MAX_OPTIMIZATION_CANDIDATES_PER_CARD = 20;
-const MAX_OPTIMIZATION_PREFERRED_SET_CANDIDATES_PER_CARD = 20;
-const MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD = 20;
+const MAX_OPTIMIZATION_CANDIDATES_PER_CARD = 10;
+const MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD = 10;
 
 export interface ListSummary {
   id: string;
@@ -549,13 +548,21 @@ export class ListsService {
           ps.name AS set_name,
           preferred_sets.set_code AS requested_set_code,
           ROW_NUMBER() OVER (
-            PARTITION BY l.card_name_id
+            PARTITION BY l.card_name_id, s.name
             ORDER BY v.price ASC, v.id ASC
-          ) AS price_rank,
+          ) AS store_price_rank,
           ROW_NUMBER() OVER (
-            PARTITION BY l.card_name_id, ps.code
+            PARTITION BY l.card_name_id, s.name, c.code
             ORDER BY v.price ASC, v.id ASC
-          ) AS set_price_rank
+          ) AS store_condition_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, s.name, ps.code
+            ORDER BY v.price ASC, v.id ASC
+          ) AS requested_set_store_price_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, s.name, ps.code, c.code
+            ORDER BY v.price ASC, v.id ASC
+          ) AS requested_set_store_condition_rank
         FROM card_listings l
         JOIN card_variants v ON v.card_listing_id = l.id
         JOIN stores s ON s.id = l.store_id
@@ -574,10 +581,19 @@ export class ListsService {
       bounded_candidates AS (
         SELECT *
         FROM ranked_candidates
-        WHERE price_rank <= $6
+        WHERE store_price_rank = 1
+          OR (
+            condition_code = 'nm'
+            AND store_condition_rank = 1
+          )
           OR (
             requested_set_code IS NOT NULL
-            AND set_price_rank <= $7
+            AND requested_set_store_price_rank = 1
+          )
+          OR (
+            requested_set_code IS NOT NULL
+            AND condition_code = 'nm'
+            AND requested_set_store_condition_rank = 1
           )
       ),
       final_candidates AS (
@@ -587,6 +603,7 @@ export class ListsService {
             PARTITION BY card_name_id
             ORDER BY
               CASE WHEN requested_set_code IS NOT NULL THEN 0 ELSE 1 END,
+              CASE WHEN store_price_rank = 1 THEN 0 ELSE 1 END,
               price ASC,
               variant_id ASC
           ) AS final_rank
@@ -612,7 +629,7 @@ export class ListsService {
         set_code,
         set_name
       FROM final_candidates
-      WHERE final_rank <= $8
+      WHERE final_rank <= $6
       ORDER BY card_name_id ASC, price ASC, variant_id ASC
       `,
       [
@@ -621,8 +638,6 @@ export class ListsService {
         setCode,
         preferredCardNameIds,
         preferredSetCodes,
-        MAX_OPTIMIZATION_CANDIDATES_PER_CARD,
-        MAX_OPTIMIZATION_PREFERRED_SET_CANDIDATES_PER_CARD,
         MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD,
       ],
     );

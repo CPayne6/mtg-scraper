@@ -515,17 +515,17 @@ describe('ListsService', () => {
       const candidateSql = entityManager.query.mock.calls[1][0] as string;
       const candidateParams = entityManager.query.mock.calls[1][1];
       expect(candidateSql).toContain('ROW_NUMBER() OVER');
-      expect(candidateSql).toContain('price_rank <= $6');
-      expect(candidateSql).toContain('final_rank <= $8');
+      expect(candidateSql).toContain('store_price_rank = 1');
+      expect(candidateSql).toContain("condition_code = 'nm'");
+      expect(candidateSql).toContain('requested_set_store_price_rank = 1');
+      expect(candidateSql).toContain('final_rank <= $6');
       expect(candidateParams).toEqual([
         [10, 20],
         null,
         null,
         [20],
         ['lea'],
-        20,
-        20,
-        20,
+        10,
       ]);
     });
   });
