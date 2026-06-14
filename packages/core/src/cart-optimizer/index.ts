@@ -13,6 +13,8 @@ export type {
   CartOptimizationWantedCard,
   ConditionFlexibilityMode,
   ConditionFlexibilityOptions,
+  ConditionValueMode,
+  ConditionValueOptions,
   MissingWantedCard,
   MissingWantedCardReason,
   OptimizeCartInput,

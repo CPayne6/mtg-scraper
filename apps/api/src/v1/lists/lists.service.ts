@@ -351,6 +351,7 @@ export class ListsService {
       storeFilter,
       setFilter,
       this.getPreferredSetPairs(entries),
+      minimumCondition,
     );
     const candidatesByCardNameId = this.groupCandidatesByCardNameId(candidateRows);
     const wantedCards = this.mapOptimizationWantedCards(entries, minimumCondition);
@@ -372,6 +373,12 @@ export class ListsService {
             mode: options.conditionFlexibility ?? 'strict',
             maxDowngradeSteps: options.maxDowngradeSteps,
             downgradePenaltyPerStep: options.downgradePenaltyPerStep,
+          },
+          conditionValue: {
+            mode: 'prefer-higher-condition',
+            minimumHigherConditionPrice: 50,
+            minUpgradePremium: 10,
+            maxUpgradePremium: 30,
           },
         },
       }),
@@ -515,10 +522,12 @@ export class ListsService {
     stores: string[] | null,
     setCode: string | null,
     preferredSetPairs: Array<{ cardNameId: number; setCode: string }>,
+    minimumCondition: Condition,
   ): Promise<OptimizationCandidateRow[]> {
     if (cardNameIds.length === 0) return [];
     const preferredCardNameIds = preferredSetPairs.map((pair) => pair.cardNameId);
     const preferredSetCodes = preferredSetPairs.map((pair) => pair.setCode);
+    const acceptableConditionCodes = this.conditionCodesAtOrAbove(minimumCondition);
 
     return this.entityManager.query(
       `
@@ -556,13 +565,28 @@ export class ListsService {
             ORDER BY v.price ASC, v.id ASC
           ) AS store_condition_rank,
           ROW_NUMBER() OVER (
+            PARTITION BY
+              l.card_name_id,
+              s.name,
+              CASE WHEN c.code = ANY($6::text[]) THEN true ELSE false END
+            ORDER BY v.price ASC, v.id ASC
+          ) AS store_minimum_condition_rank,
+          ROW_NUMBER() OVER (
             PARTITION BY l.card_name_id, s.name, ps.code
             ORDER BY v.price ASC, v.id ASC
           ) AS requested_set_store_price_rank,
           ROW_NUMBER() OVER (
             PARTITION BY l.card_name_id, s.name, ps.code, c.code
             ORDER BY v.price ASC, v.id ASC
-          ) AS requested_set_store_condition_rank
+          ) AS requested_set_store_condition_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              l.card_name_id,
+              s.name,
+              ps.code,
+              CASE WHEN c.code = ANY($6::text[]) THEN true ELSE false END
+            ORDER BY v.price ASC, v.id ASC
+          ) AS requested_set_store_minimum_condition_rank
         FROM card_listings l
         JOIN card_variants v ON v.card_listing_id = l.id
         JOIN stores s ON s.id = l.store_id
@@ -587,6 +611,10 @@ export class ListsService {
             AND store_condition_rank = 1
           )
           OR (
+            condition_code = ANY($6::text[])
+            AND store_minimum_condition_rank = 1
+          )
+          OR (
             requested_set_code IS NOT NULL
             AND requested_set_store_price_rank = 1
           )
@@ -595,6 +623,11 @@ export class ListsService {
             AND condition_code = 'nm'
             AND requested_set_store_condition_rank = 1
           )
+          OR (
+            requested_set_code IS NOT NULL
+            AND condition_code = ANY($6::text[])
+            AND requested_set_store_minimum_condition_rank = 1
+          )
       ),
       final_candidates AS (
         SELECT
@@ -602,7 +635,6 @@ export class ListsService {
           ROW_NUMBER() OVER (
             PARTITION BY card_name_id
             ORDER BY
-              CASE WHEN requested_set_code IS NOT NULL THEN 0 ELSE 1 END,
               CASE WHEN store_price_rank = 1 THEN 0 ELSE 1 END,
               price ASC,
               variant_id ASC
@@ -629,7 +661,7 @@ export class ListsService {
         set_code,
         set_name
       FROM final_candidates
-      WHERE final_rank <= $6
+      WHERE final_rank <= $7
       ORDER BY card_name_id ASC, price ASC, variant_id ASC
       `,
       [
@@ -638,6 +670,7 @@ export class ListsService {
         setCode,
         preferredCardNameIds,
         preferredSetCodes,
+        acceptableConditionCodes,
         MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD,
       ],
     );
@@ -684,7 +717,7 @@ export class ListsService {
       name: entry.card_name,
       minimumCondition,
       preferredSetCode: entry.preferred_set_code ?? undefined,
-      setPreference: entry.preferred_set_code ? 'required' : 'any',
+      setPreference: entry.preferred_set_code ? 'preferred' : 'any',
     }));
   }
 
@@ -895,6 +928,17 @@ export class ListsService {
       default:
         return 0;
     }
+  }
+
+  private conditionCodesAtOrAbove(minimumCondition: Condition): string[] {
+    const minimumRank = this.conditionRank(minimumCondition);
+    return [
+      Condition.NM,
+      Condition.LP,
+      Condition.MP,
+      Condition.HP,
+      Condition.DMG,
+    ].filter((condition) => this.conditionRank(condition) >= minimumRank);
   }
 
   private normalizeMaxOptions(maxOptions: number | undefined): number {

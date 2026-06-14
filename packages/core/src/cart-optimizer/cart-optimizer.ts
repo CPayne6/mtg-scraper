@@ -5,6 +5,7 @@ import type {
   CartOptimizationResult,
   CartOptimizationWantedCard,
   ConditionFlexibilityOptions,
+  ConditionValueOptions,
   MissingWantedCard,
   OptimizeCartInput,
   SelectedCartOffer,
@@ -16,6 +17,9 @@ const DEFAULT_SHIPPING_COST = 3;
 const DEFAULT_MINIMUM_CONDITION = Condition.DMG;
 const DEFAULT_MAX_RESULTS = 1;
 const MISSING_CARD_SEARCH_PENALTY = 1_000_000_000_000;
+const DEFAULT_MINIMUM_HIGHER_CONDITION_PRICE = 50;
+const DEFAULT_MIN_UPGRADE_PREMIUM = 10;
+const DEFAULT_MAX_UPGRADE_PREMIUM = 30;
 
 const CONDITION_RANK: Record<Condition, number> = {
   [Condition.NM]: 5,
@@ -47,6 +51,7 @@ interface CandidateEvaluation {
   meetsMinimumCondition: boolean;
   conditionDowngradeSteps: number;
   conditionPenalty: number;
+  conditionValuePenalty: number;
   setCode?: string;
   setName?: string;
   preferredSetCode?: string;
@@ -245,10 +250,14 @@ function buildCandidateGroups(
       setFiltered,
       options.conditionFlexibility,
     );
+    const valueAdjustedCandidates = applyConditionValuePolicy(
+      candidatesForMode,
+      options.conditionValue,
+    );
 
     return {
       wanted,
-      candidates: limitCandidates(candidatesForMode, options.maxCandidatesPerWantedCard),
+      candidates: limitCandidates(valueAdjustedCandidates, options.maxCandidatesPerWantedCard),
       rejectedBelowMinimum,
       rejectedSetMismatch,
       invalidCandidates,
@@ -353,6 +362,7 @@ function evaluateCandidate(
     meetsMinimumCondition,
     conditionDowngradeSteps: downgradeSteps,
     conditionPenalty,
+    conditionValuePenalty: 0,
     setCode,
     setName,
     preferredSetCode,
@@ -421,6 +431,63 @@ function applySetPreference(candidates: CandidateEvaluation[]): CandidateEvaluat
     (candidate) =>
       candidate.setPreference !== 'required' || candidate.meetsSetPreference,
   );
+}
+
+function applyConditionValuePolicy(
+  candidates: CandidateEvaluation[],
+  conditionValue: ConditionValueOptions | undefined,
+): CandidateEvaluation[] {
+  if (!conditionValue || conditionValue.mode === 'off' || candidates.length < 2) {
+    return candidates;
+  }
+
+  const minimumHigherConditionPrice =
+    conditionValue.minimumHigherConditionPrice ?? DEFAULT_MINIMUM_HIGHER_CONDITION_PRICE;
+  const minUpgradePremium =
+    conditionValue.minUpgradePremium ?? DEFAULT_MIN_UPGRADE_PREMIUM;
+  const maxUpgradePremium =
+    conditionValue.maxUpgradePremium ?? DEFAULT_MAX_UPGRADE_PREMIUM;
+
+  return candidates.map((candidate) => {
+    let conditionValuePenalty = 0;
+
+    for (const higherConditionCandidate of candidates) {
+      if (
+        CONDITION_RANK[higherConditionCandidate.condition] <=
+        CONDITION_RANK[candidate.condition]
+      ) {
+        continue;
+      }
+
+      if (higherConditionCandidate.price < minimumHigherConditionPrice) {
+        continue;
+      }
+
+      const upgradePremium = higherConditionCandidate.price - candidate.price;
+      if (
+        upgradePremium < minUpgradePremium ||
+        upgradePremium > maxUpgradePremium
+      ) {
+        continue;
+      }
+
+      const penaltyNeeded =
+        higherConditionCandidate.effectiveCost -
+        (candidate.effectiveCost + conditionValuePenalty) +
+        0.01;
+      conditionValuePenalty += Math.max(0, penaltyNeeded);
+    }
+
+    if (conditionValuePenalty === 0) {
+      return candidate;
+    }
+
+    return {
+      ...candidate,
+      conditionValuePenalty,
+      effectiveCost: candidate.effectiveCost + conditionValuePenalty,
+    };
+  });
 }
 
 function limitCandidates(
@@ -569,11 +636,16 @@ function buildResult(
   const conditionPenalty = roundMoney(
     selectedOffers.reduce((sum, item) => sum + item.conditionPenalty, 0),
   );
+  const conditionValuePenalty = roundMoney(
+    selectedOffers.reduce((sum, item) => sum + item.conditionValuePenalty, 0),
+  );
   const setPreferencePenalty = roundMoney(
     selectedOffers.reduce((sum, item) => sum + item.setPreferencePenalty, 0),
   );
   const estimatedTotal = roundMoney(subtotal + shipping);
-  const objectiveTotal = roundMoney(estimatedTotal + conditionPenalty + setPreferencePenalty);
+  const objectiveTotal = roundMoney(
+    estimatedTotal + conditionPenalty + conditionValuePenalty + setPreferencePenalty,
+  );
   const status =
     selectedOffers.length === 0
       ? 'empty'
@@ -591,6 +663,7 @@ function buildResult(
       shipping,
       estimatedTotal,
       conditionPenalty,
+      conditionValuePenalty,
       setPreferencePenalty,
       objectiveTotal,
     },
@@ -628,6 +701,7 @@ function toSelectedCartOffer(candidate: CandidateEvaluation): SelectedCartOffer 
     meetsMinimumCondition: candidate.meetsMinimumCondition,
     conditionDowngradeSteps: candidate.conditionDowngradeSteps,
     conditionPenalty: candidate.conditionPenalty,
+    conditionValuePenalty: candidate.conditionValuePenalty,
     setCode: candidate.setCode,
     setName: candidate.setName,
     preferredSetCode: candidate.preferredSetCode,

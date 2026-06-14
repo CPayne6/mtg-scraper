@@ -5,6 +5,8 @@ export type ConditionFlexibilityMode =
   | 'allow-if-needed'
   | 'allow-if-cheaper';
 
+export type ConditionValueMode = 'off' | 'prefer-higher-condition';
+
 export type SetPreferenceMode = 'any' | 'preferred' | 'required';
 
 export interface CartOptimizationWantedCard {
@@ -42,11 +44,30 @@ export interface ConditionFlexibilityOptions {
   downgradePenaltyByStep?: Record<number, number>;
 }
 
+export interface ConditionValueOptions {
+  mode: ConditionValueMode;
+  /**
+   * Only apply the preference when the higher-condition copy is at least this
+   * expensive. This keeps low-cost cards price-first.
+   */
+  minimumHigherConditionPrice?: number;
+  /**
+   * Optional lower bound for the upgrade premium. Use this for experiments
+   * where tiny price differences should still be decided by raw price.
+   */
+  minUpgradePremium?: number;
+  /**
+   * Maximum price premium where the higher-condition copy should be preferred.
+   */
+  maxUpgradePremium?: number;
+}
+
 export interface CartOptimizationOptions {
   defaultMinimumCondition?: Condition;
   defaultShippingCost?: number;
   shippingCostByStoreKey?: Record<string, number>;
   conditionFlexibility?: ConditionFlexibilityOptions;
+  conditionValue?: ConditionValueOptions;
   maxCandidatesPerWantedCard?: number;
   maxResults?: number;
 }
@@ -69,6 +90,7 @@ export interface SelectedCartOffer {
   meetsMinimumCondition: boolean;
   conditionDowngradeSteps: number;
   conditionPenalty: number;
+  conditionValuePenalty: number;
   setCode?: string;
   setName?: string;
   preferredSetCode?: string;
@@ -105,6 +127,7 @@ export interface CartOptimizationTotals {
   shipping: number;
   estimatedTotal: number;
   conditionPenalty: number;
+  conditionValuePenalty: number;
   setPreferencePenalty: number;
   objectiveTotal: number;
 }

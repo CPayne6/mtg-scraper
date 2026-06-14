@@ -517,14 +517,17 @@ describe('ListsService', () => {
       expect(candidateSql).toContain('ROW_NUMBER() OVER');
       expect(candidateSql).toContain('store_price_rank = 1');
       expect(candidateSql).toContain("condition_code = 'nm'");
+      expect(candidateSql).toContain('store_minimum_condition_rank = 1');
       expect(candidateSql).toContain('requested_set_store_price_rank = 1');
-      expect(candidateSql).toContain('final_rank <= $6');
+      expect(candidateSql).toContain('requested_set_store_minimum_condition_rank = 1');
+      expect(candidateSql).toContain('final_rank <= $7');
       expect(candidateParams).toEqual([
         [10, 20],
         null,
         null,
         [20],
         ['lea'],
+        ['nm', 'lp'],
         10,
       ]);
     });

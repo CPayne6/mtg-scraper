@@ -166,6 +166,68 @@ describe('optimizeCart', () => {
     });
   });
 
+  it('can prefer a higher-condition offer when the premium is in the value window', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Expensive Staple', Condition.LP)],
+      candidates: [
+        candidate('Expensive Staple', {
+          price: 80,
+          condition: Condition.LP,
+        }),
+        candidate('Expensive Staple', {
+          price: 100,
+          condition: Condition.NM,
+        }),
+      ],
+      options: {
+        conditionValue: {
+          mode: 'prefer-higher-condition',
+          minimumHigherConditionPrice: 50,
+          minUpgradePremium: 10,
+          maxUpgradePremium: 30,
+        },
+      },
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.NM,
+      conditionValuePenalty: 0,
+      price: 100,
+    });
+  });
+
+  it('does not force a higher-condition offer when the premium is too large', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Expensive Staple', Condition.LP)],
+      candidates: [
+        candidate('Expensive Staple', {
+          price: 60,
+          condition: Condition.LP,
+        }),
+        candidate('Expensive Staple', {
+          price: 100,
+          condition: Condition.NM,
+        }),
+      ],
+      options: {
+        conditionValue: {
+          mode: 'prefer-higher-condition',
+          minimumHigherConditionPrice: 50,
+          minUpgradePremium: 10,
+          maxUpgradePremium: 30,
+        },
+      },
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.LP,
+      conditionValuePenalty: 0,
+      price: 60,
+    });
+  });
+
   it('returns a partial result when some wanted cards have no candidates', () => {
     const result = optimizeCart({
       wantedCards: [wanted('Sol Ring'), wanted('Demonic Tutor')],
