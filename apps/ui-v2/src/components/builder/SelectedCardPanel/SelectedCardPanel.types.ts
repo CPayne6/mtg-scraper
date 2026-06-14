@@ -8,4 +8,9 @@ export type SelectedCardPanelProps = {
   conditions: string[];
   inCartByOffer: (offer: CardWithStore) => boolean;
   onAddOffer: (offer: CardWithStore) => void;
+  positionLabel?: string;
+  canSelectPrevious?: boolean;
+  canSelectNext?: boolean;
+  onSelectPrevious?: () => void;
+  onSelectNext?: () => void;
 };
