@@ -13,6 +13,7 @@ import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import { useNavigate } from '@tanstack/react-router';
 import { cartItemId, formatCartItemName, type CartItem, useCart } from '@/components/cart/CartContext';
+import { CartThumbnail } from '@/components/cart/ItemThumbnail';
 import {
   footerSx,
   headerSx,
@@ -21,7 +22,6 @@ import {
   paperSx,
   storeHeaderSx,
 } from './CartDrawer.styles';
-import { ART_GRADIENTS, hashIndex } from './CartDrawer.utils';
 
 export function CartDrawer() {
   const { items, isOpen, close, remove, clear } = useCart();
@@ -120,19 +120,10 @@ export function CartDrawer() {
 
                 {list.map((item) => {
                   const id = cartItemId(item);
-                  const gradient = ART_GRADIENTS[hashIndex(id, ART_GRADIENTS.length)];
 
                   return (
                     <Stack key={id} direction="row" alignItems="center" spacing={1.25} sx={{ py: 1.25 }}>
-                      <Box
-                        sx={{
-                          width: 36,
-                          height: 50,
-                          borderRadius: 0.5,
-                          background: gradient,
-                          flexShrink: 0,
-                        }}
-                      />
+                      <CartThumbnail item={item} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
                           sx={{
