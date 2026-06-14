@@ -92,6 +92,7 @@ export interface CreateListResponse {
 export interface OptimizeListOptions {
   maxOptions?: number;
   minimumCondition?: string;
+  stores?: string;
   conditionFlexibility?: ConditionFlexibilityMode;
   maxDowngradeSteps?: number;
   downgradePenaltyPerStep?: number;
@@ -327,7 +328,7 @@ export class ListsService {
     options: OptimizeListOptions = {},
   ): Promise<ListOptimizationResponse> {
     const list = await this.findVisibleList(listUuid, principalUuid);
-    const storeFilter = this.parseCsvFilter(list.filterStores);
+    const storeFilter = this.parseCsvFilter(options.stores ?? list.filterStores);
     const setFilter = list.filterSetCode ?? null;
     const minimumCondition = this.resolveMinimumCondition(
       options.minimumCondition,

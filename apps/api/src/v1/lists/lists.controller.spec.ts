@@ -127,14 +127,18 @@ describe('ListsController', () => {
 
       const result = await controller.getOptimizedListOptions(
         LIST_UUID,
-        { maxOptions: 2, minimumCondition: 'lp' },
+        { maxOptions: 2, minimumCondition: 'lp', stores: 'store-a,store-b' },
         PRINCIPAL,
       );
 
       expect(listsService.getOptimizedListOptions).toHaveBeenCalledWith(
         LIST_UUID,
         PRINCIPAL_UUID,
-        expect.objectContaining({ maxOptions: 2, minimumCondition: 'lp' }),
+        expect.objectContaining({
+          maxOptions: 2,
+          minimumCondition: 'lp',
+          stores: 'store-a,store-b',
+        }),
       );
       expect(result).toEqual(mockListOptimization);
     });

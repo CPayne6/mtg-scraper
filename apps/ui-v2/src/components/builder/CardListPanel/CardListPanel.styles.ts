@@ -145,6 +145,32 @@ export const footerSx: SxProps<Theme> = (theme) => ({
   bgcolor: 'background.paper',
 });
 
+export const bestCardsBtnSx = (disabled: boolean): SxProps<Theme> => (theme) => ({
+  width: '100%',
+  padding: '9px 12px',
+  border: `1px solid ${disabled ? theme.palette.divider : theme.palette.primaryOutline}`,
+  background: disabled ? theme.palette.action.disabledBackground : theme.palette.background.paper,
+  color: disabled ? theme.palette.text.disabled : theme.palette.text.primary,
+  borderRadius: '8px',
+  fontWeight: 700,
+  fontSize: '13px',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  fontFamily: 'inherit',
+  display: 'inline-flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: '7px',
+  minHeight: 38,
+  transition:
+    'background 160ms cubic-bezier(0.4, 0, 0.2, 1), border-color 160ms cubic-bezier(0.4, 0, 0.2, 1)',
+  '&:hover': disabled
+    ? {}
+    : {
+        background: theme.palette.background.default,
+        borderColor: theme.palette.primary.main,
+      },
+});
+
 export const cartBtnSx = (isOpen: boolean): SxProps<Theme> => (theme) => ({
   flex: 1,
   padding: '9px 12px',

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, AddShoppingCart } from '@mui/icons-material';
 import { CardListRow } from '../CardListRow';
 import { SortByMenu } from '../SortByMenu';
 import { AddCardPopover } from '../AddCardPopover';
@@ -23,6 +23,7 @@ import {
   listSx,
   emptyListSx,
   footerSx,
+  bestCardsBtnSx,
   cartBtnSx,
 } from './CardListPanel.styles';
 
@@ -39,6 +40,9 @@ export function CardListPanel({
   onAddCard,
   onRemoveCard,
   onUndoHistory,
+  onAddBestCards,
+  isAddingBestCards,
+  canAddBestCards,
 }: CardListPanelProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -55,6 +59,7 @@ export function CardListPanel({
     () => sortCardListEntries(entries, sortBy, results),
     [entries, sortBy, results],
   );
+  const bestCardsDisabled = !canAddBestCards || isAddingBestCards;
 
   return (
     <Box component="aside" sx={containerSx}>
@@ -194,6 +199,17 @@ export function CardListPanel({
               CA${total.toFixed(2)}
             </Box>
           </Box>
+        </Box>
+        <Box
+          component="button"
+          type="button"
+          onClick={onAddBestCards}
+          disabled={bestCardsDisabled}
+          aria-busy={isAddingBestCards}
+          sx={bestCardsBtnSx(bestCardsDisabled)}
+        >
+          <AddShoppingCart sx={{ fontSize: 16 }} />
+          {isAddingBestCards ? 'Finding best...' : 'Add Best Cards'}
         </Box>
         <Box
           component="button"

@@ -15,6 +15,10 @@ export class OptimizeListQueryDto {
   minimumCondition?: string;
 
   @IsOptional()
+  @IsString()
+  stores?: string;
+
+  @IsOptional()
   @IsIn(['strict', 'allow-if-needed', 'allow-if-cheaper'])
   conditionFlexibility?: ConditionFlexibilityMode;
 

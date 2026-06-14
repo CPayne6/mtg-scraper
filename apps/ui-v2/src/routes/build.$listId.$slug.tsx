@@ -4,7 +4,8 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
 import { useSnackbar } from 'notistack';
-import type { CardWithStore } from '@scoutlgs/shared';
+import { Condition, type CardWithStore } from '@scoutlgs/shared';
+import { fetchListOptimizations } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
 import { useCart, cartItemId } from '@/components/cart/CartContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
@@ -28,6 +29,21 @@ const ALL_STORE_KEYS = STORE_FACETS.map((s) => s.key);
 const STORE_LABEL_BY_KEY: Record<string, string> = Object.fromEntries(
   STORE_FACETS.map((s) => [s.key, s.label]),
 );
+const CONDITION_BY_LABEL: Record<string, Condition> = {
+  NM: Condition.NM,
+  LP: Condition.LP,
+  MP: Condition.MP,
+  HP: Condition.HP,
+  DMG: Condition.DMG,
+};
+const CONDITION_RANK: Record<Condition, number> = {
+  [Condition.NM]: 5,
+  [Condition.LP]: 4,
+  [Condition.MP]: 3,
+  [Condition.HP]: 2,
+  [Condition.DMG]: 1,
+  [Condition.UNKNOWN]: 0,
+};
 
 function isTypingInField(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) return false;
@@ -37,11 +53,24 @@ function isTypingInField(target: EventTarget | null): boolean {
   return false;
 }
 
+function minimumConditionFromFilter(labels: string[]): Condition | undefined {
+  const selected = labels
+    .map((label) => CONDITION_BY_LABEL[label])
+    .filter((condition): condition is Condition => Boolean(condition));
+  if (selected.length === 0) return undefined;
+  return selected.sort((a, b) => CONDITION_RANK[a] - CONDITION_RANK[b])[0];
+}
+
 function BuilderRoute() {
   const { listId } = useParams({ from: '/build/$listId/$slug' });
   const navigate = useNavigate();
   const { get, getList, loading } = useLists();
-  const { add: addToCart, items: cartItems } = useCart();
+  const {
+    add: addToCart,
+    addMany: addManyToCart,
+    items: cartItems,
+    open: openCart,
+  } = useCart();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const cards = get(listId);
@@ -81,6 +110,7 @@ function BuilderRoute() {
     'scoutlgs:builder:conditions',
     [],
   );
+  const [isAddingBestCards, setIsAddingBestCards] = useState(false);
 
   const cartIdSet = useMemo(
     () => new Set(cartItems.map((i) => cartItemId(i))),
@@ -170,6 +200,83 @@ function BuilderRoute() {
     },
     [addToCart, enqueueSnackbar],
   );
+
+  const optimizationMinimumCondition = useMemo(
+    () => minimumConditionFromFilter(conditions),
+    [conditions],
+  );
+
+  const canAddBestCards =
+    entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
+
+  const handleAddBestCards = useCallback(async () => {
+    if (selectedStores.length === 0) {
+      enqueueSnackbar('Select at least one store before adding best cards', {
+        variant: 'warning',
+      });
+      return;
+    }
+
+    setIsAddingBestCards(true);
+    try {
+      const response = await fetchListOptimizations(listId, {
+        maxOptions: 1,
+        stores: selectedStores,
+        minimumCondition: optimizationMinimumCondition,
+        conditionFlexibility: 'allow-if-needed',
+        maxDowngradeSteps: 2,
+      });
+      const bestOption = response.options[0];
+      if (!bestOption || bestOption.selectedOffers.length === 0) {
+        enqueueSnackbar('No purchasable cards were found for this list', {
+          variant: 'warning',
+        });
+        return;
+      }
+
+      const result = addManyToCart(
+        bestOption.selectedOffers.map((selectedOffer) => selectedOffer.offer),
+      );
+      const skipped =
+        result.skippedDuplicate + result.skippedInvalid + result.skippedCapacity;
+      const details = [
+        bestOption.missingCards.length > 0
+          ? `${bestOption.missingCards.length} missing`
+          : null,
+        skipped > 0 ? `${skipped} skipped` : null,
+      ].filter(Boolean);
+
+      if (result.added > 0) {
+        openCart();
+        enqueueSnackbar(
+          `Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${
+            details.length > 0 ? ` (${details.join(', ')})` : ''
+          }`,
+          { variant: bestOption.status === 'complete' ? 'success' : 'info' },
+        );
+        return;
+      }
+
+      enqueueSnackbar(
+        skipped > 0
+          ? `No new cards added (${details.join(', ')})`
+          : 'No new cards were added',
+        { variant: 'default' },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to optimize list';
+      enqueueSnackbar(message, { variant: 'error' });
+    } finally {
+      setIsAddingBestCards(false);
+    }
+  }, [
+    addManyToCart,
+    enqueueSnackbar,
+    listId,
+    openCart,
+    optimizationMinimumCondition,
+    selectedStores,
+  ]);
 
   const selectedIndex = selectedName ? sortedNames.indexOf(selectedName) : -1;
   const selectedPosition =
@@ -362,6 +469,9 @@ function BuilderRoute() {
           onAddCard={handleAddCard}
           onRemoveCard={handleRemoveCard}
           onUndoHistory={performUndo}
+          onAddBestCards={handleAddBestCards}
+          isAddingBestCards={isAddingBestCards}
+          canAddBestCards={canAddBestCards}
         />
       </Box>
     </Box>

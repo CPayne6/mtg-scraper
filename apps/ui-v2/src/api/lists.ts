@@ -1,3 +1,5 @@
+import type { CardWithStore } from '@scoutlgs/shared';
+
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
 export interface ListSummary {
@@ -48,6 +50,43 @@ export interface ListWithPricesResponse {
   expiresAt: string;
   cards: CheapestVariant[];
   unresolved: string[];
+}
+
+export interface SelectedOptimizedOffer {
+  wantedCardKey: string;
+  wantedCardName: string;
+  offer: CardWithStore;
+  storeKey: string;
+  storeName: string;
+  price: number;
+  meetsMinimumCondition: boolean;
+}
+
+export interface ListOptimizationOption {
+  status: 'complete' | 'partial' | 'empty';
+  selectedOffers: SelectedOptimizedOffer[];
+  missingCards: Array<{ wantedCardName: string; reason: string }>;
+  totals: {
+    subtotal: number;
+    shipping: number;
+    estimatedTotal: number;
+    objectiveTotal: number;
+  };
+}
+
+export interface ListOptimizationResponse {
+  id: string;
+  name: string;
+  generatedAt: number;
+  options: ListOptimizationOption[];
+}
+
+export interface FetchListOptimizationsInput {
+  maxOptions?: number;
+  minimumCondition?: string;
+  stores?: string[];
+  conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
+  maxDowngradeSteps?: number;
 }
 
 export interface CreateListResponse {
@@ -123,6 +162,31 @@ export function fetchLists(signal?: AbortSignal): Promise<{ lists: ListSummary[]
 export function fetchList(listId: string, signal?: AbortSignal): Promise<ListWithPricesResponse> {
   return request<ListWithPricesResponse>(
     `/api/v1/lists/${encodeURIComponent(listId)}`,
+    { signal },
+  );
+}
+
+export function fetchListOptimizations(
+  listId: string,
+  input: FetchListOptimizationsInput = {},
+  signal?: AbortSignal,
+): Promise<ListOptimizationResponse> {
+  const params = new URLSearchParams();
+  if (input.maxOptions != null) params.set('maxOptions', String(input.maxOptions));
+  if (input.minimumCondition) params.set('minimumCondition', input.minimumCondition);
+  if (input.stores && input.stores.length > 0) {
+    params.set('stores', input.stores.join(','));
+  }
+  if (input.conditionFlexibility) {
+    params.set('conditionFlexibility', input.conditionFlexibility);
+  }
+  if (input.maxDowngradeSteps != null) {
+    params.set('maxDowngradeSteps', String(input.maxDowngradeSteps));
+  }
+
+  const query = params.toString();
+  return request<ListOptimizationResponse>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations${query ? `?${query}` : ''}`,
     { signal },
   );
 }

@@ -11,7 +11,7 @@ import { clearCart as apiClearCart, fetchCart, replaceCart } from '@/api/cart';
 import { useAuth } from '@/components/auth/AuthContext';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import type { CardWithStore } from '@scoutlgs/shared';
-import type { CartContextValue, CartItem } from './CartContext.types';
+import type { AddManyResult, CartContextValue, CartItem } from './CartContext.types';
 import { CART_KEY, MAX_CART_ITEMS, cartItemId, cartVariantIds } from './CartContext.utils';
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -126,6 +126,54 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [persist, setItems],
   );
 
+  const addMany = useCallback(
+    (cards: CardWithStore[]): AddManyResult => {
+      const currentItems = itemsRef.current;
+      const existingItemIds = new Set(currentItems.map((item) => cartItemId(item)));
+      const existingVariantIds = new Set(cartVariantIds(currentItems));
+      const nextItems = [...currentItems];
+      const addedAt = Date.now();
+      const result: AddManyResult = {
+        added: 0,
+        skippedDuplicate: 0,
+        skippedInvalid: 0,
+        skippedCapacity: 0,
+      };
+
+      for (const card of cards) {
+        if (!isPersistableCard(card)) {
+          result.skippedInvalid += 1;
+          continue;
+        }
+
+        const itemId = cartItemId(card);
+        if (existingItemIds.has(itemId) || existingVariantIds.has(card.id)) {
+          result.skippedDuplicate += 1;
+          continue;
+        }
+
+        if (existingVariantIds.size >= MAX_CART_ITEMS) {
+          result.skippedCapacity += 1;
+          continue;
+        }
+
+        existingItemIds.add(itemId);
+        existingVariantIds.add(card.id);
+        nextItems.push({ ...card, id: card.id, addedAt });
+        result.added += 1;
+      }
+
+      if (result.added > 0) {
+        itemsRef.current = nextItems;
+        setItems(nextItems);
+        void persist(nextItems).catch((err) => console.warn('Failed to persist cart', err));
+      }
+
+      return result;
+    },
+    [persist, setItems],
+  );
+
   const remove = useCallback(
     (id: string) => {
       const currentItems = itemsRef.current;
@@ -158,8 +206,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const total = useMemo(() => items.reduce((sum, c) => sum + (c.price ?? 0), 0), [items]);
 
   const value = useMemo<CartContextValue>(
-    () => ({ items, count: items.length, total, isOpen, open, close, add, remove, clear, has, sync }),
-    [items, total, isOpen, open, close, add, remove, clear, has, sync],
+    () => ({
+      items,
+      count: items.length,
+      total,
+      isOpen,
+      open,
+      close,
+      add,
+      addMany,
+      remove,
+      clear,
+      has,
+      sync,
+    }),
+    [items, total, isOpen, open, close, add, addMany, remove, clear, has, sync],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

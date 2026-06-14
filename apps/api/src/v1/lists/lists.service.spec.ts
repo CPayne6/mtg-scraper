@@ -500,6 +500,7 @@ describe('ListsService', () => {
       const result = await service.getOptimizedListOptions(LIST_UUID, OWNER_COOKIE, {
         maxOptions: 2,
         minimumCondition: 'lp',
+        stores: 'store-a,store-b',
       });
 
       expect(result.id).toBe(LIST_UUID);
@@ -523,7 +524,7 @@ describe('ListsService', () => {
       expect(candidateSql).toContain('final_rank <= $7');
       expect(candidateParams).toEqual([
         [10, 20],
-        null,
+        ['store-a', 'store-b'],
         null,
         [20],
         ['lea'],
