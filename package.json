@@ -6,6 +6,9 @@
   "license": "ISC",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
+    "scrape:401": "node scripts/scrape-stores.mjs 401-games",
+    "scrape:f2f": "node scripts/scrape-stores.mjs face-to-face-games",
+    "scrape:stores": "node scripts/scrape-stores.mjs 401-games face-to-face-games",
     "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
     "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"

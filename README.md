@@ -146,6 +146,25 @@ mtg-scraper/
 
 > **Note:** For production deployment, see the [Docker Swarm Production Deployment](#docker-swarm-production-deployment) section below.
 
+### Refresh local store data
+
+With the development stack running, queue a scrape from the repository root:
+
+```bash
+pnpm scrape:401
+pnpm scrape:f2f
+pnpm scrape:stores # queues both stores
+```
+
+These commands ask the scheduler at `http://localhost:5001` to enqueue work for
+the existing scraper workers. Use `SCHEDULER_URL` to override the scheduler URL.
+Optional flags can request an incremental refresh or parallel ID ranges:
+
+```bash
+pnpm scrape:stores --incremental
+pnpm scrape:401 --split-ranges=4
+```
+
 ### Local Development (without Docker)
 
 1. **Install dependencies**

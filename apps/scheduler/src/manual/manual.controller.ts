@@ -10,10 +10,11 @@ export class ManualController {
   @Put('storefront/trigger')
   putStorefrontTrigger(
     @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
+    @Query('store') storeName?: string,
     @Query('splitRanges', new ParseIntPipe({ optional: true })) splitRanges?: number,
     @Query('incremental', new ParseBoolPipe({ optional: true })) incremental?: boolean,
   ) {
-    return this.manualService.triggerStorefrontExtraction({ storeId, splitRanges, incremental })
+    return this.manualService.triggerStorefrontExtraction({ storeId, storeName, splitRanges, incremental })
   }
 
   @Put('storefront/trigger-all')

@@ -83,16 +83,19 @@ export class ManualService {
    */
   async triggerStorefrontExtraction(opts: {
     storeId?: number;
+    storeName?: string;
     splitRanges?: number;
     incremental?: boolean;
   }) {
-    if (!opts.storeId) {
-      throw new BadRequestException('storeId is required. Use trigger-all for all stores.');
+    if (!opts.storeId && !opts.storeName) {
+      throw new BadRequestException('storeId or store is required. Use trigger-all for all stores.');
     }
 
-    const store = await this.storeRepository.findOne({ where: { id: opts.storeId } });
+    const store = await this.storeRepository.findOne({
+      where: opts.storeId ? { id: opts.storeId } : { name: opts.storeName },
+    });
     if (!store) {
-      throw new NotFoundException(`Store ${opts.storeId} not found`);
+      throw new NotFoundException(`Store ${opts.storeId ?? opts.storeName} not found`);
     }
 
     if (store.platformType !== 'shopify_storefront') {
