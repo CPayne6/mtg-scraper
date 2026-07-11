@@ -6,6 +6,10 @@
   "license": "ISC",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
+    "codex": "node scripts/codex-container.mjs",
+    "codex:dev": "node scripts/codex-container.mjs",
+    "codex:shell": "node scripts/codex-container.mjs --shell",
+    "codex:build": "node scripts/codex-container.mjs --build",
     "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
     "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"

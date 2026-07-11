@@ -1,0 +1,30 @@
+name: scoutlgs-codex
+
+services:
+  codex:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile.codex
+    image: scoutlgs-codex-dev:local
+    working_dir: ${CODEX_WORKSPACE_PATH:-/workspace}
+    environment:
+      HOME: /root
+      CODEX_HOME: /root/.codex
+    stdin_open: true
+    tty: true
+    volumes:
+      # On Docker Desktop, the launcher sets the target to the repository's path
+      # inside Docker Desktop's Linux VM. This lets nested Compose bind mounts work.
+      - type: bind
+        source: .
+        target: ${CODEX_WORKSPACE_PATH:-/workspace}
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      # Persist only Codex authentication/configuration outside the disposable container.
+      - type: volume
+        source: codex-home
+        target: /root/.codex
+
+volumes:
+  codex-home:

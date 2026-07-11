@@ -1,0 +1,17 @@
+FROM docker:29-cli
+
+RUN apk add --no-cache \
+      bash \
+      ca-certificates \
+      git \
+      nodejs \
+      npm \
+      openssh-client \
+      ripgrep \
+    && npm install --global @openai/codex pnpm@10.26.2 \
+    && npm cache clean --force \
+    && git config --system --add safe.directory '*'
+
+ENV HOME=/root
+
+CMD ["bash"]
