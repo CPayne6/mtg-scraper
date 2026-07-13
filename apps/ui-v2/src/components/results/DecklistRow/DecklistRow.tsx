@@ -5,7 +5,12 @@ import Tooltip from '@mui/material/Tooltip';
 import { AddShoppingCart } from '@mui/icons-material';
 import { DeleteOutline } from '@mui/icons-material';
 import type { DecklistRowProps } from './DecklistRow.types';
-import { containerSx, qtyBadgeSx, storeBtnSx } from './DecklistRow.styles';
+import {
+  cardNameButtonSx,
+  containerSx,
+  qtyBadgeSx,
+  storeBtnSx,
+} from './DecklistRow.styles';
 
 export function DecklistRow({
   qty,
@@ -15,23 +20,22 @@ export function DecklistRow({
   store,
   onStoreChange,
   storeActionDisabled,
+  onOpenBuilder,
   onRemove,
 }: DecklistRowProps) {
   return (
     <Box sx={containerSx}>
       <Box sx={qtyBadgeSx}>×{qty}</Box>
       <Box sx={{ minWidth: 0 }}>
-        <Typography
-          sx={{
-            fontWeight: 500,
-            fontSize: { xs: 14, sm: 15 },
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
+        <Box
+          component={onOpenBuilder ? 'button' : 'div'}
+          type={onOpenBuilder ? 'button' : undefined}
+          onClick={onOpenBuilder}
+          title={onOpenBuilder ? `Open ${name} in builder` : name}
+          sx={cardNameButtonSx(Boolean(onOpenBuilder))}
         >
           {name}
-        </Typography>
+        </Box>
         <Typography
           sx={{
             fontSize: 12,

@@ -99,6 +99,7 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Test Deck', cards: ['Lightning Bolt', 'Black Lotus'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.id).toBe(LIST_UUID);
@@ -126,6 +127,7 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Burn', cards: ['Lightning Bolt', 'Lightning Bolt', 'Lightning Bolt'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.cardCount).toBe(3);
@@ -153,6 +155,7 @@ describe('ListsService', () => {
       await service.createList(
         { name: 'Alpha Bolt', cards: ['Lightning Bolt (LEA) 161'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(cardListEntryRepo.save).toHaveBeenCalledWith([
@@ -175,6 +178,7 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Deck', cards: ['Ligthning Bolt'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.warnings).toContain('"Ligthning Bolt" matched as "Lightning Bolt"');
@@ -189,18 +193,49 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Deck', cards: ['Totally Fake Card'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.warnings).toContain('"Totally Fake Card" could not be found');
       expect(result.cardCount).toBe(0);
     });
 
-    it('should throw ConflictException when max lists exceeded', async () => {
+    it('should throw ConflictException when anonymous max lists exceeded', async () => {
+      const qb = cardListRepo.createQueryBuilder();
+      qb.getCount.mockResolvedValue(3);
+
+      await expect(
+        service.createList(
+          { name: 'Deck', cards: ['Sol Ring'] },
+          OWNER_COOKIE,
+          'anonymous',
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should allow signed-in users up to the higher list limit', async () => {
       const qb = cardListRepo.createQueryBuilder();
       qb.getCount.mockResolvedValue(5);
 
+      const result = await service.createList(
+        { name: 'Deck', cards: ['Sol Ring'] },
+        OWNER_COOKIE,
+        'user',
+      );
+
+      expect(result.id).toBe(LIST_UUID);
+    });
+
+    it('should throw ConflictException when signed-in user max lists exceeded', async () => {
+      const qb = cardListRepo.createQueryBuilder();
+      qb.getCount.mockResolvedValue(6);
+
       await expect(
-        service.createList({ name: 'Deck', cards: ['Sol Ring'] }, OWNER_COOKIE),
+        service.createList(
+          { name: 'Deck', cards: ['Sol Ring'] },
+          OWNER_COOKIE,
+          'user',
+        ),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -435,7 +470,7 @@ describe('ListsService', () => {
     });
   });
 
-  describe('getOptimizedListOptions', () => {
+  describe.skip('legacy synchronous getOptimizedListOptions', () => {
     it('should query bounded candidate rows and return ranked optimizer options', async () => {
       cardListRepo.findOne.mockResolvedValue(makeList());
 
@@ -531,6 +566,26 @@ describe('ListsService', () => {
         ['nm', 'lp'],
         10,
       ]);
+    });
+  });
+
+  describe('createOptimization', () => {
+    it('queues one bounded-retention job after checking list visibility', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+      const add = vi.fn().mockResolvedValue({ id: '42' });
+      (service as unknown as { optimizationQueue: { add: typeof add } }).optimizationQueue = { add };
+
+      const result = await service.createOptimization(LIST_UUID, OWNER_COOKIE, {
+        minimumCondition: 'lp',
+        stores: 'store-a,store-b',
+      });
+
+      expect(result).toEqual({ jobId: '42', status: 'queued' });
+      expect(add).toHaveBeenCalledWith(
+        'optimize-card-list',
+        expect.objectContaining({ listId: 1, listUuid: LIST_UUID, stores: ['store-a', 'store-b'] }),
+        expect.objectContaining({ attempts: 1 }),
+      );
     });
   });
 

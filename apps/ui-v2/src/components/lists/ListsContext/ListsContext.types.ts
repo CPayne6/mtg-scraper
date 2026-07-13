@@ -8,6 +8,8 @@ export type ListsContextValue = {
   lists: ServerList[];
   names: string[];
   count: number;
+  listLimit: number;
+  canCreateList: boolean;
   totalCards: number;
   loading: boolean;
   error: string | null;

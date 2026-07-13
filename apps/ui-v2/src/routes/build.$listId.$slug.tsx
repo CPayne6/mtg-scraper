@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useCallback, useState } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
-import { fetchListOptimizations } from '@/api/lists';
+import { fetchCard } from '@/api/cards';
+import { createListOptimization, fetchListOptimizationStatus } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
 import { useCart, cartItemId } from '@/components/cart/CartContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { groupByName } from '@/utils/parseDeckList';
-import { useListPrices } from '@/hooks/useListPrices';
+import type { PriceLookupState } from '@/hooks/useListPrices';
 import { useListEditor } from '@/hooks/useListEditor';
 import { BuilderFilterBar } from '@/components/builder/BuilderFilterBar';
 import { SelectedCardPanel } from '@/components/builder/SelectedCardPanel';
@@ -20,7 +21,14 @@ import { sortCardListEntries } from '@/components/builder/CardListPanel/CardList
 import type { SortBy } from '@/components/builder/SortByMenu';
 import { STORE_FACETS } from '@/data/sample';
 
+type BuilderSearch = {
+  card?: string;
+};
+
 export const Route = createFileRoute('/build/$listId/$slug')({
+  validateSearch: (search: Record<string, unknown>): BuilderSearch => ({
+    card: typeof search.card === 'string' ? search.card : undefined,
+  }),
   component: BuilderRoute,
 });
 
@@ -45,6 +53,15 @@ const CONDITION_RANK: Record<Condition, number> = {
   [Condition.UNKNOWN]: 0,
 };
 
+function lookupFromOffers(offers: CardWithStore[]): PriceLookupState {
+  const sorted = offers.slice().sort((a, b) => a.price - b.price);
+  return {
+    state: 'success',
+    offers: sorted,
+    cheapest: sorted[0] ?? null,
+  };
+}
+
 function isTypingInField(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -62,7 +79,8 @@ function minimumConditionFromFilter(labels: string[]): Condition | undefined {
 }
 
 function BuilderRoute() {
-  const { listId } = useParams({ from: '/build/$listId/$slug' });
+  const { listId, slug } = useParams({ from: '/build/$listId/$slug' });
+  const search = Route.useSearch();
   const navigate = useNavigate();
   const { get, getList, loading } = useLists();
   const {
@@ -82,7 +100,18 @@ function BuilderRoute() {
     [uniqueNames],
   );
 
-  const { results } = useListPrices(uniqueNames);
+  const [detailedResults, setDetailedResults] = useState<
+    Record<string, PriceLookupState>
+  >({});
+  const results = detailedResults;
+  const loadedPriceCount = useMemo(
+    () =>
+      uniqueNames.filter((name) => {
+        const result = results[name];
+        return result && result.state !== 'pending';
+      }).length,
+    [results, uniqueNames],
+  );
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const sortedEntries = useMemo(
     () => sortCardListEntries(entries, sortBy, results),
@@ -111,6 +140,25 @@ function BuilderRoute() {
     [],
   );
   const [isAddingBestCards, setIsAddingBestCards] = useState(false);
+  const appliedUrlSelectionForListRef = useRef<string | null>(null);
+  const syncSelectedCardUrl = useCallback(
+    (name: string | null) => {
+      void navigate({
+        to: '/build/$listId/$slug',
+        params: { listId, slug },
+        search: name ? { card: name } : {},
+        replace: true,
+      });
+    },
+    [listId, navigate, slug],
+  );
+  const handleSelectCard = useCallback(
+    (name: string | null) => {
+      setSelectedName(name);
+      syncSelectedCardUrl(name);
+    },
+    [setSelectedName, syncSelectedCardUrl],
+  );
 
   const cartIdSet = useMemo(
     () => new Set(cartItems.map((i) => cartItemId(i))),
@@ -142,21 +190,44 @@ function BuilderRoute() {
     inCartByName,
   );
 
-  // Default selection: first entry, once entries load. Also handles the case
+  // Default selection: URL card, persisted card, then first alphabetical entry. Handles the case
   // where the selected card was removed from the list — auto-pick the next
   // entry in alphabetical order.
   useEffect(() => {
     if (entries.length === 0) {
+      appliedUrlSelectionForListRef.current = listId;
       if (selectedName !== null) setSelectedName(null);
+      if (search.card) syncSelectedCardUrl(null);
       return;
     }
-    if (!selectedName || !entries.some((e) => e.name === selectedName)) {
-      const sorted = entries
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name));
-      setSelectedName(sorted[0].name);
+
+    const entryNames = new Set(entries.map((entry) => entry.name));
+    const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const urlName = search.card && entryNames.has(search.card) ? search.card : null;
+    const selectedStillValid =
+      selectedName && entryNames.has(selectedName) ? selectedName : null;
+    const shouldApplyUrlSelection =
+      appliedUrlSelectionForListRef.current !== listId;
+    const nextName =
+      shouldApplyUrlSelection && urlName
+        ? urlName
+        : selectedStillValid ?? urlName ?? sorted[0].name;
+
+    appliedUrlSelectionForListRef.current = listId;
+    if (selectedName !== nextName) {
+      setSelectedName(nextName);
     }
-  }, [entries, selectedName, setSelectedName]);
+    if (search.card !== nextName) {
+      syncSelectedCardUrl(nextName);
+    }
+  }, [
+    entries,
+    listId,
+    search.card,
+    selectedName,
+    setSelectedName,
+    syncSelectedCardUrl,
+  ]);
 
   const handleToggleStore = useCallback(
     (name: string) => {
@@ -206,6 +277,36 @@ function BuilderRoute() {
     [conditions],
   );
 
+  useEffect(() => {
+    if (!selectedName) return;
+
+    const controller = new AbortController();
+    setDetailedResults((prev) => ({
+      ...prev,
+      [selectedName]: { state: 'pending' },
+    }));
+
+    fetchCard(selectedName, controller.signal)
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        setDetailedResults((prev) => ({
+          ...prev,
+          [selectedName]: lookupFromOffers(response.results),
+        }));
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        if (err instanceof Error && err.name === 'AbortError') return;
+        const message = err instanceof Error ? err.message : 'Failed to fetch';
+        setDetailedResults((prev) => ({
+          ...prev,
+          [selectedName]: { state: 'error', message },
+        }));
+      });
+
+    return () => controller.abort();
+  }, [selectedName]);
+
   const canAddBestCards =
     entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
 
@@ -219,14 +320,26 @@ function BuilderRoute() {
 
     setIsAddingBestCards(true);
     try {
-      const response = await fetchListOptimizations(listId, {
-        maxOptions: 1,
+      const created = await createListOptimization(listId, {
         stores: selectedStores,
         minimumCondition: optimizationMinimumCondition,
         conditionFlexibility: 'allow-if-needed',
         maxDowngradeSteps: 2,
       });
-      const bestOption = response.options[0];
+      const deadline = Date.now() + 60_000;
+      let completed: Awaited<ReturnType<typeof fetchListOptimizationStatus>> | undefined;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const status = await fetchListOptimizationStatus(listId, created.jobId);
+        if (status.status === 'queued' || status.status === 'running') continue;
+        completed = status;
+        break;
+      }
+      if (!completed) throw new Error('Optimization took too long. Please retry.');
+      if (completed.status === 'failed') throw new Error(`${completed.error}. Please retry.`);
+      if (completed.status === 'timed-out') throw new Error('Optimization timed out. Please retry.');
+      if (completed.status !== 'completed') throw new Error('Optimization did not complete. Please retry.');
+      const bestOption = completed.result.result;
       if (!bestOption || bestOption.selectedOffers.length === 0) {
         enqueueSnackbar('No purchasable cards were found for this list', {
           variant: 'warning',
@@ -284,13 +397,13 @@ function BuilderRoute() {
 
   const handleSelectPrevious = useCallback(() => {
     if (selectedIndex <= 0) return;
-    setSelectedName(sortedNames[selectedIndex - 1]);
-  }, [selectedIndex, setSelectedName, sortedNames]);
+    handleSelectCard(sortedNames[selectedIndex - 1]);
+  }, [handleSelectCard, selectedIndex, sortedNames]);
 
   const handleSelectNext = useCallback(() => {
     if (selectedIndex < 0 || selectedIndex >= sortedNames.length - 1) return;
-    setSelectedName(sortedNames[selectedIndex + 1]);
-  }, [selectedIndex, setSelectedName, sortedNames]);
+    handleSelectCard(sortedNames[selectedIndex + 1]);
+  }, [handleSelectCard, selectedIndex, sortedNames]);
 
   // Undo a specific entry and surface any block warning.
   const performUndo = useCallback(
@@ -459,7 +572,7 @@ function BuilderRoute() {
         <CardListPanel
           entries={entries}
           selectedName={selectedName}
-          onSelect={setSelectedName}
+          onSelect={handleSelectCard}
           sortBy={sortBy}
           onSortByChange={setSortBy}
           results={results}
@@ -472,6 +585,11 @@ function BuilderRoute() {
           onAddBestCards={handleAddBestCards}
           isAddingBestCards={isAddingBestCards}
           canAddBestCards={canAddBestCards}
+          loadedPriceCount={loadedPriceCount}
+          totalPriceCount={uniqueNames.length}
+          hasMorePrices={false}
+          isLoadingMorePrices={false}
+          onLoadMorePrices={() => undefined}
         />
       </Box>
     </Box>

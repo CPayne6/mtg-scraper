@@ -10,6 +10,11 @@ import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import TextField from '@mui/material/TextField';
 import { Add } from '@mui/icons-material';
 import type { CardSearchResponse, StoreInfo } from '@scoutlgs/shared';
 import { fetchCard } from '@/api/cards';
@@ -51,7 +56,7 @@ function CardRoute() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const { push: pushRecent } = useRecentSearches();
-  const { lists, save, addCardToList } = useLists();
+  const { lists, save, addCardToList, canCreateList } = useLists();
   const { enqueueSnackbar } = useSnackbar();
 
   const [defaultStoreKeys] = useLocalStorage<string[]>(
@@ -70,6 +75,8 @@ function CardRoute() {
   );
   const [maxPrice, setMaxPrice] = useState('');
   const [addMenuAnchor, setAddMenuAnchor] = useState<HTMLElement | null>(null);
+  const [createListOpen, setCreateListOpen] = useState(false);
+  const [newListName, setNewListName] = useState('');
   const [filtersCollapsed, setFiltersCollapsed] = useLocalStorage<boolean>(
     'scoutlgs:filters-collapsed',
     false,
@@ -163,9 +170,19 @@ function CardRoute() {
 
   const handleCreateList = async () => {
     setAddMenuAnchor(null);
-    const listName = decoded;
+    setNewListName(decoded);
+    setCreateListOpen(true);
+  };
+
+  const handleConfirmCreateList = async () => {
+    const listName = newListName.trim();
+    if (!listName) {
+      enqueueSnackbar('Name your card list before continuing', { variant: 'warning' });
+      return;
+    }
     const id = await save(listName, [decoded]);
     if (!id) return;
+    setCreateListOpen(false);
     enqueueSnackbar(`Created "${listName}"`, { variant: 'success' });
     navigate({
       to: '/list/$listId/$slug',
@@ -214,9 +231,50 @@ function CardRoute() {
               </MenuItem>
             ))}
             {lists.length > 0 && <Divider />}
-            <MenuItem onClick={handleCreateList}>Create new list from this card</MenuItem>
+            <MenuItem disabled={!canCreateList} onClick={handleCreateList}>
+              {canCreateList ? 'Create new list from this card' : 'List limit reached'}
+            </MenuItem>
           </Menu>
         </Box>
+        <Dialog
+          open={createListOpen}
+          onClose={() => setCreateListOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Create Card List</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="List name"
+              fullWidth
+              value={newListName}
+              onChange={(event) => setNewListName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void handleConfirmCreateList();
+              }}
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => setCreateListOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              disabled={!newListName.trim()}
+              onClick={handleConfirmCreateList}
+            >
+              Create
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {loading ? (
           <Box>

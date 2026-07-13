@@ -248,7 +248,7 @@ describe('optimizeCart', () => {
     expect(result.totals.estimatedTotal).toBe(5);
   });
 
-  it('returns a partial result when finite offer quantity is exhausted', () => {
+  it('ignores finite offer quantity', () => {
     const limitedCandidate = candidate('Island', {
       price: 1,
     });
@@ -264,17 +264,13 @@ describe('optimizeCart', () => {
       candidates: [limitedCandidate],
     });
 
-    expect(result.status).toBe('partial');
-    expect(result.selectedOffers).toHaveLength(1);
-    expect(result.missingCards).toHaveLength(1);
-    expect(result.missingCards[0]).toMatchObject({
-      wantedCardKey: 'Island:2',
-      reason: 'capacity-exhausted',
-    });
-    expect(result.totals.estimatedTotal).toBe(4);
+    expect(result.status).toBe('complete');
+    expect(result.selectedOffers).toHaveLength(2);
+    expect(result.missingCards).toHaveLength(0);
+    expect(result.totals.estimatedTotal).toBe(5);
   });
 
-  it('can return multiple ranked cart options', () => {
+  it('returns only the single best cart option', () => {
     const results = optimizeCartOptions({
       wantedCards: [wanted('Sol Ring'), wanted('Counterspell')],
       candidates: [
@@ -288,17 +284,12 @@ describe('optimizeCart', () => {
       },
     });
 
-    expect(results).toHaveLength(2);
+    expect(results).toHaveLength(1);
     expect(results[0].selectedOffers.map((item) => item.storeKey)).toEqual([
       'store-b',
       'store-b',
     ]);
     expect(results[0].totals.estimatedTotal).toBe(6.25);
-    expect(results[1].selectedOffers.map((item) => item.storeKey)).toEqual([
-      'store-a',
-      'store-a',
-    ]);
-    expect(results[1].totals.estimatedTotal).toBe(8.5);
   });
 
   it('supports a required set preference for a wanted card', () => {
@@ -338,7 +329,7 @@ describe('optimizeCart', () => {
     });
   });
 
-  it('shares finite offer quantity across duplicate wanted card entries', () => {
+  it('ignores finite offer quantity across duplicate wanted card entries', () => {
     const first = candidate('Island 1', {
       id: 99,
       price: 1,
@@ -360,9 +351,18 @@ describe('optimizeCart', () => {
       candidates: [first, second],
     });
 
-    expect(result.status).toBe('partial');
+    expect(result.status).toBe('complete');
+    expect(result.selectedOffers).toHaveLength(2);
+    expect(result.missingCards).toHaveLength(0);
+  });
+
+  it('coerces numeric wanted-card keys before matching candidates', () => {
+    const result = optimizeCart({
+      wantedCards: [{ key: 7 as unknown as string, name: 'A' }],
+      candidates: [{ wantedCardKey: '7', offer: candidate('7').offer }],
+    });
+
+    expect(result.status).toBe('complete');
     expect(result.selectedOffers).toHaveLength(1);
-    expect(result.missingCards).toHaveLength(1);
-    expect(result.missingCards[0].reason).toBe('capacity-exhausted');
   });
 });

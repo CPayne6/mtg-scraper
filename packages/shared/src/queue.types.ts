@@ -1,5 +1,6 @@
 export const QUEUE_NAMES = {
   STOREFRONT_EXTRACTION: 'storefront-extraction',
+  CARD_OPTIMIZATION: 'card-optimization',
 } as const;
 
 export const PUBSUB_CHANNELS = {
@@ -7,6 +8,7 @@ export const PUBSUB_CHANNELS = {
 } as const;
 
 export const JOB_NAMES = {
+  CARD_OPTIMIZATION: 'optimize-card-list',
   /** @deprecated id:>X chained pagination — replaced by the bucket flow. */
   EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
   /** @deprecated id-range bootstrap — replaced by STOREFRONT_PLAN. */
@@ -31,6 +33,18 @@ export const JOB_NAMES = {
    */
   REEXTRACT_UNMATCHED: 'reextract-unmatched',
 } as const;
+
+export interface CardOptimizationJobData {
+  listId: number;
+  listUuid: string;
+  listName: string;
+  stores: string[] | null;
+  minimumCondition: string;
+  conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
+  maxDowngradeSteps?: number;
+  downgradePenaltyPerStep?: number;
+  enqueuedAt: number;
+}
 
 /**
  * Platform types for extraction adapters

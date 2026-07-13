@@ -304,6 +304,40 @@ services:
         limits:
           memory: 2G
 
+  optimizer:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cpayne6}/scoutlgs-optimizer:${IMAGE_TAG:-latest}
+    environment:
+      - NODE_ENV=production
+      - SERVICE_NAME=optimizer
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs
+      - DATABASE_USER=postgres
+      - USE_DOCKER_SECRETS=true
+      - LOG_LEVEL=log,warn,error,fatal
+    secrets:
+      - optimizer_database_password
+    networks:
+      - redis-network
+      - postgres-network
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node dist/main.js"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 512M
+
   # Cloudflare Tunnel - Secure public access via Cloudflare
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -407,6 +441,9 @@ secrets:
   scraper_database_password:
     external: true
     name: scraper_database_password
+  optimizer_database_password:
+    external: true
+    name: optimizer_database_password
   scraper_webshare_username:
     external: true
     name: scraper_webshare_username

@@ -4,13 +4,6 @@ import type { ConditionFlexibilityMode } from '@scoutlgs/core';
 
 export class OptimizeListQueryDto {
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  maxOptions?: number;
-
-  @IsOptional()
   @IsString()
   minimumCondition?: string;
 

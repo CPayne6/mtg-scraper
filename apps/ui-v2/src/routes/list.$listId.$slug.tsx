@@ -162,6 +162,20 @@ function ListDetailRoute() {
     },
     [confirm, listId, removeCardFromList],
   );
+  const listSlug = useMemo(
+    () => slugifyName(listName || listId),
+    [listId, listName],
+  );
+  const handleOpenBuilderCard = useCallback(
+    (cardName: string) => {
+      navigate({
+        to: '/build/$listId/$slug',
+        params: { listId, slug: listSlug },
+        search: { card: cardName },
+      });
+    },
+    [listId, listSlug, navigate],
+  );
 
   if (!list && !loading) {
     return (
@@ -277,7 +291,7 @@ function ListDetailRoute() {
             onClick={() =>
               navigate({
                 to: '/build/$listId/$slug',
-                params: { listId, slug: slugifyName(listName || listId) },
+                params: { listId, slug: listSlug },
               })
             }
           >
@@ -406,6 +420,7 @@ function ListDetailRoute() {
                 store={store}
                 onStoreChange={() => handleAddRowToCart(name)}
                 storeActionDisabled={!r || r.state !== 'success' || !r.cheapest}
+                onOpenBuilder={() => handleOpenBuilderCard(name)}
                 onRemove={() => handleRemoveCard(name)}
               />
             );

@@ -37,6 +37,9 @@ export class CardVariant {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   price: number;
 
+  @Column({ name: 'in_stock', default: true })
+  inStock: boolean;
+
   @Column({ type: 'int', nullable: true })
   quantity?: number;
 

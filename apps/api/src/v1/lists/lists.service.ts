@@ -4,9 +4,12 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bullmq';
 import {
   CardList,
   CardListEntry,
@@ -17,12 +20,14 @@ import {
   type CartOptimizationWantedCard,
   type ConditionFlexibilityMode,
 } from '@scoutlgs/core';
-import { Condition, type CardWithStore } from '@scoutlgs/shared';
+import { Condition, JOB_NAMES, QUEUE_NAMES, type CardOptimizationJobData, type CardWithStore } from '@scoutlgs/shared';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
+import type { PrincipalKind } from '../../auth/principal.types';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 
-const MAX_LISTS_PER_OWNER = 5;
+const MAX_LISTS_PER_ANONYMOUS_OWNER = 3;
+const MAX_LISTS_PER_USER_OWNER = 6;
 const DEFAULT_OPTIMIZATION_OPTIONS = 3;
 const MAX_OPTIMIZATION_OPTIONS = 5;
 const DEFAULT_OPTIMIZATION_MINIMUM_CONDITION = Condition.LP;
@@ -90,7 +95,6 @@ export interface CreateListResponse {
 }
 
 export interface OptimizeListOptions {
-  maxOptions?: number;
   minimumCondition?: string;
   stores?: string;
   conditionFlexibility?: ConditionFlexibilityMode;
@@ -144,12 +148,58 @@ export class ListsService {
     private readonly cardListEntryRepository: Repository<CardListEntry>,
     private readonly cardNameResolver: CardNameResolverService,
     private readonly entityManager: EntityManager,
+    @Optional()
+    @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
+    private readonly optimizationQueue?: Queue<CardOptimizationJobData>,
   ) {}
+
+  async createOptimization(
+    listUuid: string,
+    principalUuid: string | undefined,
+    options: OptimizeListOptions = {},
+  ): Promise<{ jobId: string; status: 'queued' }> {
+    const list = await this.findVisibleList(listUuid, principalUuid);
+    const minimumCondition = this.resolveMinimumCondition(options.minimumCondition, list.filterConditions);
+    if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
+    const job = await this.optimizationQueue.add(JOB_NAMES.CARD_OPTIMIZATION, {
+      listId: list.id,
+      listUuid: list.uuid,
+      listName: list.name,
+      stores: this.parseCsvFilter(options.stores ?? list.filterStores),
+      minimumCondition,
+      conditionFlexibility: options.conditionFlexibility,
+      maxDowngradeSteps: options.maxDowngradeSteps,
+      downgradePenaltyPerStep: options.downgradePenaltyPerStep,
+      enqueuedAt: Date.now(),
+    }, {
+      attempts: 1,
+      removeOnComplete: { age: 3600, count: 200 },
+      removeOnFail: { age: 3600, count: 200 },
+    });
+    return { jobId: String(job.id), status: 'queued' };
+  }
+
+  async getOptimizationStatus(listUuid: string, jobId: string, principalUuid?: string) {
+    await this.findVisibleList(listUuid, principalUuid);
+    if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
+    const job = await this.optimizationQueue.getJob(jobId);
+    if (!job || job.data.listUuid !== listUuid) throw new NotFoundException('Optimization not found');
+    const state = await job.getState();
+    if (state === 'completed') {
+      const timedOut = job.returnvalue?.result?.optimal === false;
+      return { jobId, status: timedOut ? 'timed-out' : 'completed', result: job.returnvalue };
+    }
+    if (state === 'failed') return { jobId, status: 'failed', error: job.failedReason || 'Optimization failed' };
+    if (state === 'active') return { jobId, status: 'running' };
+    return { jobId, status: 'queued' };
+  }
 
   async createList(
     dto: CreateListDto,
     ownerPrincipalUuid: string,
+    ownerPrincipalKind: PrincipalKind,
   ): Promise<CreateListResponse> {
+    const maxLists = this.maxListsForPrincipalKind(ownerPrincipalKind);
     // Enforce max lists per owner
     const existingCount = await this.cardListRepository
       .createQueryBuilder('cl')
@@ -159,9 +209,9 @@ export class ListsService {
       .andWhere('cl.expires_at > NOW()')
       .getCount();
 
-    if (existingCount >= MAX_LISTS_PER_OWNER) {
+    if (existingCount >= maxLists) {
       throw new ConflictException(
-        `Maximum of ${MAX_LISTS_PER_OWNER} lists allowed. Delete an existing list first.`,
+        `Maximum of ${maxLists} card lists allowed. Delete an existing list first.`,
       );
     }
 
@@ -319,70 +369,6 @@ export class ListsService {
       expiresAt: list.expiresAt,
       cards,
       unresolved: [],
-    };
-  }
-
-  async getOptimizedListOptions(
-    listUuid: string,
-    principalUuid: string | undefined,
-    options: OptimizeListOptions = {},
-  ): Promise<ListOptimizationResponse> {
-    const list = await this.findVisibleList(listUuid, principalUuid);
-    const storeFilter = this.parseCsvFilter(options.stores ?? list.filterStores);
-    const setFilter = list.filterSetCode ?? null;
-    const minimumCondition = this.resolveMinimumCondition(
-      options.minimumCondition,
-      list.filterConditions,
-    );
-    const maxOptions = this.normalizeMaxOptions(options.maxOptions);
-
-    const entries = await this.getOptimizationEntries(list.id);
-    if (entries.length === 0) {
-      return {
-        id: list.uuid,
-        name: list.name,
-        generatedAt: Date.now(),
-        options: [],
-      };
-    }
-
-    const cardNameIds = [...new Set(entries.map((entry) => parseInt(entry.card_name_id, 10)))];
-    const candidateRows = await this.getOptimizationCandidates(
-      cardNameIds,
-      storeFilter,
-      setFilter,
-      this.getPreferredSetPairs(entries),
-      minimumCondition,
-    );
-    const candidatesByCardNameId = this.groupCandidatesByCardNameId(candidateRows);
-    const wantedCards = this.mapOptimizationWantedCards(entries, minimumCondition);
-    const candidates = this.mapOptimizationCandidates(entries, candidatesByCardNameId);
-
-    return {
-      id: list.uuid,
-      name: list.name,
-      generatedAt: Date.now(),
-      options: optimizeCartOptions({
-        wantedCards,
-        candidates,
-        options: {
-          defaultMinimumCondition: minimumCondition,
-          defaultShippingCost: 3,
-          maxResults: maxOptions,
-          maxCandidatesPerWantedCard: MAX_OPTIMIZATION_CANDIDATES_PER_CARD,
-          conditionFlexibility: {
-            mode: options.conditionFlexibility ?? 'strict',
-            maxDowngradeSteps: options.maxDowngradeSteps,
-            downgradePenaltyPerStep: options.downgradePenaltyPerStep,
-          },
-          conditionValue: {
-            mode: 'prefer-higher-condition',
-            minimumHigherConditionPrice: 50,
-            minUpgradePremium: 10,
-            maxUpgradePremium: 30,
-          },
-        },
-      }),
     };
   }
 
@@ -601,7 +587,7 @@ export class ListsService {
         WHERE l.card_name_id = ANY($1::int[])
           AND ($2::text[] IS NULL OR s.name = ANY($2))
           AND ($3::text IS NULL OR ps.code = $3)
-          AND (v.quantity IS NULL OR v.quantity > 0)
+          AND v.in_stock = TRUE
       ),
       bounded_candidates AS (
         SELECT *
@@ -735,7 +721,6 @@ export class ListsService {
         candidates.push({
           wantedCardKey: entry.position,
           offer: this.mapOptimizationCandidateOffer(row, entry.card_name),
-          availableQuantity: this.parseAvailableQuantity(row.quantity),
           setCode: row.set_code ?? undefined,
           setName: row.set_name ?? undefined,
         });
@@ -770,14 +755,6 @@ export class ListsService {
       store: row.store_display_name,
       store_key: row.store_slug,
     };
-  }
-
-  private parseAvailableQuantity(
-    quantity: string | number | null,
-  ): number | undefined {
-    if (quantity == null) return undefined;
-    const parsed = Number(quantity);
-    return Number.isFinite(parsed) ? parsed : undefined;
   }
 
   private async getCheapestVariants(
@@ -843,6 +820,7 @@ export class ListsService {
           AND ($2::text[] IS NULL OR s.name = ANY($2))
           AND ($3::text[] IS NULL OR c.code = ANY($3))
           AND ($4::text IS NULL OR ps.code = $4)
+          AND v.in_stock = TRUE
         ORDER BY v.price ASC
         LIMIT 1
       ) best ON true
@@ -877,6 +855,7 @@ export class ListsService {
       WHERE ($2::text[] IS NULL OR s.name = ANY($2))
         AND ($3::text[] IS NULL OR c.code = ANY($3))
         AND ($4::text IS NULL OR ps.code = $4)
+        AND v.in_stock = TRUE
       GROUP BY e.card_name_id
       `,
       [listId, stores, conditions, setCode],
@@ -887,6 +866,12 @@ export class ListsService {
     const d = new Date();
     d.setDate(d.getDate() + 30);
     return d;
+  }
+
+  private maxListsForPrincipalKind(kind: PrincipalKind): number {
+    return kind === 'user'
+      ? MAX_LISTS_PER_USER_OWNER
+      : MAX_LISTS_PER_ANONYMOUS_OWNER;
   }
 
   private parseCsvFilter(value?: string | null): string[] | null {
@@ -940,16 +925,6 @@ export class ListsService {
       Condition.HP,
       Condition.DMG,
     ].filter((condition) => this.conditionRank(condition) >= minimumRank);
-  }
-
-  private normalizeMaxOptions(maxOptions: number | undefined): number {
-    if (maxOptions == null || !Number.isFinite(maxOptions)) {
-      return DEFAULT_OPTIMIZATION_OPTIONS;
-    }
-    return Math.min(
-      MAX_OPTIMIZATION_OPTIONS,
-      Math.max(1, Math.floor(maxOptions)),
-    );
   }
 
   private parsePreferredSetCode(input: string): string | undefined {

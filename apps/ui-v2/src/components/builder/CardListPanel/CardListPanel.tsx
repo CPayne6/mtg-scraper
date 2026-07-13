@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { UIEvent } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { Add as AddIcon, AddShoppingCart } from '@mui/icons-material';
@@ -22,6 +23,7 @@ import {
   sortLabelSx,
   listSx,
   emptyListSx,
+  loadMorePricesBtnSx,
   footerSx,
   bestCardsBtnSx,
   cartBtnSx,
@@ -43,6 +45,11 @@ export function CardListPanel({
   onAddBestCards,
   isAddingBestCards,
   canAddBestCards,
+  loadedPriceCount,
+  totalPriceCount,
+  hasMorePrices,
+  isLoadingMorePrices,
+  onLoadMorePrices,
 }: CardListPanelProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -60,6 +67,18 @@ export function CardListPanel({
     [entries, sortBy, results],
   );
   const bestCardsDisabled = !canAddBestCards || isAddingBestCards;
+  const handleListScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (!hasMorePrices || isLoadingMorePrices) return;
+      const list = event.currentTarget;
+      const distanceFromBottom =
+        list.scrollHeight - list.scrollTop - list.clientHeight;
+      if (distanceFromBottom < 280) {
+        onLoadMorePrices();
+      }
+    },
+    [hasMorePrices, isLoadingMorePrices, onLoadMorePrices],
+  );
 
   return (
     <Box component="aside" sx={containerSx}>
@@ -158,20 +177,35 @@ export function CardListPanel({
       />
 
       {/* Scrollable list */}
-      <Box sx={listSx}>
+      <Box sx={listSx} onScroll={handleListScroll}>
         {sortedEntries.length === 0 ? (
           <Box sx={emptyListSx}>No cards match your filters.</Box>
         ) : (
-          sortedEntries.map((e) => (
-            <CardListRow
-              key={e.name}
-              name={e.name}
-              selected={selectedName === e.name}
-              inCart={inCartByName(e.name)}
-              onSelect={() => onSelect(e.name)}
-              onRemove={onRemoveCard}
-            />
-          ))
+          <>
+            {sortedEntries.map((e) => (
+              <CardListRow
+                key={e.name}
+                name={e.name}
+                selected={selectedName === e.name}
+                inCart={inCartByName(e.name)}
+                onSelect={() => onSelect(e.name)}
+                onRemove={onRemoveCard}
+              />
+            ))}
+            {hasMorePrices && (
+              <Box
+                component="button"
+                type="button"
+                disabled={isLoadingMorePrices}
+                onClick={onLoadMorePrices}
+                sx={loadMorePricesBtnSx(isLoadingMorePrices)}
+              >
+                {isLoadingMorePrices
+                  ? 'Loading prices...'
+                  : `Load more prices (${loadedPriceCount}/${totalPriceCount})`}
+              </Box>
+            )}
+          </>
         )}
       </Box>
 

@@ -71,7 +71,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=http://localhost:${UI_PORT:-3000}
       - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
       - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     volumes:
@@ -109,7 +109,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=5002
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=http://localhost:${UI_PORT:-3000}
       - COOKIE_SECURE=false
       - DATABASE_HOST=auth-postgres
       - DATABASE_PORT=5432
@@ -130,7 +130,7 @@ services:
         condition: service_healthy
     networks:
       - scoutlgs-network-dev
-    command: pnpm dev
+    command: pnpm start:prod
 
   # UI Service (Development mode with Vite hot reload)
   ui:
@@ -139,7 +139,7 @@ services:
       dockerfile: apps/ui-v2/Dockerfile.dev
     container_name: scoutlgs-ui-dev
     ports:
-      - "3000:3000"
+      - "${UI_PORT:-3000}:3000"
     env_file:
       - apps/ui-v2/.env
     environment:
@@ -235,7 +235,7 @@ services:
         condition: service_healthy
     networks:
       - scoutlgs-network-dev
-    command: pnpm dev
+    command: pnpm start:prod
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
@@ -244,6 +244,33 @@ services:
       start_period: 40s
     deploy:
       replicas: 3
+
+  optimizer:
+    build:
+      context: .
+      dockerfile: apps/optimizer/Dockerfile.dev
+    container_name: scoutlgs-optimizer-dev
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+    volumes:
+      - ./apps/optimizer/src:/app/apps/optimizer/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
 
 networks:
   scoutlgs-network-dev:

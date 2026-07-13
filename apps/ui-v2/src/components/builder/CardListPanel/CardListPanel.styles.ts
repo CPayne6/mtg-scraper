@@ -136,6 +136,28 @@ export const emptyListSx: SxProps<Theme> = {
   fontSize: '14px',
 };
 
+export const loadMorePricesBtnSx = (
+  disabled: boolean,
+): SxProps<Theme> => (theme) => ({
+  width: '100%',
+  marginTop: '8px',
+  padding: '9px 12px',
+  borderRadius: '8px',
+  border: `1px dashed ${theme.palette.divider}`,
+  background: theme.palette.background.paper,
+  color: disabled ? theme.palette.text.disabled : theme.palette.text.secondary,
+  fontFamily: 'inherit',
+  fontSize: '12px',
+  fontWeight: 700,
+  cursor: disabled ? 'default' : 'pointer',
+  '&:hover': disabled
+    ? {}
+    : {
+        borderColor: theme.palette.primaryOutline,
+        color: theme.palette.text.primary,
+      },
+});
+
 export const footerSx: SxProps<Theme> = (theme) => ({
   padding: '12px 14px',
   borderTop: `1px solid ${theme.palette.divider}`,

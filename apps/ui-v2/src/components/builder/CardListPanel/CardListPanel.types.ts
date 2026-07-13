@@ -19,4 +19,9 @@ export type CardListPanelProps = {
   onAddBestCards: () => void;
   isAddingBestCards: boolean;
   canAddBestCards: boolean;
+  loadedPriceCount: number;
+  totalPriceCount: number;
+  hasMorePrices: boolean;
+  isLoadingMorePrices: boolean;
+  onLoadMorePrices: () => void;
 };

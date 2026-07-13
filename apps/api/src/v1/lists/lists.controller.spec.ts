@@ -57,7 +57,8 @@ describe('ListsController', () => {
       createList: vi.fn(),
       getListsForOwner: vi.fn(),
       getListWithPrices: vi.fn(),
-      getOptimizedListOptions: vi.fn(),
+      createOptimization: vi.fn(),
+      getOptimizationStatus: vi.fn(),
       updateFilters: vi.fn(),
       updateName: vi.fn(),
       replaceCards: vi.fn(),
@@ -90,6 +91,7 @@ describe('ListsController', () => {
       expect(listsService.createList).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Test Deck' }),
         PRINCIPAL_UUID,
+        'anonymous',
       );
       expect(result).toEqual(mockCreateResponse);
     });
@@ -121,26 +123,25 @@ describe('ListsController', () => {
     });
   });
 
-  describe('GET /v1/lists/:listId/optimizations', () => {
-    it('should return optimized list options', async () => {
-      listsService.getOptimizedListOptions.mockResolvedValue(mockListOptimization);
+  describe('POST /v1/lists/:listId/optimizations', () => {
+    it('should queue an optimization', async () => {
+      listsService.createOptimization.mockResolvedValue({ jobId: '42', status: 'queued' });
 
-      const result = await controller.getOptimizedListOptions(
+      const result = await controller.createOptimization(
         LIST_UUID,
-        { maxOptions: 2, minimumCondition: 'lp', stores: 'store-a,store-b' },
+        { minimumCondition: 'lp', stores: 'store-a,store-b' },
         PRINCIPAL,
       );
 
-      expect(listsService.getOptimizedListOptions).toHaveBeenCalledWith(
+      expect(listsService.createOptimization).toHaveBeenCalledWith(
         LIST_UUID,
         PRINCIPAL_UUID,
         expect.objectContaining({
-          maxOptions: 2,
           minimumCondition: 'lp',
           stores: 'store-a,store-b',
         }),
       );
-      expect(result).toEqual(mockListOptimization);
+      expect(result).toEqual({ jobId: '42', status: 'queued' });
     });
   });
 

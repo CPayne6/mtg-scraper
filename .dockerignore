@@ -12,6 +12,7 @@ build
 out
 **/dist
 **/build
+**/*.tsbuildinfo
 
 # Development
 .git

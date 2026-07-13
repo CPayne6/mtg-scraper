@@ -70,6 +70,10 @@ export interface CartOptimizationOptions {
   conditionValue?: ConditionValueOptions;
   maxCandidatesPerWantedCard?: number;
   maxResults?: number;
+  /** Maximum elapsed optimizer time. Defaults to ten seconds. */
+  timeBudgetMs?: number;
+  /** Injectable monotonic-ish clock used by deterministic tests. */
+  now?: () => number;
 }
 
 export interface OptimizeCartInput {
@@ -138,4 +142,6 @@ export interface CartOptimizationResult {
   stores: StoreCartPlan[];
   missingCards: MissingWantedCard[];
   totals: CartOptimizationTotals;
+  optimal: boolean;
+  subsetsEvaluated: number;
 }

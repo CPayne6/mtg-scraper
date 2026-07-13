@@ -36,7 +36,11 @@ export class ListsController {
     @Body() dto: CreateListDto,
     @CurrentPrincipal() principal: PrincipalContext,
   ) {
-    return this.listsService.createList(dto, principal.principalUuid);
+    return this.listsService.createList(
+      dto,
+      principal.principalUuid,
+      principal.kind,
+    );
   }
 
   @Get()
@@ -60,19 +64,30 @@ export class ListsController {
     );
   }
 
-  @Get(':listId/optimizations')
+  @Post(':listId/optimizations')
+  @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(OptionalPrincipalGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-  async getOptimizedListOptions(
+  async createOptimization(
     @Param('listId') listId: string,
-    @Query() query: OptimizeListQueryDto,
+    @Body() query: OptimizeListQueryDto,
     @CurrentPrincipal() principal?: PrincipalContext,
   ) {
-    return this.listsService.getOptimizedListOptions(
+    return this.listsService.createOptimization(
       listId,
       principal?.principalUuid,
       query,
     );
+  }
+
+  @Get(':listId/optimizations/:jobId')
+  @UseGuards(OptionalPrincipalGuard)
+  async getOptimizationStatus(
+    @Param('listId') listId: string,
+    @Param('jobId') jobId: string,
+    @CurrentPrincipal() principal?: PrincipalContext,
+  ) {
+    return this.listsService.getOptimizationStatus(listId, jobId, principal?.principalUuid);
   }
 
   @Put(':listId/filters')

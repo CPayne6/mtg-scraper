@@ -111,9 +111,7 @@ export class ExtractionService {
       }
 
       // Count in-stock vs out-of-stock
-      result.variantsInStock = variants.filter(
-        (v) => v.inStock && (v.quantity === undefined || v.quantity > 0),
-      ).length;
+      result.variantsInStock = variants.filter((v) => v.inStock).length;
       result.variantsOutOfStock = variants.length - result.variantsInStock;
 
       // All variants in a product share the same card — resolve once
@@ -150,11 +148,7 @@ export class ExtractionService {
         result.unmatchedPrintings = 1;
       }
 
-      // Filter to in-stock variants only
-      const inStockVariants = variants.filter(
-        (v) => v.inStock && (v.quantity === undefined || v.quantity > 0),
-      );
-
+      // Persist every variant with its current stock flag.
       // Build one listing per product, with variants underneath
       const listing: ListingRow = {
         cardNameId: matchResult.cardNameId,
@@ -172,18 +166,19 @@ export class ExtractionService {
       const variantRows: VariantRow[] = [];
       const inStockVariantIds: string[] = [];
 
-      for (const variant of inStockVariants) {
+      for (const variant of variants) {
         try {
           variantRows.push({
             conditionCode: variant.condition,
             foil: variant.foil,
             price: variant.price,
+            inStock: variant.inStock,
             quantity: variant.quantity ?? null,
             platformVariantId: variant.platformVariantId || null,
             sku: variant.sku || null,
           });
 
-          if (variant.platformVariantId) {
+          if (variant.inStock && variant.platformVariantId) {
             inStockVariantIds.push(variant.platformVariantId);
           }
         } catch (error) {
@@ -304,9 +299,7 @@ export class ExtractionService {
       result.unmatchedPrintings = 1;
     }
 
-    const inStockVariants = variants.filter(
-      (v) => v.inStock && (v.quantity === undefined || v.quantity > 0),
-    );
+    const inStockVariants = variants.filter((v) => v.inStock);
 
     const listing: TokenListingRow = {
       tokenNameId: matchResult.tokenNameId,

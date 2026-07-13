@@ -72,17 +72,18 @@ export interface ListOptimizationOption {
     estimatedTotal: number;
     objectiveTotal: number;
   };
+  optimal: boolean;
+  subsetsEvaluated: number;
 }
 
-export interface ListOptimizationResponse {
+export interface ListOptimizationResult {
   id: string;
   name: string;
   generatedAt: number;
-  options: ListOptimizationOption[];
+  result: ListOptimizationOption;
 }
 
 export interface FetchListOptimizationsInput {
-  maxOptions?: number;
   minimumCondition?: string;
   stores?: string[];
   conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
@@ -166,27 +167,25 @@ export function fetchList(listId: string, signal?: AbortSignal): Promise<ListWit
   );
 }
 
-export function fetchListOptimizations(
+export function createListOptimization(
   listId: string,
   input: FetchListOptimizationsInput = {},
   signal?: AbortSignal,
-): Promise<ListOptimizationResponse> {
-  const params = new URLSearchParams();
-  if (input.maxOptions != null) params.set('maxOptions', String(input.maxOptions));
-  if (input.minimumCondition) params.set('minimumCondition', input.minimumCondition);
-  if (input.stores && input.stores.length > 0) {
-    params.set('stores', input.stores.join(','));
-  }
-  if (input.conditionFlexibility) {
-    params.set('conditionFlexibility', input.conditionFlexibility);
-  }
-  if (input.maxDowngradeSteps != null) {
-    params.set('maxDowngradeSteps', String(input.maxDowngradeSteps));
-  }
+): Promise<{ jobId: string; status: 'queued' }> {
+  return request<{ jobId: string; status: 'queued' }>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations`,
+    { method: 'POST', signal, body: JSON.stringify({ ...input, stores: input.stores?.join(',') }) },
+  );
+}
 
-  const query = params.toString();
-  return request<ListOptimizationResponse>(
-    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations${query ? `?${query}` : ''}`,
+export type OptimizationJobStatus =
+  | { jobId: string; status: 'queued' | 'running' }
+  | { jobId: string; status: 'completed' | 'timed-out'; result: ListOptimizationResult }
+  | { jobId: string; status: 'failed'; error: string };
+
+export function fetchListOptimizationStatus(listId: string, jobId: string, signal?: AbortSignal) {
+  return request<OptimizationJobStatus>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations/${encodeURIComponent(jobId)}`,
     { signal },
   );
 }

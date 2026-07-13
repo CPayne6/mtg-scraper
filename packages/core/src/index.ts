@@ -30,3 +30,4 @@ export { WebBotAuthModule, WebBotAuthService } from './web-bot-auth/index';
 
 // Cart Optimizer
 export * from './cart-optimizer/index';
+export * from './card-optimization/index';
