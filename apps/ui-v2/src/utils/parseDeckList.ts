@@ -10,12 +10,12 @@
 const LINE_RE = /^\s*(\d+)?\s*[xX]?\s*([^()#\n]+?)(?:\s*\([^)]*\).*)?\s*$/;
 const SIDEBOARD_MARKERS = ['sideboard', 'sb:', 'maybeboard', 'commander'];
 const MAX_QTY_PER_LINE = 60;
-const MAX_TOTAL_CARDS = 500;
+export const MAX_DECKLIST_CARDS = 150;
 
 export function parseDeckList(text: string): string[] {
   const names: string[] = [];
   for (const raw of text.split('\n')) {
-    if (names.length >= MAX_TOTAL_CARDS) break;
+    if (names.length >= MAX_DECKLIST_CARDS) break;
     const line = raw.trim();
     if (!line) continue;
     if (line.startsWith('//') || line.startsWith('#')) continue;
@@ -27,7 +27,7 @@ export function parseDeckList(text: string): string[] {
     const name = match[2]?.trim();
     if (!name) continue;
     for (let i = 0; i < qty; i++) {
-      if (names.length >= MAX_TOTAL_CARDS) break;
+      if (names.length >= MAX_DECKLIST_CARDS) break;
       names.push(name);
     }
   }

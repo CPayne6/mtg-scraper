@@ -1,3 +1,5 @@
+import type { CardWithStore } from '@scoutlgs/shared';
+
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
 export interface ListSummary {
@@ -49,6 +51,61 @@ export interface ListWithPricesResponse {
   cards: CheapestVariant[];
   unresolved: string[];
 }
+
+export interface SelectedOptimizedOffer {
+  wantedCardKey: string;
+  wantedCardName: string;
+  offer: CardWithStore;
+  storeKey: string;
+  storeName: string;
+  price: number;
+  meetsMinimumCondition: boolean;
+}
+
+export interface ListOptimizationOption {
+  status: 'complete' | 'partial' | 'empty';
+  selectedOffers: SelectedOptimizedOffer[];
+  missingCards: Array<{ wantedCardName: string; reason: string }>;
+  totals: {
+    subtotal: number;
+    shipping: number;
+    estimatedTotal: number;
+    objectiveTotal: number;
+  };
+  optimal: boolean;
+  subsetsEvaluated: number;
+}
+
+export interface ListOptimizationResult {
+  id: string;
+  name: string;
+  generatedAt: number;
+  result: ListOptimizationOption;
+}
+
+export interface FetchListOptimizationsInput {
+  minimumCondition?: string;
+  stores?: string[];
+  conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
+  maxDowngradeSteps?: number;
+  quoteToken?: string;
+  selectedMethods?: Record<string, { label: string; handle?: string }>;
+}
+
+export type DeliveryMethod = { label: string; handle?: string; price: number };
+export type DeliveryOptionsResponse = {
+  methods: Record<string, DeliveryMethod[]>;
+  quoteToken: string;
+  expiresAt: number;
+};
+export type DeliveryAddress = {
+  address1: string;
+  address2?: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  countryCode: string;
+};
 
 export interface CreateListResponse {
   id: string;
@@ -123,6 +180,42 @@ export function fetchLists(signal?: AbortSignal): Promise<{ lists: ListSummary[]
 export function fetchList(listId: string, signal?: AbortSignal): Promise<ListWithPricesResponse> {
   return request<ListWithPricesResponse>(
     `/api/v1/lists/${encodeURIComponent(listId)}`,
+    { signal },
+  );
+}
+
+export function createListOptimization(
+  listId: string,
+  input: FetchListOptimizationsInput = {},
+  signal?: AbortSignal,
+): Promise<{ jobId: string; status: 'queued' }> {
+  return request<{ jobId: string; status: 'queued' }>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations`,
+    { method: 'POST', signal, body: JSON.stringify({ ...input, stores: input.stores?.join(',') }) },
+  );
+}
+
+/** Addresses are sent only for this request; the API returns a token containing prices, not the address. */
+export function fetchDeliveryOptions(
+  listId: string,
+  address: DeliveryAddress,
+  stores: string[],
+  signal?: AbortSignal,
+): Promise<DeliveryOptionsResponse> {
+  return request<DeliveryOptionsResponse>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/delivery-options`,
+    { method: 'POST', signal, body: JSON.stringify({ address, stores }) },
+  );
+}
+
+export type OptimizationJobStatus =
+  | { jobId: string; status: 'queued' | 'running' }
+  | { jobId: string; status: 'completed' | 'timed-out'; result: ListOptimizationResult }
+  | { jobId: string; status: 'failed'; error: string };
+
+export function fetchListOptimizationStatus(listId: string, jobId: string, signal?: AbortSignal) {
+  return request<OptimizationJobStatus>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations/${encodeURIComponent(jobId)}`,
     { signal },
   );
 }

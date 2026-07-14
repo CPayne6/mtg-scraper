@@ -5,6 +5,7 @@ import {
   Put,
   Delete,
   Param,
+  Query,
   Body,
   HttpCode,
   HttpStatus,
@@ -21,6 +22,8 @@ import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
 import { UpdateNameDto } from './dto/update-name.dto';
+import { OptimizeListQueryDto } from './dto/optimize-list-query.dto';
+import { DeliveryOptionsDto } from './dto/delivery-options.dto';
 
 @Controller('lists')
 export class ListsController {
@@ -34,7 +37,11 @@ export class ListsController {
     @Body() dto: CreateListDto,
     @CurrentPrincipal() principal: PrincipalContext,
   ) {
-    return this.listsService.createList(dto, principal.principalUuid);
+    return this.listsService.createList(
+      dto,
+      principal.principalUuid,
+      principal.kind,
+    );
   }
 
   @Get()
@@ -56,6 +63,43 @@ export class ListsController {
       listId,
       principal?.principalUuid,
     );
+  }
+
+  @Post(':listId/optimizations')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(OptionalPrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async createOptimization(
+    @Param('listId') listId: string,
+    @Body() query: OptimizeListQueryDto,
+    @CurrentPrincipal() principal?: PrincipalContext,
+  ) {
+    return this.listsService.createOptimization(
+      listId,
+      principal?.principalUuid,
+      query,
+    );
+  }
+
+  @Post(':listId/delivery-options')
+  @UseGuards(PrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async deliveryOptions(
+    @Param('listId') listId: string,
+    @Body() dto: DeliveryOptionsDto,
+    @CurrentPrincipal() principal: PrincipalContext,
+  ) {
+    return this.listsService.createDeliveryQuote(listId, principal.principalUuid, dto);
+  }
+
+  @Get(':listId/optimizations/:jobId')
+  @UseGuards(OptionalPrincipalGuard)
+  async getOptimizationStatus(
+    @Param('listId') listId: string,
+    @Param('jobId') jobId: string,
+    @CurrentPrincipal() principal?: PrincipalContext,
+  ) {
+    return this.listsService.getOptimizationStatus(listId, jobId, principal?.principalUuid);
   }
 
   @Put(':listId/filters')

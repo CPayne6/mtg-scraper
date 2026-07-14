@@ -135,7 +135,7 @@ export class CartService {
     }
 
     const variants = await this.cardVariantRepository.find({
-      where: { id: In(variantIds) },
+      where: { id: In(variantIds), inStock: true },
       relations: [
         'condition',
         'cardListing',

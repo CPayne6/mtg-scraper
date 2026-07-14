@@ -4,6 +4,8 @@ import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import LinearProgress from '@mui/material/LinearProgress';
+import Alert from '@mui/material/Alert';
 import { Add } from '@mui/icons-material';
 import { useLists } from '@/components/lists/ListsContext';
 import { DeckCard } from '@/components/lists/DeckCard';
@@ -18,7 +20,7 @@ export const Route = createFileRoute('/lists')({
 
 function ListsRoute() {
   const navigate = useNavigate();
-  const { count, totalCards, lists, remove } = useLists();
+  const { count, totalCards, lists, remove, loading, error } = useLists();
   const confirm = useConfirm();
 
   const handleDelete = useCallback(
@@ -88,7 +90,25 @@ function ListsRoute() {
         </Box>
       </Box>
 
-      {count === 0 ? (
+      {loading ? (
+        <Box sx={{ mb: 3 }}>
+          <LinearProgress
+            sx={{
+              height: 4,
+              borderRadius: 999,
+              bgcolor: (theme) => theme.palette.primarySoft,
+              '& .MuiLinearProgress-bar': { bgcolor: 'primary.main' },
+            }}
+          />
+          <Typography sx={{ mt: 1, fontSize: '0.875rem', color: 'text.secondary' }}>
+            Loading card lists...
+          </Typography>
+        </Box>
+      ) : error ? (
+        <Alert severity="error" sx={{ borderRadius: 1.5 }}>
+          {error}
+        </Alert>
+      ) : count === 0 ? (
         <EmptyState
           title="No lists yet"
           description={`Upload a list or paste one from Arena / MTGO and we'll scout every card across all ${STORE_COUNT} stores.`}

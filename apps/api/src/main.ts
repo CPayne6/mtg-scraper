@@ -40,17 +40,11 @@ async function bootstrap() {
     transform: true,
   }));
 
-  // Enable CORS for the frontend. FRONTEND_URL is a comma-separated list so
-  // dev can serve the UI from multiple ports (and prod can stay single-origin).
-  // Nest's enableCors `origin` accepts string | string[]; a literal comma-string
-  // would only match a request Origin equal to that exact comma-string.
+  // Enable CORS for the frontend. FRONTEND_URL is a single browser origin,
+  // for example http://localhost:3000 in local development.
   const frontendUrl = configService.get<string>('frontendUrl') ?? '';
-  const allowedOrigins = frontendUrl
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
   app.enableCors({
-    origin: allowedOrigins.length > 1 ? allowedOrigins : allowedOrigins[0],
+    origin: frontendUrl,
     credentials: true,
   });
 

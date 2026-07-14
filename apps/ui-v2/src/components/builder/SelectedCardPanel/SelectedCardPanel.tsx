@@ -87,7 +87,7 @@ export function SelectedCardPanel({
 
   const setName =
     (lookup?.state === 'success' && lookup.cheapest?.set) || card.set || '—';
-  const storeCount = filteredOffers.length;
+  const optionCount = filteredOffers.length;
 
   return (
     <>
@@ -113,7 +113,7 @@ export function SelectedCardPanel({
             </Box>
             <Box component="span" sx={{ color: 'text.disabled' }}>·</Box>
             <Box component="span">
-              {storeCount} {storeCount === 1 ? 'store' : 'stores'} scouted
+              {optionCount} {optionCount === 1 ? 'option' : 'options'} available
             </Box>
           </Box>
 
@@ -155,11 +155,11 @@ export function SelectedCardPanel({
       <Box>
         <Box sx={sectionHeaderSx}>
           <Typography component="h3" sx={sectionTitleSx}>
-            Add to Cart · {filteredOffers.length}{' '}
-            {filteredOffers.length === 1 ? 'store' : 'stores'}
+            Add to Cart · {optionCount}{' '}
+            {optionCount === 1 ? 'option' : 'options'}
           </Typography>
           <Box sx={{ fontSize: '12px', color: 'text.secondary' }}>
-            💡 Tip: Cheapest store is highlighted.
+            Cheapest option is highlighted.
           </Box>
         </Box>
 

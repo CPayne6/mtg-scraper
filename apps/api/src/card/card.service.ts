@@ -55,6 +55,7 @@ export class CardService {
       .leftJoinAndSelect('listing.cardPrinting', 'printing')
       .leftJoinAndSelect('printing.set', 'printingSet')
       .where('listing.card_name_id = :cardNameId', { cardNameId: cardNameRecord.id })
+      .andWhere('variant.inStock = :inStock', { inStock: true })
       .orderBy('variant.price', 'ASC')
       .getMany();
 

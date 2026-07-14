@@ -16,4 +16,12 @@ export type CardListPanelProps = {
   onAddCard: (name: string) => void;
   onRemoveCard: (name: string) => void;
   onUndoHistory: (id: string) => void;
+  onAddBestCards: () => void;
+  isAddingBestCards: boolean;
+  canAddBestCards: boolean;
+  loadedPriceCount: number;
+  totalPriceCount: number;
+  hasMorePrices: boolean;
+  isLoadingMorePrices: boolean;
+  onLoadMorePrices: () => void;
 };

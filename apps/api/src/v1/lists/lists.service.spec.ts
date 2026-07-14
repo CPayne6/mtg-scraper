@@ -99,6 +99,7 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Test Deck', cards: ['Lightning Bolt', 'Black Lotus'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.id).toBe(LIST_UUID);
@@ -126,6 +127,7 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Burn', cards: ['Lightning Bolt', 'Lightning Bolt', 'Lightning Bolt'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.cardCount).toBe(3);
@@ -134,6 +136,34 @@ describe('ListsService', () => {
         expect.objectContaining({ cardNameId: 1, position: 1 }),
         expect.objectContaining({ cardNameId: 1, position: 2 }),
         expect.objectContaining({ cardNameId: 1, position: 3 }),
+      ]);
+    });
+
+    it('should preserve preferred set codes from card input', async () => {
+      cardNameResolver.resolveCardNames.mockResolvedValue({
+        resolved: [
+          {
+            input: 'Lightning Bolt (LEA) 161',
+            cardNameId: 1,
+            resolvedName: 'Lightning Bolt',
+            fuzzy: false,
+          },
+        ],
+        unresolved: [],
+      });
+
+      await service.createList(
+        { name: 'Alpha Bolt', cards: ['Lightning Bolt (LEA) 161'] },
+        OWNER_COOKIE,
+        'anonymous',
+      );
+
+      expect(cardListEntryRepo.save).toHaveBeenCalledWith([
+        expect.objectContaining({
+          cardNameId: 1,
+          position: 1,
+          preferredSetCode: 'lea',
+        }),
       ]);
     });
 
@@ -148,6 +178,7 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Deck', cards: ['Ligthning Bolt'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.warnings).toContain('"Ligthning Bolt" matched as "Lightning Bolt"');
@@ -162,18 +193,49 @@ describe('ListsService', () => {
       const result = await service.createList(
         { name: 'Deck', cards: ['Totally Fake Card'] },
         OWNER_COOKIE,
+        'anonymous',
       );
 
       expect(result.warnings).toContain('"Totally Fake Card" could not be found');
       expect(result.cardCount).toBe(0);
     });
 
-    it('should throw ConflictException when max lists exceeded', async () => {
+    it('should throw ConflictException when anonymous max lists exceeded', async () => {
+      const qb = cardListRepo.createQueryBuilder();
+      qb.getCount.mockResolvedValue(3);
+
+      await expect(
+        service.createList(
+          { name: 'Deck', cards: ['Sol Ring'] },
+          OWNER_COOKIE,
+          'anonymous',
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should allow signed-in users up to the higher list limit', async () => {
       const qb = cardListRepo.createQueryBuilder();
       qb.getCount.mockResolvedValue(5);
 
+      const result = await service.createList(
+        { name: 'Deck', cards: ['Sol Ring'] },
+        OWNER_COOKIE,
+        'user',
+      );
+
+      expect(result.id).toBe(LIST_UUID);
+    });
+
+    it('should throw ConflictException when signed-in user max lists exceeded', async () => {
+      const qb = cardListRepo.createQueryBuilder();
+      qb.getCount.mockResolvedValue(6);
+
       await expect(
-        service.createList({ name: 'Deck', cards: ['Sol Ring'] }, OWNER_COOKIE),
+        service.createList(
+          { name: 'Deck', cards: ['Sol Ring'] },
+          OWNER_COOKIE,
+          'user',
+        ),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -405,6 +467,125 @@ describe('ListsService', () => {
         expect(params[2]).toEqual(['NM', 'LP']); // conditions
         expect(params[3]).toBe('lea'); // setCode
       }
+    });
+  });
+
+  describe.skip('legacy synchronous getOptimizedListOptions', () => {
+    it('should query bounded candidate rows and return ranked optimizer options', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+
+      entityManager.query
+        .mockResolvedValueOnce([
+          {
+            position: '1',
+            card_name_id: '10',
+            card_name: 'Sol Ring',
+            preferred_set_code: null,
+          },
+          {
+            position: '2',
+            card_name_id: '20',
+            card_name: 'Counterspell',
+            preferred_set_code: 'lea',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            card_name_id: '10',
+            variant_id: '100',
+            platform_variant_id: '900',
+            price: '2.00',
+            foil: false,
+            quantity: 4,
+            condition_code: 'nm',
+            currency: 'CAD',
+            image_url: null,
+            store_slug: 'store-a',
+            store_display_name: 'Store A',
+            store_base_url: 'https://store-a.test',
+            product_handle: 'sol-ring',
+            scryfall_id: 'sol',
+            collector_number: '1',
+            image_uri: null,
+            set_code: 'cmm',
+            set_name: 'Commander Masters',
+          },
+          {
+            card_name_id: '20',
+            variant_id: '200',
+            platform_variant_id: '901',
+            price: '1.00',
+            foil: false,
+            quantity: 2,
+            condition_code: 'lp',
+            currency: 'CAD',
+            image_url: null,
+            store_slug: 'store-a',
+            store_display_name: 'Store A',
+            store_base_url: 'https://store-a.test',
+            product_handle: 'counterspell',
+            scryfall_id: 'counter',
+            collector_number: '55',
+            image_uri: null,
+            set_code: 'lea',
+            set_name: 'Limited Edition Alpha',
+          },
+        ]);
+
+      const result = await service.getOptimizedListOptions(LIST_UUID, OWNER_COOKIE, {
+        maxOptions: 2,
+        minimumCondition: 'lp',
+        stores: 'store-a,store-b',
+      });
+
+      expect(result.id).toBe(LIST_UUID);
+      expect(result.options).toHaveLength(1);
+      expect(result.options[0].status).toBe('complete');
+      expect(result.options[0].stores).toHaveLength(1);
+      expect(result.options[0].totals.estimatedTotal).toBe(6);
+
+      expect(entityManager.query).toHaveBeenCalledTimes(2);
+      expect(entityManager.query.mock.calls[0][0]).toContain('LIMIT $2');
+      expect(entityManager.query.mock.calls[0][1]).toEqual([1, 150]);
+
+      const candidateSql = entityManager.query.mock.calls[1][0] as string;
+      const candidateParams = entityManager.query.mock.calls[1][1];
+      expect(candidateSql).toContain('ROW_NUMBER() OVER');
+      expect(candidateSql).toContain('store_price_rank = 1');
+      expect(candidateSql).toContain("condition_code = 'nm'");
+      expect(candidateSql).toContain('store_minimum_condition_rank = 1');
+      expect(candidateSql).toContain('requested_set_store_price_rank = 1');
+      expect(candidateSql).toContain('requested_set_store_minimum_condition_rank = 1');
+      expect(candidateSql).toContain('final_rank <= $7');
+      expect(candidateParams).toEqual([
+        [10, 20],
+        ['store-a', 'store-b'],
+        null,
+        [20],
+        ['lea'],
+        ['nm', 'lp'],
+        10,
+      ]);
+    });
+  });
+
+  describe('createOptimization', () => {
+    it('queues one bounded-retention job after checking list visibility', async () => {
+      cardListRepo.findOne.mockResolvedValue(makeList());
+      const add = vi.fn().mockResolvedValue({ id: '42' });
+      (service as unknown as { optimizationQueue: { add: typeof add } }).optimizationQueue = { add };
+
+      const result = await service.createOptimization(LIST_UUID, OWNER_COOKIE, {
+        minimumCondition: 'lp',
+        stores: 'store-a,store-b',
+      });
+
+      expect(result).toEqual({ jobId: '42', status: 'queued' });
+      expect(add).toHaveBeenCalledWith(
+        'optimize-card-list',
+        expect.objectContaining({ listId: 1, listUuid: LIST_UUID, stores: ['store-a', 'store-b'] }),
+        expect.objectContaining({ attempts: 1 }),
+      );
     });
   });
 
