@@ -84,7 +84,7 @@ export function CartDrawer() {
         </IconButton>
       </Box>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, py: 1.75, minHeight: 0 }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, pt: 0, pb: 1.75, minHeight: 0, bgcolor: 'background.default' }}>
         {items.length === 0 ? (
           <Stack alignItems="center" spacing={1.5} sx={{ py: 6, textAlign: 'center' }}>
             <ShoppingCartOutlined sx={{ fontSize: 36, opacity: 0.4 }} />
@@ -98,7 +98,7 @@ export function CartDrawer() {
             const subtotal = list.reduce((sum, item) => sum + (item.price ?? 0), 0);
 
             return (
-              <Box key={store} sx={{ mb: 2.5 }}>
+              <Box key={store}>
                 <Box sx={storeHeaderSx}>
                   <Typography
                     sx={{

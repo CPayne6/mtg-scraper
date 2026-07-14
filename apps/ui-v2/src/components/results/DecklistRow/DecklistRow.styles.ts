@@ -4,7 +4,7 @@ export const containerSx: SxProps<Theme> = (theme) => ({
   display: 'grid',
   gridTemplateColumns: {
     xs: '32px 1fr auto 32px',
-    sm: '40px 1fr 110px 150px 36px',
+    sm: '40px 1fr 110px 150px 36px 36px',
   },
   alignItems: 'center',
   gap: { xs: 1.25, sm: 1.75 },
@@ -56,7 +56,7 @@ export const cardNameButtonSx = (enabled: boolean): SxProps<Theme> => (theme) =>
     : {},
 });
 
-export const storeBtnSx = (disabled = false): SxProps<Theme> => (theme) => ({
+export const cartStatusSx: SxProps<Theme> = (theme) => ({
   display: { xs: 'none', sm: 'inline-flex' },
   alignItems: 'center',
   gap: 0.75,
@@ -67,13 +67,7 @@ export const storeBtnSx = (disabled = false): SxProps<Theme> => (theme) => ({
   px: 1.5,
   borderRadius: 1,
   fontSize: 13,
-  cursor: disabled ? 'not-allowed' : 'pointer',
   color: 'inherit',
   fontWeight: 500,
   fontFamily: 'inherit',
-  opacity: disabled ? 0.55 : 1,
-  transition: 'background 200ms',
-  '&:hover': {
-    bgcolor: disabled ? theme.palette.surfaceHover : theme.palette.surfacePressed,
-  },
 });
