@@ -21,7 +21,7 @@ export function StaleNotice() {
     >
       <InfoOutlined sx={{ fontSize: 16 }} />
       <Box component="span">
-        Card prices may be slightly out of date — we re-scrape popular cards daily and stream fresh prices when you search.
+        Card prices may be slightly out of date.
       </Box>
     </Box>
   );
