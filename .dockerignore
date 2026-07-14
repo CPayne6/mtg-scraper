@@ -1,6 +1,13 @@
 # Dependencies
 node_modules
 **/node_modules
+# Docker on Windows does not consistently match junction targets with the
+# globstar form above. Keep every workspace package's host dependencies out
+# of the build context; each Dockerfile runs pnpm install in Linux instead.
+apps/*/node_modules
+packages/*/node_modules
+apps/**/node_modules/**
+packages/**/node_modules/**
 npm-debug.log
 yarn-error.log
 pnpm-debug.log

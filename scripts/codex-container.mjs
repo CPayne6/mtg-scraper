@@ -1,8 +1,18 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
 const repoPath = path.resolve(import.meta.dirname, '..');
+const sshKeyPath = path.join(os.homedir(), '.ssh', 'id_ed25519');
+const knownHostsPath = path.join(os.homedir(), '.ssh', 'known_hosts');
+
+for (const requiredPath of [sshKeyPath, knownHostsPath]) {
+  if (!fs.existsSync(requiredPath)) {
+    throw new Error(`Required SSH file does not exist: ${requiredPath}`);
+  }
+}
 
 function dockerWorkspacePath(hostPath) {
   if (process.platform !== 'win32') {
@@ -36,6 +46,8 @@ const result = spawnSync('docker', composeArgs, {
   env: {
     ...process.env,
     CODEX_WORKSPACE_PATH: dockerWorkspacePath(repoPath),
+    CODEX_SSH_KEY_PATH: sshKeyPath,
+    CODEX_KNOWN_HOSTS_PATH: knownHostsPath,
   },
   stdio: 'inherit',
 });

@@ -10,6 +10,8 @@ services:
     environment:
       HOME: /root
       CODEX_HOME: /root/.codex
+      # Keep GitHub CLI credentials in the persisted Codex home volume.
+      GH_CONFIG_DIR: /root/.codex/gh
     stdin_open: true
     tty: true
     volumes:
@@ -21,6 +23,14 @@ services:
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
+      - type: bind
+        source: ${CODEX_SSH_KEY_PATH}
+        target: /run/host-ssh/id_ed25519
+        read_only: true
+      - type: bind
+        source: ${CODEX_KNOWN_HOSTS_PATH}
+        target: /run/host-ssh/known_hosts
+        read_only: true
       # Persist only Codex authentication/configuration outside the disposable container.
       - type: volume
         source: codex-home
