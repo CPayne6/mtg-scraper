@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { UIEvent } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, AddShoppingCart } from '@mui/icons-material';
 import { CardListRow } from '../CardListRow';
-import { SortByMenu, type SortBy } from '../SortByMenu';
+import { SortByMenu } from '../SortByMenu';
 import { AddCardPopover } from '../AddCardPopover';
 import { HistoryPopover } from '../HistoryPopover';
 import { useCart } from '@/components/cart/CartContext';
 import type { CardListPanelProps } from './CardListPanel.types';
+import { sortCardListEntries } from './CardListPanel.utils';
 import {
   containerSx,
   headerSx,
@@ -21,7 +23,9 @@ import {
   sortLabelSx,
   listSx,
   emptyListSx,
+  loadMorePricesBtnSx,
   footerSx,
+  bestCardsBtnSx,
   cartBtnSx,
 } from './CardListPanel.styles';
 
@@ -29,6 +33,8 @@ export function CardListPanel({
   entries,
   selectedName,
   onSelect,
+  sortBy,
+  onSortByChange,
   results,
   inCartByName,
   history,
@@ -36,8 +42,15 @@ export function CardListPanel({
   onAddCard,
   onRemoveCard,
   onUndoHistory,
+  onAddBestCards,
+  isAddingBestCards,
+  canAddBestCards,
+  loadedPriceCount,
+  totalPriceCount,
+  hasMorePrices,
+  isLoadingMorePrices,
+  onLoadMorePrices,
 }: CardListPanelProps) {
-  const [sortBy, setSortBy] = useState<SortBy>('name');
   const [addOpen, setAddOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const addAnchorRef = useRef<HTMLButtonElement | null>(null);
@@ -49,21 +62,23 @@ export function CardListPanel({
     [items],
   );
 
-  const sortedEntries = useMemo(() => {
-    const arr = entries.slice();
-    if (sortBy === 'name') {
-      arr.sort((a, b) => a.name.localeCompare(b.name));
-    } else {
-      arr.sort((a, b) => {
-        const ra = results[a.name];
-        const rb = results[b.name];
-        const ap = ra?.state === 'success' && ra.cheapest ? ra.cheapest.price : Infinity;
-        const bp = rb?.state === 'success' && rb.cheapest ? rb.cheapest.price : Infinity;
-        return ap - bp;
-      });
-    }
-    return arr;
-  }, [entries, sortBy, results]);
+  const sortedEntries = useMemo(
+    () => sortCardListEntries(entries, sortBy, results),
+    [entries, sortBy, results],
+  );
+  const bestCardsDisabled = !canAddBestCards || isAddingBestCards;
+  const handleListScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (!hasMorePrices || isLoadingMorePrices) return;
+      const list = event.currentTarget;
+      const distanceFromBottom =
+        list.scrollHeight - list.scrollTop - list.clientHeight;
+      if (distanceFromBottom < 280) {
+        onLoadMorePrices();
+      }
+    },
+    [hasMorePrices, isLoadingMorePrices, onLoadMorePrices],
+  );
 
   return (
     <Box component="aside" sx={containerSx}>
@@ -141,7 +156,7 @@ export function CardListPanel({
           <Typography component="span" sx={sortLabelSx}>
             Sort by
           </Typography>
-          <SortByMenu value={sortBy} onChange={setSortBy} />
+          <SortByMenu value={sortBy} onChange={onSortByChange} />
         </Box>
       </Box>
 
@@ -162,20 +177,35 @@ export function CardListPanel({
       />
 
       {/* Scrollable list */}
-      <Box sx={listSx}>
+      <Box sx={listSx} onScroll={handleListScroll}>
         {sortedEntries.length === 0 ? (
           <Box sx={emptyListSx}>No cards match your filters.</Box>
         ) : (
-          sortedEntries.map((e) => (
-            <CardListRow
-              key={e.name}
-              name={e.name}
-              selected={selectedName === e.name}
-              inCart={inCartByName(e.name)}
-              onSelect={() => onSelect(e.name)}
-              onRemove={onRemoveCard}
-            />
-          ))
+          <>
+            {sortedEntries.map((e) => (
+              <CardListRow
+                key={e.name}
+                name={e.name}
+                selected={selectedName === e.name}
+                inCart={inCartByName(e.name)}
+                onSelect={() => onSelect(e.name)}
+                onRemove={onRemoveCard}
+              />
+            ))}
+            {hasMorePrices && (
+              <Box
+                component="button"
+                type="button"
+                disabled={isLoadingMorePrices}
+                onClick={onLoadMorePrices}
+                sx={loadMorePricesBtnSx(isLoadingMorePrices)}
+              >
+                {isLoadingMorePrices
+                  ? 'Loading prices...'
+                  : `Load more prices (${loadedPriceCount}/${totalPriceCount})`}
+              </Box>
+            )}
+          </>
         )}
       </Box>
 
@@ -203,6 +233,17 @@ export function CardListPanel({
               CA${total.toFixed(2)}
             </Box>
           </Box>
+        </Box>
+        <Box
+          component="button"
+          type="button"
+          onClick={onAddBestCards}
+          disabled={bestCardsDisabled}
+          aria-busy={isAddingBestCards}
+          sx={bestCardsBtnSx(bestCardsDisabled)}
+        >
+          <AddShoppingCart sx={{ fontSize: 16 }} />
+          {isAddingBestCards ? 'Finding best...' : 'Fill Best Cards'}
         </Box>
         <Box
           component="button"

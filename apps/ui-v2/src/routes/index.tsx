@@ -31,11 +31,12 @@ export const Route = createFileRoute('/')({
 function HomeRoute() {
   const navigate = useNavigate();
   const { mode: initialMode } = Route.useSearch();
-  const { count, save } = useLists();
+  const { count, save, listLimit, canCreateList } = useLists();
   const { recents, clear: clearRecents } = useRecentSearches();
   const { enqueueSnackbar } = useSnackbar();
   const [mode, setMode] = useState<'card' | 'deck'>(initialMode ?? 'card');
   const [cardName, setCardName] = useState('');
+  const [listName, setListName] = useState('');
   const [deckText, setDeckText] = useState('');
 
   const handleScoutCard = (name: string) => {
@@ -44,17 +45,28 @@ function HomeRoute() {
   };
 
   const handleScoutDeck = async () => {
+    if (!canCreateList) {
+      enqueueSnackbar(
+        `You can save up to ${listLimit} card lists. Delete one before creating another.`,
+        { variant: 'warning' },
+      );
+      return;
+    }
+    const trimmedListName = listName.trim();
+    if (!trimmedListName) {
+      enqueueSnackbar('Name your card list before continuing', { variant: 'warning' });
+      return;
+    }
     const cards = parseDeckList(deckText);
     if (cards.length === 0) {
       enqueueSnackbar("Couldn't find any cards in that list", { variant: 'warning' });
       return;
     }
-    const listName = `CardList${count + 1}`;
-    const id = await save(listName, cards);
+    const id = await save(trimmedListName, cards);
     if (!id) return;
     navigate({
-      to: '/list/$listId/$slug',
-      params: { listId: id, slug: slugifyName(listName) },
+      to: '/build/$listId/$slug',
+      params: { listId: id, slug: slugifyName(trimmedListName) },
     });
   };
 
@@ -179,6 +191,15 @@ function HomeRoute() {
           <>
             <TextField
               fullWidth
+              label="List name"
+              placeholder={`Card List ${count + 1}`}
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+              sx={{ mb: 1.5 }}
+            />
+            <TextField
+              fullWidth
               multiline
               rows={6}
               placeholder={`1 Atraxa, Grand Unifier\n4 Lightning Bolt\n1 Sol Ring\n…`}
@@ -205,8 +226,20 @@ function HomeRoute() {
               }}
             >
               <Tip>Paste a Commander list — Arena, MTGO, or plain. We'll figure out the format.</Tip>
-              <Button variant="contained" size="large" color="primary" onClick={handleScoutDeck}>
-                Scout Deck
+              {!canCreateList && (
+                <Tip>
+                  You have reached the {listLimit} card list limit. Delete a list
+                  to create another.
+                </Tip>
+              )}
+              <Button
+                variant="contained"
+                size="large"
+                color="primary"
+                disabled={!canCreateList}
+                onClick={handleScoutDeck}
+              >
+                Continue
               </Button>
             </Box>
           </>

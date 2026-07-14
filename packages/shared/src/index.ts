@@ -19,5 +19,6 @@ export type {
   StorefrontBucketJobResult,
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
+  CardOptimizationJobData,
 } from './queue.types';
 export { QUEUE_NAMES, JOB_NAMES, PUBSUB_CHANNELS } from './queue.types';

@@ -103,6 +103,20 @@ describe('CartService', () => {
     expect(result.variantIds).toEqual([1]);
   });
 
+  it('only hydrates variants marked in stock', async () => {
+    const cart = makeCart({ cardVariantIds: [1, 2, 3] });
+    cartRepository.findOne.mockResolvedValue(cart);
+    cardVariantRepository.find.mockResolvedValue([makeVariant(1)]);
+
+    await service.getCart(USER_PRINCIPAL);
+
+    expect(cardVariantRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ inStock: true }),
+      }),
+    );
+  });
+
   it('clears a cart by updating the owner row to an empty card id array', async () => {
     cartRepository.findOne.mockResolvedValue(
       makeCart({

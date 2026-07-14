@@ -4,6 +4,8 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Skeleton from '@mui/material/Skeleton';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
+import { KeyboardArrowLeft, KeyboardArrowRight } from '@mui/icons-material';
 import type { CardWithStore } from '@scoutlgs/shared';
 import { StoreOfferTile } from '../StoreOfferTile';
 import type { SelectedCardPanelProps } from './SelectedCardPanel.types';
@@ -14,6 +16,9 @@ import {
 } from './SelectedCardPanel.utils';
 import {
   cardNameSx,
+  cardNavButtonSx,
+  cardNavPositionSx,
+  cardNavSx,
   cartStatusBadgeSx,
   cartStatusDotSx,
   emptyListPaperSx,
@@ -33,6 +38,11 @@ export function SelectedCardPanel({
   conditions,
   inCartByOffer,
   onAddOffer,
+  positionLabel,
+  canSelectPrevious = false,
+  canSelectNext = false,
+  onSelectPrevious,
+  onSelectNext,
 }: SelectedCardPanelProps) {
   const [hoveredOfferKey, setHoveredOfferKey] = useState<string | null>(null);
 
@@ -77,7 +87,7 @@ export function SelectedCardPanel({
 
   const setName =
     (lookup?.state === 'success' && lookup.cheapest?.set) || card.set || '—';
-  const storeCount = filteredOffers.length;
+  const optionCount = filteredOffers.length;
 
   return (
     <>
@@ -103,9 +113,41 @@ export function SelectedCardPanel({
             </Box>
             <Box component="span" sx={{ color: 'text.disabled' }}>·</Box>
             <Box component="span">
-              {storeCount} {storeCount === 1 ? 'store' : 'stores'} scouted
+              {optionCount} {optionCount === 1 ? 'option' : 'options'} available
             </Box>
           </Box>
+
+          {positionLabel && (
+            <Box sx={cardNavSx}>
+              <Button
+                type="button"
+                variant="outlined"
+                color="primary"
+                size="small"
+                startIcon={<KeyboardArrowLeft sx={{ fontSize: 17 }} />}
+                disabled={!canSelectPrevious}
+                onClick={onSelectPrevious}
+                sx={cardNavButtonSx}
+              >
+                Previous Card
+              </Button>
+              <Box component="span" sx={cardNavPositionSx}>
+                {positionLabel}
+              </Box>
+              <Button
+                type="button"
+                variant="outlined"
+                color="primary"
+                size="small"
+                endIcon={<KeyboardArrowRight sx={{ fontSize: 17 }} />}
+                disabled={!canSelectNext}
+                onClick={onSelectNext}
+                sx={cardNavButtonSx}
+              >
+                Next Card
+              </Button>
+            </Box>
+          )}
         </Box>
       </Box>
 
@@ -113,11 +155,11 @@ export function SelectedCardPanel({
       <Box>
         <Box sx={sectionHeaderSx}>
           <Typography component="h3" sx={sectionTitleSx}>
-            Add to Cart · {filteredOffers.length}{' '}
-            {filteredOffers.length === 1 ? 'store' : 'stores'}
+            Add to Cart · {optionCount}{' '}
+            {optionCount === 1 ? 'option' : 'options'}
           </Typography>
           <Box sx={{ fontSize: '12px', color: 'text.secondary' }}>
-            💡 Tip: Cheapest store is highlighted.
+            Cheapest option is highlighted.
           </Box>
         </Box>
 

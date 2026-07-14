@@ -4,10 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { useSnackbar } from 'notistack';
+import { useAuth } from '@/components/auth/AuthContext';
 import {
   createList as apiCreateList,
   deleteList as apiDeleteList,
@@ -19,11 +19,21 @@ import {
 } from '@/api/lists';
 import type { ListsContextValue, ServerList } from './ListsContext.types';
 
+const ANONYMOUS_LIST_LIMIT = 3;
+const USER_LIST_LIMIT = 6;
+
 const ListsContext = createContext<ListsContextValue | null>(null);
 
-async function loadList(summary: ListSummary): Promise<ServerList | null> {
+function limitForPrincipalKind(kind: 'anonymous' | 'user' | undefined): number {
+  return kind === 'user' ? USER_LIST_LIMIT : ANONYMOUS_LIST_LIMIT;
+}
+
+async function loadList(
+  summary: ListSummary,
+  signal?: AbortSignal,
+): Promise<ServerList | null> {
   try {
-    const full = await fetchList(summary.id);
+    const full = await fetchList(summary.id, signal);
     return {
       id: full.id,
       name: full.name,
@@ -34,8 +44,13 @@ async function loadList(summary: ListSummary): Promise<ServerList | null> {
   }
 }
 
-async function loadAllLists(summaries: ListSummary[]): Promise<ServerList[]> {
-  const results = await Promise.all(summaries.map(loadList));
+async function loadAllLists(
+  summaries: ListSummary[],
+  signal?: AbortSignal,
+): Promise<ServerList[]> {
+  const results = await Promise.all(
+    summaries.map((summary) => loadList(summary, signal)),
+  );
   return results.filter((l): l is ServerList => l !== null);
 }
 
@@ -44,23 +59,45 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { enqueueSnackbar } = useSnackbar();
-  const initRan = useRef(false);
+  const { status: authStatus, principalId, session } = useAuth();
+  const listLimit = limitForPrincipalKind(session?.principal?.kind);
 
   useEffect(() => {
-    if (initRan.current) return;
-    initRan.current = true;
-
     let active = true;
+    const controller = new AbortController();
+
+    if (authStatus === 'loading') {
+      setLoading(true);
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    if (authStatus === 'error' || !principalId) {
+      setLists([]);
+      setError(authStatus === 'error' ? 'Authentication unavailable' : null);
+      setLoading(false);
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
 
     async function init() {
       try {
-        const summariesResp = await fetchLists();
-        const serverLists = await loadAllLists(summariesResp.lists);
+        setLoading(true);
+        const summariesResp = await fetchLists(controller.signal);
+        const serverLists = await loadAllLists(
+          summariesResp.lists,
+          controller.signal,
+        );
         if (!active) return;
         setLists(serverLists);
         setError(null);
       } catch (err) {
         if (!active) return;
+        if (err instanceof Error && err.name === 'AbortError') return;
         const msg = err instanceof Error ? err.message : 'Failed to load lists';
         setError(msg);
         enqueueSnackbar(`Couldn't load saved lists: ${msg}`, { variant: 'error' });
@@ -72,8 +109,9 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     init();
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [enqueueSnackbar]);
+  }, [authStatus, enqueueSnackbar, principalId]);
 
   const get = useCallback(
     (id: string) => lists.find((l) => l.id === id)?.cards ?? [],
@@ -89,6 +127,19 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     async (name: string, cards: string[]): Promise<string | null> => {
       if (cards.length === 0) {
         enqueueSnackbar("Can't create an empty list", { variant: 'warning' });
+        return null;
+      }
+      if (authStatus !== 'ready' || !principalId) {
+        enqueueSnackbar('Your session is still loading. Try again in a moment.', {
+          variant: 'warning',
+        });
+        return null;
+      }
+      if (lists.length >= listLimit) {
+        enqueueSnackbar(
+          `You can save up to ${listLimit} card lists. Delete one before creating another.`,
+          { variant: 'warning' },
+        );
         return null;
       }
       try {
@@ -110,7 +161,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
     },
-    [enqueueSnackbar],
+    [authStatus, enqueueSnackbar, listLimit, lists.length, principalId],
   );
 
   const rename = useCallback(
@@ -220,6 +271,8 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       lists,
       names,
       count: lists.length,
+      listLimit,
+      canCreateList: lists.length < listLimit,
       totalCards,
       loading,
       error,
@@ -233,6 +286,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       lists,
+      listLimit,
       names,
       totalCards,
       loading,

@@ -1,14 +1,15 @@
-import { forwardRef, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { ArrowBack, OpenInNew } from '@mui/icons-material';
+import { ArrowBack, Close, OpenInNew } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import {
   buildCheckout,
@@ -21,170 +22,11 @@ import {
   type CartItem,
   useCart,
 } from '@/components/cart/CartContext';
-import { gradientForCard } from '@/utils/cardGradient';
+import { cartVariantIds } from '@/components/cart/CartContext/CartContext.utils';
+import { CardPreview, CartThumbnail } from '@/components/cart/ItemThumbnail';
 
 export const Route = createFileRoute('/checkout')({
   component: CheckoutRoute,
-});
-
-// Larger preview rendered above the row on hover. Same image / gradient /
-// name-overlay logic as the inline thumbnail, scaled up so the user can
-// actually read the card art. Portal-rendered by MUI Tooltip so it floats
-// outside the row's stacking context.
-function CardPreview({ item }: { item: CartItem }) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const gradient = useMemo(
-    () => gradientForCard(item.scryfall_id ?? item.title ?? ''),
-    [item.scryfall_id, item.title],
-  );
-  const hasImage = Boolean(item.image) && !failed;
-  const showFallback = !hasImage || !loaded;
-  const displayName = formatCartItemName(item);
-
-  return (
-    <Box
-      sx={{
-        width: 220,
-        height: 308,
-        borderRadius: 2,
-        overflow: 'hidden',
-        position: 'relative',
-        background: gradient,
-        boxShadow: '0 16px 36px rgba(0,0,0,0.55)',
-      }}
-    >
-      {hasImage && (
-        <Box
-          component="img"
-          src={item.image}
-          alt=""
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            opacity: loaded ? 1 : 0,
-            transition: 'opacity 200ms ease',
-          }}
-        />
-      )}
-      <Box
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          px: 1.5,
-          textAlign: 'center',
-          opacity: showFallback ? 1 : 0,
-          transition: 'opacity 200ms ease',
-          pointerEvents: 'none',
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: '1rem',
-            fontWeight: 700,
-            color: '#fff',
-            textShadow: '0 2px 6px rgba(0,0,0,0.75)',
-            lineHeight: 1.3,
-          }}
-        >
-          {displayName}
-        </Typography>
-      </Box>
-    </Box>
-  );
-}
-
-// Compact card thumbnail used inline in each per-store item row. Uses the
-// shared gradient placeholder while the image loads or as a fallback if it
-// fails, with the card name overlaid so the row still identifies the item.
-// forwardRef so MUI Tooltip can attach its listeners to the underlying Box.
-const ItemThumbnail = forwardRef<HTMLDivElement, { item: CartItem }>(function ItemThumbnail(
-  { item, ...rest },
-  ref,
-) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const gradient = useMemo(
-    () => gradientForCard(item.scryfall_id ?? item.title ?? ''),
-    [item.scryfall_id, item.title],
-  );
-  const hasImage = Boolean(item.image) && !failed;
-  const showFallback = !hasImage || !loaded;
-  const displayName = formatCartItemName(item);
-
-  return (
-    <Box
-      ref={ref}
-      {...rest}
-      role="img"
-      aria-label={displayName}
-      sx={{
-        width: 44,
-        height: 60,
-        flexShrink: 0,
-        borderRadius: 0.75,
-        overflow: 'hidden',
-        position: 'relative',
-        background: gradient,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-      }}
-    >
-      {hasImage && (
-        <Box
-          component="img"
-          src={item.image}
-          alt=""
-          loading="lazy"
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            opacity: loaded ? 1 : 0,
-            transition: 'opacity 200ms ease',
-          }}
-        />
-      )}
-      <Box
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          px: 0.5,
-          textAlign: 'center',
-          opacity: showFallback ? 1 : 0,
-          transition: 'opacity 200ms ease',
-          pointerEvents: 'none',
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: '0.55rem',
-            fontWeight: 700,
-            color: '#fff',
-            textShadow: '0 1px 3px rgba(0,0,0,0.75)',
-            lineHeight: 1.1,
-            letterSpacing: '0.005em',
-          }}
-        >
-          {displayName}
-        </Typography>
-      </Box>
-    </Box>
-  );
 });
 
 type StoreGroup = {
@@ -195,24 +37,82 @@ type StoreGroup = {
   lines: Map<string, number>;
 };
 
-type CheckoutState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string; retryAfterSec?: number }
-  | { kind: 'ready'; urls: Record<string, string> };
+type StoreCheckoutState =
+  | { kind: 'idle' }
+  | { kind: 'building' }
+  | { kind: 'ready'; url: string }
+  | { kind: 'error'; message: string; retryAfterSec?: number };
+
+function cartFingerprint(items: CartItem[]): string {
+  return cartVariantIds(items).sort((a, b) => a - b).join(',');
+}
+
+function buildErrorState(err: unknown): StoreCheckoutState {
+  if (err instanceof CheckoutBuildError) {
+    if (err.status === 429) {
+      return {
+        kind: 'error',
+        message: 'Too many checkout attempts.',
+        retryAfterSec: err.retryAfterSec,
+      };
+    }
+    if (err.errorCode === 'unknown-store') {
+      return {
+        kind: 'error',
+        message: `Unknown store "${err.storeKey ?? ''}" -- refresh the page and try again.`,
+      };
+    }
+    if (err.errorCode === 'empty-cart') {
+      return { kind: 'error', message: 'Cart is empty -- add cards and try again.' };
+    }
+    if (err.status === 401) {
+      return { kind: 'error', message: 'Session expired -- refresh the page and try again.' };
+    }
+    if (err.status === 403) {
+      return { kind: 'error', message: 'Request blocked -- refresh the page and try again.' };
+    }
+  }
+  return { kind: 'error', message: 'Checkout failed -- please try again.' };
+}
 
 function CheckoutRoute() {
   const navigate = useNavigate();
-  const { items } = useCart();
+  const { items, remove } = useCart();
   const { enqueueSnackbar } = useSnackbar();
 
-  // Snapshot the cart at mount time so the URLs we display match the items the
-  // user saw when they clicked checkout, even if another tab mutates the cart
-  // localStorage while this page is open.
-  const [snapshot] = useState(() => items);
+  const [storeStates, setStoreStates] = useState<Record<string, StoreCheckoutState>>({});
+  const [openedKeys, setOpenedKeys] = useState<Set<string>>(new Set());
+
+  const abortRef = useRef<AbortController | null>(null);
+  const lastBuiltFingerprint = useRef('');
+
+  const currentFingerprint = useMemo(() => cartFingerprint(items), [items]);
+  const currentFingerprintRef = useRef(currentFingerprint);
+  useEffect(() => {
+    currentFingerprintRef.current = currentFingerprint;
+  }, [currentFingerprint]);
+
+  // Invalidate cached checkout URLs when the cart changes after a build.
+  useEffect(() => {
+    if (
+      lastBuiltFingerprint.current !== '' &&
+      lastBuiltFingerprint.current !== currentFingerprint
+    ) {
+      setStoreStates({});
+      lastBuiltFingerprint.current = '';
+    }
+  }, [currentFingerprint]);
+
+  // Abort any in-flight build on unmount.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const groups = useMemo<StoreGroup[]>(() => {
     const map = new Map<string, StoreGroup>();
-    for (const item of snapshot) {
+    for (const item of items) {
       if (!item.variant_id) continue;
       let group = map.get(item.store_key);
       if (!group) {
@@ -233,76 +133,9 @@ function CheckoutRoute() {
       );
     }
     return Array.from(map.values());
-  }, [snapshot]);
+  }, [items]);
 
-  const droppedNoVariant = snapshot.length - groups.reduce((sum, g) => sum + g.items.length, 0);
-
-  const [state, setState] = useState<CheckoutState>({ kind: 'loading' });
-  const [openedKeys, setOpenedKeys] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (groups.length === 0) return;
-
-    const controller = new AbortController();
-    let cancelled = false;
-    setState({ kind: 'loading' });
-
-    const variantIds = snapshot
-      .map((item) => item.id)
-      .filter((id): id is number => Number.isInteger(id) && id > 0);
-
-    replaceCart(variantIds, controller.signal)
-      .then(() => buildCheckout(controller.signal))
-      .then((result) => {
-        if (cancelled) return;
-        const urls: Record<string, string> = {};
-        for (const entry of result.stores) {
-          urls[entry.storeKey] = entry.checkoutUrl;
-        }
-        setState({ kind: 'ready', urls });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        if (err instanceof CheckoutBuildError) {
-          if (err.status === 429) {
-            setState({
-              kind: 'error',
-              message: 'Too many checkout attempts.',
-              retryAfterSec: err.retryAfterSec,
-            });
-          } else if (err.errorCode === 'unknown-store') {
-            setState({
-              kind: 'error',
-              message: `Unknown store "${err.storeKey ?? ''}" -- refresh the page and try again.`,
-            });
-          } else if (err.errorCode === 'empty-cart') {
-            setState({
-              kind: 'error',
-              message: 'Cart is empty -- add cards and try again.',
-            });
-          } else if (err.status === 401) {
-            setState({
-              kind: 'error',
-              message: 'Session expired -- refresh the page and try again.',
-            });
-          } else if (err.status === 403) {
-            setState({
-              kind: 'error',
-              message: 'Request blocked -- refresh the page and try again.',
-            });
-          } else {
-            setState({ kind: 'error', message: 'Checkout failed -- please try again.' });
-          }
-        } else {
-          setState({ kind: 'error', message: 'Checkout failed -- please try again.' });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [groups, snapshot]);
+  const droppedNoVariant = items.length - groups.reduce((sum, g) => sum + g.items.length, 0);
 
   // Redirect home if cart is empty (e.g. user navigated to /checkout directly).
   useEffect(() => {
@@ -311,24 +144,62 @@ function CheckoutRoute() {
     }
   }, [groups.length, navigate]);
 
+  const anyBuilding = Object.values(storeStates).some((s) => s.kind === 'building');
+
+  const handleCheckoutClick = useCallback(
+    async (storeKey: string, storeDisplayName: string) => {
+      const current = storeStates[storeKey];
+
+      // If already ready the button is a native <a> — just track the open.
+      if (current?.kind === 'ready') {
+        setOpenedKeys((prev) => {
+          const next = new Set(prev);
+          next.add(storeKey);
+          return next;
+        });
+        enqueueSnackbar(`Opening ${storeDisplayName}...`, { variant: 'success' });
+        return;
+      }
+
+      // Don't start a new build while one is in progress.
+      if (current?.kind === 'building') return;
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setStoreStates((prev) => ({ ...prev, [storeKey]: { kind: 'building' } }));
+      const fingerprintAtBuild = currentFingerprintRef.current;
+
+      try {
+        const variantIds = cartVariantIds(items);
+        await replaceCart(variantIds, controller.signal);
+        const result = await buildCheckout(controller.signal);
+
+        // Discard if the cart changed while we were building.
+        if (fingerprintAtBuild !== currentFingerprintRef.current) {
+          setStoreStates({});
+          return;
+        }
+
+        // Cache ALL store URLs from the response.
+        const nextStates: Record<string, StoreCheckoutState> = {};
+        for (const entry of result.stores) {
+          nextStates[entry.storeKey] = { kind: 'ready', url: entry.checkoutUrl };
+        }
+        lastBuiltFingerprint.current = fingerprintAtBuild;
+        setStoreStates((prev) => ({ ...prev, ...nextStates }));
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setStoreStates((prev) => ({ ...prev, [storeKey]: buildErrorState(err) }));
+      }
+    },
+    [storeStates, items, enqueueSnackbar],
+  );
+
   if (groups.length === 0) return null;
 
   const total = groups.reduce((sum, g) => sum + g.subtotal, 0);
-
-  // The button is rendered as an anchor (component="a" + href + target=_blank)
-  // so navigation happens as a native click, not a window.open call.
-  // window.open(..., 'noopener,...') returns null even when the popup opens
-  // successfully, which makes "did it work?" detection unreliable, and some
-  // popup blockers refuse window.open even from synchronous click handlers
-  // while leaving native anchor clicks alone.
-  const handleStoreCheckout = (group: StoreGroup) => {
-    setOpenedKeys((prev) => {
-      const next = new Set(prev);
-      next.add(group.storeKey);
-      return next;
-    });
-    enqueueSnackbar(`Opening ${group.storeDisplayName}...`, { variant: 'success' });
-  };
 
   return (
     <Container maxWidth="md" sx={{ pb: 6 }}>
@@ -347,7 +218,7 @@ function CheckoutRoute() {
         Check out at each store
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Each store has its own cart. Click a store's button to open its checkout in a new tab. ScoutLGS doesn't take payment.
+        Each store has its own cart. Click a store's button to build the checkout link, then open it in a new tab. ScoutLGS doesn't take payment.
       </Typography>
 
       {droppedNoVariant > 0 && (
@@ -356,17 +227,14 @@ function CheckoutRoute() {
         </Alert>
       )}
 
-      {state.kind === 'error' && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {state.message}
-          {state.retryAfterSec ? ` Try again in ${state.retryAfterSec}s.` : ''}
-        </Alert>
-      )}
-
       <Stack spacing={2}>
         {groups.map((group) => {
+          const storeState = storeStates[group.storeKey] ?? { kind: 'idle' as const };
+          const isReady = storeState.kind === 'ready';
+          const isBuilding = storeState.kind === 'building';
+          const isError = storeState.kind === 'error';
           const opened = openedKeys.has(group.storeKey);
-          const ready = state.kind === 'ready' && Boolean(state.urls[group.storeKey]);
+
           return (
             <Box
               key={group.storeKey}
@@ -425,7 +293,7 @@ function CheckoutRoute() {
                         },
                       }}
                     >
-                      <ItemThumbnail item={item} />
+                      <CartThumbnail item={item} />
                     </Tooltip>
                     <Box sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
                       <Typography
@@ -446,39 +314,56 @@ function CheckoutRoute() {
                     <Typography sx={{ fontSize: '0.9rem', fontWeight: 500, flexShrink: 0 }}>
                       CA${(item.price ?? 0).toFixed(2)}
                     </Typography>
+                    <IconButton
+                      size="small"
+                      aria-label="Remove"
+                      onClick={() => remove(cartItemId(item))}
+                      sx={{ width: 28, height: 28, flexShrink: 0 }}
+                    >
+                      <Close sx={{ fontSize: 14 }} />
+                    </IconButton>
                   </Box>
                 ))}
               </Stack>
 
+              {isError && (
+                <Alert severity="error" sx={{ mb: 1.5 }}>
+                  {storeState.message}
+                  {storeState.retryAfterSec ? ` Try again in ${storeState.retryAfterSec}s.` : ''}
+                </Alert>
+              )}
+
               <Button
-                variant={opened ? 'outlined' : 'contained'}
-                color="primary"
+                variant={isReady && opened ? 'outlined' : 'contained'}
+                color={isError ? 'error' : 'primary'}
                 fullWidth
                 startIcon={
-                  state.kind === 'loading' ? (
+                  isBuilding ? (
                     <CircularProgress size={16} color="inherit" />
                   ) : (
                     <OpenInNew />
                   )
                 }
-                disabled={!ready}
-                {...(ready
+                disabled={isBuilding || (anyBuilding && !isBuilding)}
+                {...(isReady
                   ? {
                       component: 'a' as const,
-                      href: state.urls[group.storeKey],
+                      href: storeState.url,
                       target: '_blank',
                       rel: 'noopener noreferrer',
                     }
                   : {})}
-                onClick={() => {
-                  if (ready) handleStoreCheckout(group);
-                }}
+                onClick={() => handleCheckoutClick(group.storeKey, group.storeDisplayName)}
               >
-                {state.kind === 'loading'
+                {isBuilding
                   ? 'Building cart...'
-                  : opened
-                    ? `Re-open ${group.storeDisplayName}`
-                    : `Check out at ${group.storeDisplayName}`}
+                  : isError
+                    ? `Retry ${group.storeDisplayName}`
+                    : isReady && opened
+                      ? `Re-open ${group.storeDisplayName}`
+                      : isReady
+                        ? `Open ${group.storeDisplayName}`
+                        : `Check out at ${group.storeDisplayName}`}
               </Button>
             </Box>
           );

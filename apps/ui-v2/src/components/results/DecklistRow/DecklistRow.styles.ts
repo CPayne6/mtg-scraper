@@ -32,6 +32,30 @@ export const qtyBadgeSx: SxProps<Theme> = (theme) => ({
   fontSize: { xs: 12, sm: 13 },
 });
 
+export const cardNameButtonSx = (enabled: boolean): SxProps<Theme> => (theme) => ({
+  display: 'block',
+  width: '100%',
+  p: 0,
+  border: 0,
+  background: 'transparent',
+  color: 'inherit',
+  font: 'inherit',
+  fontWeight: 500,
+  fontSize: { xs: 14, sm: 15 },
+  textAlign: 'left',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  cursor: enabled ? 'pointer' : 'default',
+  '&:hover': enabled
+    ? {
+        color: theme.palette.primary.main,
+        textDecoration: 'underline',
+        textUnderlineOffset: '3px',
+      }
+    : {},
+});
+
 export const storeBtnSx = (disabled = false): SxProps<Theme> => (theme) => ({
   display: { xs: 'none', sm: 'inline-flex' },
   alignItems: 'center',

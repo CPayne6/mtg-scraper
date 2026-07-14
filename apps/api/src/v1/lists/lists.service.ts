@@ -4,15 +4,38 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import { CardList, CardListEntry } from '@scoutlgs/core';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bullmq';
+import {
+  CardList,
+  CardListEntry,
+  normalizeCondition,
+  optimizeCartOptions,
+  type CartOptimizationCandidate,
+  type CartOptimizationResult,
+  type CartOptimizationWantedCard,
+  type ConditionFlexibilityMode,
+} from '@scoutlgs/core';
+import { Condition, JOB_NAMES, QUEUE_NAMES, type CardOptimizationJobData, type CardWithStore } from '@scoutlgs/shared';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
+import type { PrincipalKind } from '../../auth/principal.types';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
+import type { DeliveryOptionsDto } from './dto/delivery-options.dto';
+import { DeliveryQuoteService } from './delivery-quote.service';
 
-const MAX_LISTS_PER_OWNER = 5;
+const MAX_LISTS_PER_ANONYMOUS_OWNER = 3;
+const MAX_LISTS_PER_USER_OWNER = 6;
+const DEFAULT_OPTIMIZATION_OPTIONS = 3;
+const MAX_OPTIMIZATION_OPTIONS = 5;
+const DEFAULT_OPTIMIZATION_MINIMUM_CONDITION = Condition.LP;
+const MAX_OPTIMIZATION_LIST_ENTRIES = 150;
+const MAX_OPTIMIZATION_CANDIDATES_PER_CARD = 10;
+const MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD = 10;
 
 export interface ListSummary {
   id: string;
@@ -73,6 +96,51 @@ export interface CreateListResponse {
   warnings: string[];
 }
 
+export interface OptimizeListOptions {
+  minimumCondition?: string;
+  stores?: string;
+  conditionFlexibility?: ConditionFlexibilityMode;
+  maxDowngradeSteps?: number;
+  downgradePenaltyPerStep?: number;
+  quoteToken?: string;
+  selectedMethods?: Record<string, { label: string; handle?: string }>;
+}
+
+export interface ListOptimizationResponse {
+  id: string;
+  name: string;
+  generatedAt: number;
+  options: CartOptimizationResult[];
+}
+
+interface OptimizationEntryRow {
+  position: string;
+  card_name_id: string;
+  card_name: string;
+  preferred_set_code: string | null;
+}
+
+interface OptimizationCandidateRow {
+  card_name_id: string;
+  variant_id: string;
+  platform_variant_id: string | null;
+  price: string;
+  foil: boolean;
+  quantity: string | number | null;
+  condition_code: string;
+  currency: string;
+  image_url: string | null;
+  store_slug: string;
+  store_display_name: string;
+  store_base_url: string;
+  product_handle: string | null;
+  scryfall_id: string | null;
+  collector_number: string | null;
+  image_uri: string | null;
+  set_code: string | null;
+  set_name: string | null;
+}
+
 @Injectable()
 export class ListsService {
   private readonly logger = new Logger(ListsService.name);
@@ -84,12 +152,71 @@ export class ListsService {
     private readonly cardListEntryRepository: Repository<CardListEntry>,
     private readonly cardNameResolver: CardNameResolverService,
     private readonly entityManager: EntityManager,
+    @Optional()
+    private readonly deliveryQuotes?: DeliveryQuoteService,
+    @Optional()
+    @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
+    private readonly optimizationQueue?: Queue<CardOptimizationJobData>,
   ) {}
+
+  async createOptimization(
+    listUuid: string,
+    principalUuid: string | undefined,
+    options: OptimizeListOptions = {},
+  ): Promise<{ jobId: string; status: 'queued' }> {
+    const list = await this.findVisibleList(listUuid, principalUuid);
+    const delivery = options.quoteToken
+      ? this.deliveryQuotes?.consume(options.quoteToken, principalUuid ?? '', list.id, options.selectedMethods)
+      : { mode: 'legacy' as const, shippingCostByStoreKey: Object.fromEntries((this.parseCsvFilter(options.stores ?? list.filterStores) ?? []).map((store) => [store, 3])), selectedMethodByStoreKey: {} };
+    if (!delivery) throw new Error('Delivery quote service is unavailable');
+    const minimumCondition = this.resolveMinimumCondition(options.minimumCondition, list.filterConditions);
+    if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
+    const job = await this.optimizationQueue.add(JOB_NAMES.CARD_OPTIMIZATION, {
+      listId: list.id,
+      listUuid: list.uuid,
+      listName: list.name,
+      stores: this.parseCsvFilter(options.stores ?? list.filterStores),
+      minimumCondition,
+      conditionFlexibility: options.conditionFlexibility,
+      maxDowngradeSteps: options.maxDowngradeSteps,
+      downgradePenaltyPerStep: options.downgradePenaltyPerStep,
+      delivery,
+      enqueuedAt: Date.now(),
+    }, {
+      attempts: 1,
+      removeOnComplete: { age: 3600, count: 200 },
+      removeOnFail: { age: 3600, count: 200 },
+    });
+    return { jobId: String(job.id), status: 'queued' };
+  }
+
+  async createDeliveryQuote(listUuid: string, principalUuid: string, dto: DeliveryOptionsDto) {
+    const list = await this.findVisibleList(listUuid, principalUuid);
+    if (!this.deliveryQuotes) throw new Error('Delivery quote service is unavailable');
+    return this.deliveryQuotes.quote(principalUuid, list.id, dto.stores, dto.address);
+  }
+
+  async getOptimizationStatus(listUuid: string, jobId: string, principalUuid?: string) {
+    await this.findVisibleList(listUuid, principalUuid);
+    if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
+    const job = await this.optimizationQueue.getJob(jobId);
+    if (!job || job.data.listUuid !== listUuid) throw new NotFoundException('Optimization not found');
+    const state = await job.getState();
+    if (state === 'completed') {
+      const timedOut = job.returnvalue?.result?.optimal === false;
+      return { jobId, status: timedOut ? 'timed-out' : 'completed', result: job.returnvalue };
+    }
+    if (state === 'failed') return { jobId, status: 'failed', error: job.failedReason || 'Optimization failed' };
+    if (state === 'active') return { jobId, status: 'running' };
+    return { jobId, status: 'queued' };
+  }
 
   async createList(
     dto: CreateListDto,
     ownerPrincipalUuid: string,
+    ownerPrincipalKind: PrincipalKind,
   ): Promise<CreateListResponse> {
+    const maxLists = this.maxListsForPrincipalKind(ownerPrincipalKind);
     // Enforce max lists per owner
     const existingCount = await this.cardListRepository
       .createQueryBuilder('cl')
@@ -99,9 +226,9 @@ export class ListsService {
       .andWhere('cl.expires_at > NOW()')
       .getCount();
 
-    if (existingCount >= MAX_LISTS_PER_OWNER) {
+    if (existingCount >= maxLists) {
       throw new ConflictException(
-        `Maximum of ${MAX_LISTS_PER_OWNER} lists allowed. Delete an existing list first.`,
+        `Maximum of ${maxLists} card lists allowed. Delete an existing list first.`,
       );
     }
 
@@ -126,6 +253,7 @@ export class ListsService {
           cardListId: savedList.id,
           cardNameId: r.cardNameId,
           position: index + 1,
+          preferredSetCode: this.parsePreferredSetCode(r.input),
         }),
       );
       await this.cardListEntryRepository.save(entries);
@@ -305,6 +433,7 @@ export class ListsService {
           cardListId: list.id,
           cardNameId: r.cardNameId,
           position: index + 1,
+          preferredSetCode: this.parsePreferredSetCode(r.input),
         }),
       );
       await this.cardListEntryRepository.save(entries);
@@ -353,6 +482,296 @@ export class ListsService {
     }
 
     return list;
+  }
+
+  private async findVisibleList(
+    listUuid: string,
+    principalUuid?: string,
+  ): Promise<CardList> {
+    const list = await this.cardListRepository.findOne({
+      where: { uuid: listUuid },
+    });
+
+    if (!list || list.expiresAt < new Date()) {
+      throw new NotFoundException('List not found');
+    }
+
+    if (list.visibility === 'private' && list.ownerPrincipalUuid !== principalUuid) {
+      throw new NotFoundException('List not found');
+    }
+
+    return list;
+  }
+
+  private async getOptimizationEntries(listId: number): Promise<OptimizationEntryRow[]> {
+    return this.entityManager.query(
+      `
+      SELECT
+        e.position,
+        e.card_name_id,
+        cn.name AS card_name,
+        e.preferred_set_code
+      FROM card_list_entries e
+      JOIN card_names cn ON cn.id = e.card_name_id
+      WHERE e.card_list_id = $1
+      ORDER BY e.position ASC
+      LIMIT $2
+      `,
+      [listId, MAX_OPTIMIZATION_LIST_ENTRIES],
+    );
+  }
+
+  private async getOptimizationCandidates(
+    cardNameIds: number[],
+    stores: string[] | null,
+    setCode: string | null,
+    preferredSetPairs: Array<{ cardNameId: number; setCode: string }>,
+    minimumCondition: Condition,
+  ): Promise<OptimizationCandidateRow[]> {
+    if (cardNameIds.length === 0) return [];
+    const preferredCardNameIds = preferredSetPairs.map((pair) => pair.cardNameId);
+    const preferredSetCodes = preferredSetPairs.map((pair) => pair.setCode);
+    const acceptableConditionCodes = this.conditionCodesAtOrAbove(minimumCondition);
+
+    return this.entityManager.query(
+      `
+      WITH preferred_sets AS (
+        SELECT DISTINCT card_name_id, set_code
+        FROM unnest($4::int[], $5::text[]) AS preferred(card_name_id, set_code)
+      ),
+      ranked_candidates AS (
+        SELECT
+          l.card_name_id,
+          v.id AS variant_id,
+          v.platform_variant_id,
+          v.price,
+          v.foil,
+          v.quantity,
+          c.code AS condition_code,
+          l.currency,
+          l.image_url,
+          s.name AS store_slug,
+          s.display_name AS store_display_name,
+          s.base_url AS store_base_url,
+          pu.handle AS product_handle,
+          p.scryfall_id,
+          p.collector_number,
+          p.image_uri,
+          ps.code AS set_code,
+          ps.name AS set_name,
+          preferred_sets.set_code AS requested_set_code,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, s.name
+            ORDER BY v.price ASC, v.id ASC
+          ) AS store_price_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, s.name, c.code
+            ORDER BY v.price ASC, v.id ASC
+          ) AS store_condition_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              l.card_name_id,
+              s.name,
+              CASE WHEN c.code = ANY($6::text[]) THEN true ELSE false END
+            ORDER BY v.price ASC, v.id ASC
+          ) AS store_minimum_condition_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, s.name, ps.code
+            ORDER BY v.price ASC, v.id ASC
+          ) AS requested_set_store_price_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY l.card_name_id, s.name, ps.code, c.code
+            ORDER BY v.price ASC, v.id ASC
+          ) AS requested_set_store_condition_rank,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              l.card_name_id,
+              s.name,
+              ps.code,
+              CASE WHEN c.code = ANY($6::text[]) THEN true ELSE false END
+            ORDER BY v.price ASC, v.id ASC
+          ) AS requested_set_store_minimum_condition_rank
+        FROM card_listings l
+        JOIN card_variants v ON v.card_listing_id = l.id
+        JOIN stores s ON s.id = l.store_id
+        JOIN card_conditions c ON c.id = v.condition_id
+        LEFT JOIN product_urls pu ON pu.id = l.product_url_id
+        LEFT JOIN card_printings p ON p.id = l.card_printing_id
+        LEFT JOIN sets ps ON ps.id = p.set_id
+        LEFT JOIN preferred_sets
+          ON preferred_sets.card_name_id = l.card_name_id
+          AND preferred_sets.set_code = ps.code
+        WHERE l.card_name_id = ANY($1::int[])
+          AND ($2::text[] IS NULL OR s.name = ANY($2))
+          AND ($3::text IS NULL OR ps.code = $3)
+          AND v.in_stock = TRUE
+      ),
+      bounded_candidates AS (
+        SELECT *
+        FROM ranked_candidates
+        WHERE store_price_rank = 1
+          OR (
+            condition_code = 'nm'
+            AND store_condition_rank = 1
+          )
+          OR (
+            condition_code = ANY($6::text[])
+            AND store_minimum_condition_rank = 1
+          )
+          OR (
+            requested_set_code IS NOT NULL
+            AND requested_set_store_price_rank = 1
+          )
+          OR (
+            requested_set_code IS NOT NULL
+            AND condition_code = 'nm'
+            AND requested_set_store_condition_rank = 1
+          )
+          OR (
+            requested_set_code IS NOT NULL
+            AND condition_code = ANY($6::text[])
+            AND requested_set_store_minimum_condition_rank = 1
+          )
+      ),
+      final_candidates AS (
+        SELECT
+          *,
+          ROW_NUMBER() OVER (
+            PARTITION BY card_name_id
+            ORDER BY
+              CASE WHEN store_price_rank = 1 THEN 0 ELSE 1 END,
+              price ASC,
+              variant_id ASC
+          ) AS final_rank
+        FROM bounded_candidates
+      )
+      SELECT
+        card_name_id,
+        variant_id,
+        platform_variant_id,
+        price,
+        foil,
+        quantity,
+        condition_code,
+        currency,
+        image_url,
+        store_slug,
+        store_display_name,
+        store_base_url,
+        product_handle,
+        scryfall_id,
+        collector_number,
+        image_uri,
+        set_code,
+        set_name
+      FROM final_candidates
+      WHERE final_rank <= $7
+      ORDER BY card_name_id ASC, price ASC, variant_id ASC
+      `,
+      [
+        cardNameIds,
+        stores,
+        setCode,
+        preferredCardNameIds,
+        preferredSetCodes,
+        acceptableConditionCodes,
+        MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD,
+      ],
+    );
+  }
+
+  private groupCandidatesByCardNameId(
+    rows: OptimizationCandidateRow[],
+  ): Map<number, OptimizationCandidateRow[]> {
+    const grouped = new Map<number, OptimizationCandidateRow[]>();
+    for (const row of rows) {
+      const cardNameId = parseInt(row.card_name_id, 10);
+      const existing = grouped.get(cardNameId) ?? [];
+      existing.push(row);
+      grouped.set(cardNameId, existing);
+    }
+    return grouped;
+  }
+
+  private getPreferredSetPairs(
+    entries: OptimizationEntryRow[],
+  ): Array<{ cardNameId: number; setCode: string }> {
+    const seen = new Set<string>();
+    const pairs: Array<{ cardNameId: number; setCode: string }> = [];
+
+    for (const entry of entries) {
+      if (!entry.preferred_set_code) continue;
+      const cardNameId = parseInt(entry.card_name_id, 10);
+      const setCode = entry.preferred_set_code.toLowerCase();
+      const key = `${cardNameId}|${setCode}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push({ cardNameId, setCode });
+    }
+
+    return pairs;
+  }
+
+  private mapOptimizationWantedCards(
+    entries: OptimizationEntryRow[],
+    minimumCondition: Condition,
+  ): CartOptimizationWantedCard[] {
+    return entries.map((entry) => ({
+      key: entry.position,
+      name: entry.card_name,
+      minimumCondition,
+      preferredSetCode: entry.preferred_set_code ?? undefined,
+      setPreference: entry.preferred_set_code ? 'preferred' : 'any',
+    }));
+  }
+
+  private mapOptimizationCandidates(
+    entries: OptimizationEntryRow[],
+    candidatesByCardNameId: Map<number, OptimizationCandidateRow[]>,
+  ): CartOptimizationCandidate[] {
+    const candidates: CartOptimizationCandidate[] = [];
+
+    for (const entry of entries) {
+      const cardNameId = parseInt(entry.card_name_id, 10);
+      const rows = candidatesByCardNameId.get(cardNameId) ?? [];
+      for (const row of rows) {
+        candidates.push({
+          wantedCardKey: entry.position,
+          offer: this.mapOptimizationCandidateOffer(row, entry.card_name),
+          setCode: row.set_code ?? undefined,
+          setName: row.set_name ?? undefined,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  private mapOptimizationCandidateOffer(
+    row: OptimizationCandidateRow,
+    cardName: string,
+  ): CardWithStore {
+    const setName = row.set_name ?? '';
+    const productLink = row.product_handle
+      ? `${row.store_base_url}/products/${row.product_handle}`
+      : row.store_base_url;
+
+    return {
+      id: parseInt(row.variant_id, 10),
+      price: parseFloat(row.price),
+      condition: normalizeCondition(row.condition_code),
+      foil: row.foil,
+      image: row.image_url ?? row.image_uri ?? '',
+      title: `${cardName}${setName ? ` [${setName}]` : ''}`,
+      currency: row.currency,
+      link: productLink,
+      set: setName,
+      card_number: row.collector_number ?? '',
+      scryfall_id: row.scryfall_id ?? undefined,
+      variant_id: row.platform_variant_id ?? undefined,
+      store: row.store_display_name,
+      store_key: row.store_slug,
+    };
   }
 
   private async getCheapestVariants(
@@ -418,6 +837,7 @@ export class ListsService {
           AND ($2::text[] IS NULL OR s.name = ANY($2))
           AND ($3::text[] IS NULL OR c.code = ANY($3))
           AND ($4::text IS NULL OR ps.code = $4)
+          AND v.in_stock = TRUE
         ORDER BY v.price ASC
         LIMIT 1
       ) best ON true
@@ -452,6 +872,7 @@ export class ListsService {
       WHERE ($2::text[] IS NULL OR s.name = ANY($2))
         AND ($3::text[] IS NULL OR c.code = ANY($3))
         AND ($4::text IS NULL OR ps.code = $4)
+        AND v.in_stock = TRUE
       GROUP BY e.card_name_id
       `,
       [listId, stores, conditions, setCode],
@@ -462,5 +883,69 @@ export class ListsService {
     const d = new Date();
     d.setDate(d.getDate() + 30);
     return d;
+  }
+
+  private maxListsForPrincipalKind(kind: PrincipalKind): number {
+    return kind === 'user'
+      ? MAX_LISTS_PER_USER_OWNER
+      : MAX_LISTS_PER_ANONYMOUS_OWNER;
+  }
+
+  private parseCsvFilter(value?: string | null): string[] | null {
+    const parsed = value
+      ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
+      : [];
+    return parsed.length > 0 ? parsed : null;
+  }
+
+  private resolveMinimumCondition(
+    requestedMinimumCondition: string | undefined,
+    filterConditions: string | undefined,
+  ): Condition {
+    if (requestedMinimumCondition) {
+      return normalizeCondition(requestedMinimumCondition);
+    }
+
+    const parsedConditions = this.parseCsvFilter(filterConditions);
+    if (!parsedConditions) return DEFAULT_OPTIMIZATION_MINIMUM_CONDITION;
+
+    return parsedConditions
+      .map((condition) => normalizeCondition(condition))
+      .filter((condition) => condition !== Condition.UNKNOWN)
+      .sort((a, b) => this.conditionRank(a) - this.conditionRank(b))[0]
+      ?? DEFAULT_OPTIMIZATION_MINIMUM_CONDITION;
+  }
+
+  private conditionRank(condition: Condition): number {
+    switch (condition) {
+      case Condition.NM:
+        return 5;
+      case Condition.LP:
+        return 4;
+      case Condition.MP:
+        return 3;
+      case Condition.HP:
+        return 2;
+      case Condition.DMG:
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  private conditionCodesAtOrAbove(minimumCondition: Condition): string[] {
+    const minimumRank = this.conditionRank(minimumCondition);
+    return [
+      Condition.NM,
+      Condition.LP,
+      Condition.MP,
+      Condition.HP,
+      Condition.DMG,
+    ].filter((condition) => this.conditionRank(condition) >= minimumRank);
+  }
+
+  private parsePreferredSetCode(input: string): string | undefined {
+    const match = /(?:\(|\[)\s*([a-zA-Z0-9]{2,10})\s*(?:\)|\])/.exec(input);
+    return match?.[1]?.toLowerCase();
   }
 }

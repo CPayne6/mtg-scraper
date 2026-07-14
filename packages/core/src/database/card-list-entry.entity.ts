@@ -35,6 +35,9 @@ export class CardListEntry {
   @Column({ type: 'smallint' })
   position: number;
 
+  @Column({ name: 'preferred_set_code', length: 10, nullable: true })
+  preferredSetCode?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

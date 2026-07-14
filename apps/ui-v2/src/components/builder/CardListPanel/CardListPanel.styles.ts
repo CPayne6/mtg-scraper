@@ -136,6 +136,28 @@ export const emptyListSx: SxProps<Theme> = {
   fontSize: '14px',
 };
 
+export const loadMorePricesBtnSx = (
+  disabled: boolean,
+): SxProps<Theme> => (theme) => ({
+  width: '100%',
+  marginTop: '8px',
+  padding: '9px 12px',
+  borderRadius: '8px',
+  border: `1px dashed ${theme.palette.divider}`,
+  background: theme.palette.background.paper,
+  color: disabled ? theme.palette.text.disabled : theme.palette.text.secondary,
+  fontFamily: 'inherit',
+  fontSize: '12px',
+  fontWeight: 700,
+  cursor: disabled ? 'default' : 'pointer',
+  '&:hover': disabled
+    ? {}
+    : {
+        borderColor: theme.palette.primaryOutline,
+        color: theme.palette.text.primary,
+      },
+});
+
 export const footerSx: SxProps<Theme> = (theme) => ({
   padding: '12px 14px',
   borderTop: `1px solid ${theme.palette.divider}`,
@@ -143,6 +165,32 @@ export const footerSx: SxProps<Theme> = (theme) => ({
   flexDirection: 'column',
   gap: '10px',
   bgcolor: 'background.paper',
+});
+
+export const bestCardsBtnSx = (disabled: boolean): SxProps<Theme> => (theme) => ({
+  width: '100%',
+  padding: '9px 12px',
+  border: `1px solid ${disabled ? theme.palette.divider : theme.palette.primaryOutline}`,
+  background: disabled ? theme.palette.action.disabledBackground : theme.palette.background.paper,
+  color: disabled ? theme.palette.text.disabled : theme.palette.text.primary,
+  borderRadius: '8px',
+  fontWeight: 700,
+  fontSize: '13px',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  fontFamily: 'inherit',
+  display: 'inline-flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: '7px',
+  minHeight: 38,
+  transition:
+    'background 160ms cubic-bezier(0.4, 0, 0.2, 1), border-color 160ms cubic-bezier(0.4, 0, 0.2, 1)',
+  '&:hover': disabled
+    ? {}
+    : {
+        background: theme.palette.background.default,
+        borderColor: theme.palette.primary.main,
+      },
 });
 
 export const cartBtnSx = (isOpen: boolean): SxProps<Theme> => (theme) => ({

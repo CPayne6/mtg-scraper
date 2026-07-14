@@ -25,9 +25,12 @@ export class QueueService {
       | StorefrontPlanJobData
       | ReextractUnmatchedJobData
     >,
+    @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
+    private readonly cardOptimizationQueue: Queue,
   ) {
     this.queues = new Map<string, Queue>([
       [QUEUE_NAMES.STOREFRONT_EXTRACTION, this.storefrontExtractionQueue],
+      [QUEUE_NAMES.CARD_OPTIMIZATION, this.cardOptimizationQueue],
     ]);
   }
 
