@@ -38,6 +38,7 @@ export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
     PlatformAdapterFactory,
   ],
   exports: [
+    StorefrontClient,
     StorefrontExtractionAdapter,
     PlatformAdapterFactory,
     CardDetailExtractorRegistry,

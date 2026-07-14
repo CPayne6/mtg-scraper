@@ -3,10 +3,16 @@ import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import MenuItem from '@mui/material/MenuItem';
+import TextField from '@mui/material/TextField';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import { fetchCard } from '@/api/cards';
-import { createListOptimization, fetchListOptimizationStatus } from '@/api/lists';
+import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
 import { useCart, cartItemId } from '@/components/cart/CartContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
@@ -24,6 +30,19 @@ import { STORE_FACETS } from '@/data/sample';
 type BuilderSearch = {
   card?: string;
 };
+
+function formatCanadianPostalCode(value: string): string {
+  const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  return compact.length > 3 ? `${compact.slice(0, 3)} ${compact.slice(3)}` : compact;
+}
+
+const CANADIAN_PROVINCES = [
+  ['AB', 'Alberta'], ['BC', 'British Columbia'], ['MB', 'Manitoba'],
+  ['NB', 'New Brunswick'], ['NL', 'Newfoundland and Labrador'],
+  ['NS', 'Nova Scotia'], ['NT', 'Northwest Territories'], ['NU', 'Nunavut'],
+  ['ON', 'Ontario'], ['PE', 'Prince Edward Island'], ['QC', 'Quebec'],
+  ['SK', 'Saskatchewan'], ['YT', 'Yukon'],
+] as const;
 
 export const Route = createFileRoute('/build/$listId/$slug')({
   validateSearch: (search: Record<string, unknown>): BuilderSearch => ({
@@ -140,6 +159,11 @@ function BuilderRoute() {
     [],
   );
   const [isAddingBestCards, setIsAddingBestCards] = useState(false);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryOptionsResponse | null>(null);
+  const [selectedDeliveryMethods, setSelectedDeliveryMethods] = useState<Record<string, { label: string; handle?: string }>>({});
+  const [deliveryAddress, setDeliveryAddress] = useState({ address1: '', city: '', province: '', postalCode: '', countryCode: 'CA' });
   const appliedUrlSelectionForListRef = useRef<string | null>(null);
   const syncSelectedCardUrl = useCallback(
     (name: string | null) => {
@@ -310,7 +334,7 @@ function BuilderRoute() {
   const canAddBestCards =
     entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
 
-  const handleAddBestCards = useCallback(async () => {
+  const runOptimization = useCallback(async (delivery?: { quoteToken: string; selectedMethods: Record<string, { label: string; handle?: string }> }) => {
     if (selectedStores.length === 0) {
       enqueueSnackbar('Select at least one store before adding best cards', {
         variant: 'warning',
@@ -325,6 +349,7 @@ function BuilderRoute() {
         minimumCondition: optimizationMinimumCondition,
         conditionFlexibility: 'allow-if-needed',
         maxDowngradeSteps: 2,
+        ...delivery,
       });
       const deadline = Date.now() + 60_000;
       let completed: Awaited<ReturnType<typeof fetchListOptimizationStatus>> | undefined;
@@ -390,6 +415,37 @@ function BuilderRoute() {
     optimizationMinimumCondition,
     selectedStores,
   ]);
+
+  const handleAddBestCards = useCallback(() => {
+    if (selectedStores.length === 0) {
+      enqueueSnackbar('Select at least one store before filling cards', { variant: 'warning' });
+      return;
+    }
+    setDeliveryQuote(null);
+    setDeliveryOpen(true);
+  }, [enqueueSnackbar, selectedStores.length]);
+
+  const loadDeliveryOptions = useCallback(async () => {
+    setDeliveryLoading(true);
+    try {
+      const quote = await fetchDeliveryOptions(listId, deliveryAddress, selectedStores);
+      setDeliveryQuote(quote);
+      setSelectedDeliveryMethods(Object.fromEntries(Object.entries(quote.methods).map(([store, methods]) => {
+        const method = methods.filter((item) => item.price > 0).sort((a, b) => a.price - b.price)[0] ?? methods[0];
+        return [store, { label: method.label, ...(method.handle ? { handle: method.handle } : {}) }];
+      })));
+    } catch (err) {
+      enqueueSnackbar(err instanceof Error ? err.message : 'Unable to quote delivery options', { variant: 'error' });
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }, [deliveryAddress, enqueueSnackbar, listId, selectedStores]);
+
+  const startQuotedFill = useCallback(() => {
+    if (!deliveryQuote) return;
+    setDeliveryOpen(false);
+    void runOptimization({ quoteToken: deliveryQuote.quoteToken, selectedMethods: selectedDeliveryMethods });
+  }, [deliveryQuote, runOptimization, selectedDeliveryMethods]);
 
   const selectedIndex = selectedName ? sortedNames.indexOf(selectedName) : -1;
   const selectedPosition =
@@ -592,6 +648,42 @@ function BuilderRoute() {
           onLoadMorePrices={() => undefined}
         />
       </Box>
+      <Dialog open={deliveryOpen} onClose={() => !deliveryLoading && setDeliveryOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Set up delivery for this fill</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 1.5, pt: '12px !important' }}>
+          {!deliveryQuote ? <>
+            <Box sx={{ color: 'text.secondary', fontSize: 14 }}>
+              Delivery prices are locked for this fill and may differ at merchant checkout. Your address is used only to request these quotes.
+            </Box>
+            <TextField required label="Street address" value={deliveryAddress.address1} onChange={(event) => setDeliveryAddress((value) => ({ ...value, address1: event.target.value }))} helperText="Use your browser's saved-address autofill or enter it manually" inputProps={{ autoComplete: 'street-address' }} />
+            <TextField required label="City" value={deliveryAddress.city} onChange={(event) => setDeliveryAddress((value) => ({ ...value, city: event.target.value }))} inputProps={{ autoComplete: 'address-level2' }} />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <TextField required select label="Province or territory" value={deliveryAddress.province} onChange={(event) => setDeliveryAddress((value) => ({ ...value, province: event.target.value }))} SelectProps={{ native: false }} inputProps={{ autoComplete: 'address-level1' }}>
+                {CANADIAN_PROVINCES.map(([code, name]) => <MenuItem key={code} value={code}>{name}</MenuItem>)}
+              </TextField>
+              <TextField required label="Postal code" value={deliveryAddress.postalCode} onChange={(event) => setDeliveryAddress((value) => ({ ...value, postalCode: formatCanadianPostalCode(event.target.value) }))} error={deliveryAddress.postalCode.length > 0 && !/^[A-Z]\d[A-Z] \d[A-Z]\d$/.test(deliveryAddress.postalCode)} helperText={deliveryAddress.postalCode && !/^[A-Z]\d[A-Z] \d[A-Z]\d$/.test(deliveryAddress.postalCode) ? 'Use A1A 1A1' : ' '} inputProps={{ autoComplete: 'postal-code', maxLength: 7 }} />
+            </Box>
+          </> : <>
+            <Box sx={{ color: 'text.secondary', fontSize: 14 }}>The lowest positive-priced method is selected by default. Pickup remains CA$0.</Box>
+            {Object.entries(deliveryQuote.methods).map(([store, methods]) => {
+              const selected = methods.find((method) => method.label === selectedDeliveryMethods[store]?.label && method.handle === selectedDeliveryMethods[store]?.handle);
+              return <Box key={store} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.25 }}>
+                <Box sx={{ fontWeight: 700 }}>{STORE_LABEL_BY_KEY[store] ?? store}</Box>
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+                  {methods.map((method) => <Button key={`${method.label}-${method.handle ?? ''}`} size="small" variant={selected === method ? 'contained' : 'outlined'} onClick={() => setSelectedDeliveryMethods((current) => ({ ...current, [store]: { label: method.label, ...(method.handle ? { handle: method.handle } : {}) } }))}>{method.label}: CA${method.price.toFixed(2)}</Button>)}
+                </Box>
+                <Box sx={{ fontSize: 14 }}>{selected ? `${selected.label} — CA$${selected.price.toFixed(2)}` : 'No quoted method available'}</Box>
+              </Box>;
+            })}
+          </>}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" color="inherit" onClick={() => { setDeliveryOpen(false); void runOptimization(); }} disabled={deliveryLoading}>Skip (estimate CA$3/store)</Button>
+          {!deliveryQuote
+            ? <Button variant="contained" onClick={() => void loadDeliveryOptions()} disabled={deliveryLoading || !deliveryAddress.address1 || !deliveryAddress.city || !deliveryAddress.province || !deliveryAddress.postalCode}>{deliveryLoading ? 'Getting quotes…' : 'Get delivery options'}</Button>
+            : <Button variant="contained" onClick={startQuotedFill}>Fill Best Cards</Button>}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

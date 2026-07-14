@@ -44,7 +44,7 @@ export class CardOptimizationService {
           c.code AS condition_code, l.currency, l.image_url, s.name AS store_slug,
           s.display_name AS store_display_name, s.base_url AS store_base_url, pu.handle AS product_handle,
           p.scryfall_id, p.collector_number, p.image_uri, ps.code AS set_code, ps.name AS set_name,
-          ROW_NUMBER() OVER (PARTITION BY e.position, s.name ORDER BY v.price ASC, v.id ASC) AS price_rank
+          v.quantity, ROW_NUMBER() OVER (PARTITION BY e.position, s.name ORDER BY v.price ASC, v.id ASC) AS price_rank
         FROM card_list_entries e JOIN card_listings l ON l.card_name_id = e.card_name_id
         JOIN card_variants v ON v.card_listing_id = l.id
         JOIN stores s ON s.id = l.store_id JOIN card_conditions c ON c.id = v.condition_id
@@ -71,6 +71,7 @@ export class CardOptimizationService {
     const optimizationStarted = Date.now();
     const result = optimizeCart({ wantedCards, candidates: mapped, options: {
       defaultMinimumCondition: normalizeCondition(data.minimumCondition), defaultShippingCost: 3,
+      shippingCostByStoreKey: data.delivery?.shippingCostByStoreKey,
       timeBudgetMs: 60_000,
       conditionFlexibility: { mode: data.conditionFlexibility ?? 'strict', maxDowngradeSteps: data.maxDowngradeSteps,
         downgradePenaltyPerStep: data.downgradePenaltyPerStep },

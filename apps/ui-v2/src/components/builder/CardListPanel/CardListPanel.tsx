@@ -243,7 +243,7 @@ export function CardListPanel({
           sx={bestCardsBtnSx(bestCardsDisabled)}
         >
           <AddShoppingCart sx={{ fontSize: 16 }} />
-          {isAddingBestCards ? 'Finding best...' : 'Add Best Cards'}
+          {isAddingBestCards ? 'Finding best...' : 'Fill Best Cards'}
         </Box>
         <Box
           component="button"

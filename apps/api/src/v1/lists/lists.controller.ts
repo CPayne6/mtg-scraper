@@ -23,6 +23,7 @@ import { UpdateFiltersDto } from './dto/update-filters.dto';
 import { ReplaceCardsDto } from './dto/replace-cards.dto';
 import { UpdateNameDto } from './dto/update-name.dto';
 import { OptimizeListQueryDto } from './dto/optimize-list-query.dto';
+import { DeliveryOptionsDto } from './dto/delivery-options.dto';
 
 @Controller('lists')
 export class ListsController {
@@ -78,6 +79,17 @@ export class ListsController {
       principal?.principalUuid,
       query,
     );
+  }
+
+  @Post(':listId/delivery-options')
+  @UseGuards(PrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async deliveryOptions(
+    @Param('listId') listId: string,
+    @Body() dto: DeliveryOptionsDto,
+    @CurrentPrincipal() principal: PrincipalContext,
+  ) {
+    return this.listsService.createDeliveryQuote(listId, principal.principalUuid, dto);
   }
 
   @Get(':listId/optimizations/:jobId')

@@ -25,6 +25,8 @@ import { CardNameResolverService } from '../shared/card-name-resolver.service';
 import type { PrincipalKind } from '../../auth/principal.types';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
+import type { DeliveryOptionsDto } from './dto/delivery-options.dto';
+import { DeliveryQuoteService } from './delivery-quote.service';
 
 const MAX_LISTS_PER_ANONYMOUS_OWNER = 3;
 const MAX_LISTS_PER_USER_OWNER = 6;
@@ -100,6 +102,8 @@ export interface OptimizeListOptions {
   conditionFlexibility?: ConditionFlexibilityMode;
   maxDowngradeSteps?: number;
   downgradePenaltyPerStep?: number;
+  quoteToken?: string;
+  selectedMethods?: Record<string, { label: string; handle?: string }>;
 }
 
 export interface ListOptimizationResponse {
@@ -149,6 +153,8 @@ export class ListsService {
     private readonly cardNameResolver: CardNameResolverService,
     private readonly entityManager: EntityManager,
     @Optional()
+    private readonly deliveryQuotes?: DeliveryQuoteService,
+    @Optional()
     @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
     private readonly optimizationQueue?: Queue<CardOptimizationJobData>,
   ) {}
@@ -159,6 +165,10 @@ export class ListsService {
     options: OptimizeListOptions = {},
   ): Promise<{ jobId: string; status: 'queued' }> {
     const list = await this.findVisibleList(listUuid, principalUuid);
+    const delivery = options.quoteToken
+      ? this.deliveryQuotes?.consume(options.quoteToken, principalUuid ?? '', list.id, options.selectedMethods)
+      : { mode: 'legacy' as const, shippingCostByStoreKey: Object.fromEntries((this.parseCsvFilter(options.stores ?? list.filterStores) ?? []).map((store) => [store, 3])), selectedMethodByStoreKey: {} };
+    if (!delivery) throw new Error('Delivery quote service is unavailable');
     const minimumCondition = this.resolveMinimumCondition(options.minimumCondition, list.filterConditions);
     if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
     const job = await this.optimizationQueue.add(JOB_NAMES.CARD_OPTIMIZATION, {
@@ -170,6 +180,7 @@ export class ListsService {
       conditionFlexibility: options.conditionFlexibility,
       maxDowngradeSteps: options.maxDowngradeSteps,
       downgradePenaltyPerStep: options.downgradePenaltyPerStep,
+      delivery,
       enqueuedAt: Date.now(),
     }, {
       attempts: 1,
@@ -177,6 +188,12 @@ export class ListsService {
       removeOnFail: { age: 3600, count: 200 },
     });
     return { jobId: String(job.id), status: 'queued' };
+  }
+
+  async createDeliveryQuote(listUuid: string, principalUuid: string, dto: DeliveryOptionsDto) {
+    const list = await this.findVisibleList(listUuid, principalUuid);
+    if (!this.deliveryQuotes) throw new Error('Delivery quote service is unavailable');
+    return this.deliveryQuotes.quote(principalUuid, list.id, dto.stores, dto.address);
   }
 
   async getOptimizationStatus(listUuid: string, jobId: string, principalUuid?: string) {

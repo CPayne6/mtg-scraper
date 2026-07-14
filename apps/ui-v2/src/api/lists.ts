@@ -88,7 +88,24 @@ export interface FetchListOptimizationsInput {
   stores?: string[];
   conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
   maxDowngradeSteps?: number;
+  quoteToken?: string;
+  selectedMethods?: Record<string, { label: string; handle?: string }>;
 }
+
+export type DeliveryMethod = { label: string; handle?: string; price: number };
+export type DeliveryOptionsResponse = {
+  methods: Record<string, DeliveryMethod[]>;
+  quoteToken: string;
+  expiresAt: number;
+};
+export type DeliveryAddress = {
+  address1: string;
+  address2?: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  countryCode: string;
+};
 
 export interface CreateListResponse {
   id: string;
@@ -175,6 +192,19 @@ export function createListOptimization(
   return request<{ jobId: string; status: 'queued' }>(
     `/api/v1/lists/${encodeURIComponent(listId)}/optimizations`,
     { method: 'POST', signal, body: JSON.stringify({ ...input, stores: input.stores?.join(',') }) },
+  );
+}
+
+/** Addresses are sent only for this request; the API returns a token containing prices, not the address. */
+export function fetchDeliveryOptions(
+  listId: string,
+  address: DeliveryAddress,
+  stores: string[],
+  signal?: AbortSignal,
+): Promise<DeliveryOptionsResponse> {
+  return request<DeliveryOptionsResponse>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/delivery-options`,
+    { method: 'POST', signal, body: JSON.stringify({ address, stores }) },
   );
 }
 

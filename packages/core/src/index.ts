@@ -31,3 +31,4 @@ export { WebBotAuthModule, WebBotAuthService } from './web-bot-auth/index';
 // Cart Optimizer
 export * from './cart-optimizer/index';
 export * from './card-optimization/index';
+export { StorefrontClient } from './platform/adapters/shopify-storefront/storefront-client';

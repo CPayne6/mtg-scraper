@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import type { ConditionFlexibilityMode } from '@scoutlgs/core';
+import { IsObject } from 'class-validator';
 
 export class OptimizeListQueryDto {
   @IsOptional()
@@ -28,4 +29,12 @@ export class OptimizeListQueryDto {
   @Min(0)
   @Max(1000)
   downgradePenaltyPerStep?: number;
+
+  @IsOptional()
+  @IsString()
+  quoteToken?: string;
+
+  @IsOptional()
+  @IsObject()
+  selectedMethods?: Record<string, { label: string; handle?: string }>;
 }
