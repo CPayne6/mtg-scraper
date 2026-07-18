@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import Alert from '@mui/material/Alert';
+import Accordion from '@mui/material/Accordion';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -9,7 +12,7 @@ import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { ArrowBack, Close, OpenInNew } from '@mui/icons-material';
+import { ArrowBack, Close, ExpandMore, OpenInNew } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import {
   buildCheckout,
@@ -82,6 +85,9 @@ function CheckoutRoute() {
 
   const [storeStates, setStoreStates] = useState<Record<string, StoreCheckoutState>>({});
   const [openedKeys, setOpenedKeys] = useState<Set<string>>(new Set());
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const initialGroupsRef = useRef('');
+  const requestedFingerprintRef = useRef<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const lastBuiltFingerprint = useRef('');
@@ -106,7 +112,12 @@ function CheckoutRoute() {
   // Abort any in-flight build on unmount.
   useEffect(() => {
     return () => {
+      // React Strict Mode runs effect cleanup once before re-running effects
+      // in development. Allow that second pass to request this fingerprint
+      // again after the first request is aborted.
+      requestedFingerprintRef.current = null;
       abortRef.current?.abort();
+      abortRef.current = null;
     };
   }, []);
 
@@ -137,6 +148,14 @@ function CheckoutRoute() {
 
   const droppedNoVariant = items.length - groups.reduce((sum, g) => sum + g.items.length, 0);
 
+  // Keep the initial scan compact: one store opens by default, multiple stores don't.
+  useEffect(() => {
+    const groupKey = groups.map((group) => group.storeKey).join(',');
+    if (groupKey === initialGroupsRef.current) return;
+    initialGroupsRef.current = groupKey;
+    setExpandedKeys(groups.length === 1 ? new Set([groups[0].storeKey]) : new Set());
+  }, [groups]);
+
   // Redirect home if cart is empty (e.g. user navigated to /checkout directly).
   useEffect(() => {
     if (groups.length === 0) {
@@ -146,30 +165,22 @@ function CheckoutRoute() {
 
   const anyBuilding = Object.values(storeStates).some((s) => s.kind === 'building');
 
-  const handleCheckoutClick = useCallback(
-    async (storeKey: string, storeDisplayName: string) => {
-      const current = storeStates[storeKey];
-
-      // If already ready the button is a native <a> — just track the open.
-      if (current?.kind === 'ready') {
-        setOpenedKeys((prev) => {
-          const next = new Set(prev);
-          next.add(storeKey);
-          return next;
-        });
-        enqueueSnackbar(`Opening ${storeDisplayName}...`, { variant: 'success' });
-        return;
-      }
-
-      // Don't start a new build while one is in progress.
-      if (current?.kind === 'building') return;
-
+  const buildCheckoutLinks = useCallback(
+    async () => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      setStoreStates((prev) => ({ ...prev, [storeKey]: { kind: 'building' } }));
+      const buildingStates: Record<string, StoreCheckoutState> = Object.fromEntries(
+        groups.map((group) => [group.storeKey, { kind: 'building' } as StoreCheckoutState]),
+      );
+      setStoreStates(buildingStates);
       const fingerprintAtBuild = currentFingerprintRef.current;
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 15_000);
 
       try {
         const variantIds = cartVariantIds(items);
@@ -182,19 +193,52 @@ function CheckoutRoute() {
           return;
         }
 
-        // Cache ALL store URLs from the response.
+        // Cache all generated URLs until the cart fingerprint changes.
+        const urls = new Map(result.stores.map((entry) => [entry.storeKey, entry.checkoutUrl]));
         const nextStates: Record<string, StoreCheckoutState> = {};
-        for (const entry of result.stores) {
-          nextStates[entry.storeKey] = { kind: 'ready', url: entry.checkoutUrl };
+        for (const group of groups) {
+          const url = urls.get(group.storeKey);
+          nextStates[group.storeKey] = url
+            ? { kind: 'ready', url }
+            : { kind: 'error', message: 'No checkout link was returned for this store.' };
         }
         lastBuiltFingerprint.current = fingerprintAtBuild;
-        setStoreStates((prev) => ({ ...prev, ...nextStates }));
+        setStoreStates(nextStates);
       } catch (err) {
-        if (controller.signal.aborted) return;
-        setStoreStates((prev) => ({ ...prev, [storeKey]: buildErrorState(err) }));
+        // A newer build has already replaced this one; let it own the UI.
+        if (controller.signal.aborted && abortRef.current !== controller) return;
+        const errorState: StoreCheckoutState = timedOut
+          ? { kind: 'error', message: 'Checkout link creation timed out. Please retry.' }
+          : buildErrorState(err);
+        const errorStates: Record<string, StoreCheckoutState> = Object.fromEntries(
+          groups.map((group) => [group.storeKey, errorState]),
+        );
+        setStoreStates(errorStates);
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     },
-    [storeStates, items, enqueueSnackbar],
+    [groups, items],
+  );
+
+  // Build every store link on page load. Rebuild only after the cart changes.
+  useEffect(() => {
+    if (groups.length === 0 || requestedFingerprintRef.current === currentFingerprint) return;
+    requestedFingerprintRef.current = currentFingerprint;
+    void buildCheckoutLinks();
+  }, [buildCheckoutLinks, currentFingerprint, groups.length]);
+
+  const handleCheckoutClick = useCallback(
+    (storeKey: string, storeDisplayName: string) => {
+      const current = storeStates[storeKey];
+      if (current?.kind === 'ready') {
+        setOpenedKeys((prev) => new Set(prev).add(storeKey));
+        enqueueSnackbar(`Opening ${storeDisplayName}...`, { variant: 'success' });
+        return;
+      }
+      if (current?.kind !== 'building') void buildCheckoutLinks();
+    },
+    [buildCheckoutLinks, enqueueSnackbar, storeStates],
   );
 
   if (groups.length === 0) return null;
@@ -218,13 +262,20 @@ function CheckoutRoute() {
         Check out at each store
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Each store has its own cart. Click a store's button to build the checkout link, then open it in a new tab. ScoutLGS doesn't take payment.
+        Each store has its own cart. We prepare the checkout links now; open each store in a new tab when you're ready. ScoutLGS doesn't take payment.
       </Typography>
 
       {droppedNoVariant > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           {droppedNoVariant} item{droppedNoVariant === 1 ? '' : 's'} skipped (no Shopify variant id yet -- try again once prices have loaded).
         </Alert>
+      )}
+
+      {anyBuilding && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 2, color: 'text.secondary' }}>
+          <CircularProgress size={18} />
+          <Typography variant="body2">Preparing store checkout links…</Typography>
+        </Box>
       )}
 
       <Stack spacing={2}>
@@ -234,18 +285,36 @@ function CheckoutRoute() {
           const isBuilding = storeState.kind === 'building';
           const isError = storeState.kind === 'error';
           const opened = openedKeys.has(group.storeKey);
+          const expanded = expandedKeys.has(group.storeKey);
+
+          const toggleExpanded = () => {
+            setExpandedKeys((previous) => {
+              const next = new Set(previous);
+              if (next.has(group.storeKey)) next.delete(group.storeKey);
+              else next.add(group.storeKey);
+              return next;
+            });
+          };
 
           return (
-            <Box
+            <Accordion
               key={group.storeKey}
+              expanded={expanded}
+              onChange={toggleExpanded}
+              disableGutters
               sx={(theme) => ({
-                p: 2.5,
                 border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 2,
+                // MUI Accordion's built-in first/last-child rules otherwise
+                // override the shared radius on those edge cards.
+                borderRadius: '16px !important',
                 bgcolor: 'background.paper',
+                // Clip every animated child to the shared radius without
+                // creating the scrolling ancestor that breaks sticky headers.
+                overflow: 'clip',
+                '&:before': { display: 'none' },
               })}
             >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 1.5, gap: 2 }}>
+              <AccordionSummary expandIcon={<ExpandMore />} sx={{ position: 'sticky', top: 0, zIndex: 1, px: 2.5, minHeight: 72, bgcolor: 'background.paper', '& .MuiAccordionSummary-content': { my: 1.5, alignItems: 'center', gap: 2 }, '& .MuiAccordionSummary-content.Mui-expanded': { my: 1.5 }, '& .MuiAccordionSummary-expandIconWrapper': { ml: 2 } }}>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>
                     {group.storeDisplayName}
@@ -254,11 +323,26 @@ function CheckoutRoute() {
                     {group.items.length} {group.items.length === 1 ? 'card' : 'cards'}
                   </Typography>
                 </Box>
-                <Typography sx={{ fontWeight: 700, color: 'primary.main', flexShrink: 0 }}>
+                <Typography sx={{ fontWeight: 700, color: 'primary.main', flexShrink: 0, ml: 'auto' }}>
                   CA${group.subtotal.toFixed(2)}
                 </Typography>
-              </Box>
+                <Button
+                  size="small"
+                  variant={isReady ? 'outlined' : 'contained'}
+                  color={isError ? 'error' : 'primary'}
+                  startIcon={isBuilding ? <CircularProgress size={14} color="inherit" /> : <OpenInNew sx={{ fontSize: 16 }} />}
+                  disabled={isBuilding || (anyBuilding && !isBuilding)}
+                  {...(isReady ? { component: 'a' as const, href: storeState.url, target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleCheckoutClick(group.storeKey, group.storeDisplayName);
+                  }}
+                >
+                  {isBuilding ? 'Building' : isError ? 'Retry' : isReady ? 'Open' : 'Checkout'}
+                </Button>
+              </AccordionSummary>
 
+              <AccordionDetails sx={{ px: 2.5, pt: 0, pb: 2.5 }}>
               <Stack spacing={1} sx={{ mb: 2 }}>
                 {group.items.map((item) => (
                   <Box
@@ -353,7 +437,10 @@ function CheckoutRoute() {
                       rel: 'noopener noreferrer',
                     }
                   : {})}
-                onClick={() => handleCheckoutClick(group.storeKey, group.storeDisplayName)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleCheckoutClick(group.storeKey, group.storeDisplayName);
+                }}
               >
                 {isBuilding
                   ? 'Building cart...'
@@ -365,7 +452,8 @@ function CheckoutRoute() {
                         ? `Open ${group.storeDisplayName}`
                         : `Check out at ${group.storeDisplayName}`}
               </Button>
-            </Box>
+              </AccordionDetails>
+            </Accordion>
           );
         })}
       </Stack>
