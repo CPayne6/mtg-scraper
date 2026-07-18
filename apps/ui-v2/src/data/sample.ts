@@ -50,7 +50,6 @@ export const STORE_FACETS: StoreFacet[] = [
   { key: 'the-cg-realm', label: 'The CG Realm', count: 1, baseUrl: 'https://www.thecgrealm.com' },
 ];
 
-export const STORE_COUNT = STORE_FACETS.length;
 export const DEFAULT_STORE_KEYS = STORE_FACETS.map((store) => store.key);
 
 export const FALLBACK_CARDS = [
