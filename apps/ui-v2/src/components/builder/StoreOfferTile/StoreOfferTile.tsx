@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { OpenInNew } from '@mui/icons-material';
+import { OpenInNew, AddShoppingCart, Check as CheckIcon } from '@mui/icons-material';
 import { gradientForCard } from '@/utils/cardGradient';
 import type { StoreOfferTileProps } from './StoreOfferTile.types';
 import { CONDITION_DISPLAY, CONDITION_TOOLTIP, getCondVisual } from './StoreOfferTile.utils';
@@ -17,8 +17,6 @@ import {
   condBadgeSx,
   actionRowSx,
   viewLinkSx,
-  inCartChipSx,
-  addToCartBtnSx,
 } from './StoreOfferTile.styles';
 
 export function StoreOfferTile({
@@ -63,13 +61,28 @@ export function StoreOfferTile({
         />
       )}
 
-      <Box aria-hidden="true" sx={gradientOverlaySx} />
-
       {isCheapest && (
         <Box component="span" sx={cheapestBadgeSx}>
           Cheapest
         </Box>
       )}
+
+      <Box
+        component="button"
+        className="cart-action"
+        type="button"
+        disabled={inCart}
+        aria-label={inCart ? `${offer.title} in cart` : `Add ${offer.title} to cart`}
+        onClick={onAdd}
+        sx={{ position: 'relative', gridRow: 1, justifySelf: 'stretch', width: '100%', minWidth: 0, boxSizing: 'border-box', zIndex: 4, border: 0, background: 'transparent', color: '#fff', cursor: inCart ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: inCart ? 1 : 0, transition: 'opacity 160ms ease', '&:hover, &:focus-visible': { opacity: 1, outline: 'none' }, '&:focus-visible': { boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.8)' }, '&:disabled': { pointerEvents: 'auto' } }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, px: 1.5, py: 1 }}>
+          {inCart ? <CheckIcon sx={{ fontSize: 26, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }} /> : <AddShoppingCart sx={{ fontSize: 26, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }} />}
+          <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', textShadow: '0 1px 4px rgba(0,0,0,0.55)' }}>{inCart ? 'In Cart' : 'Add to Cart'}</Typography>
+        </Box>
+      </Box>
+
+      <Box className="cart-gradient" aria-hidden="true" sx={gradientOverlaySx(inCart)} />
 
       <Box sx={contentOverlaySx}>
         <Typography sx={storeNameSx}>{offer.store}</Typography>
@@ -99,24 +112,6 @@ export function StoreOfferTile({
             View <OpenInNew sx={{ fontSize: 12 }} />
           </Box>
 
-          {inCart ? (
-            <Box component="span" sx={inCartChipSx}>
-              ✓ In Cart
-            </Box>
-          ) : (
-            <Box
-              component="button"
-              type="button"
-              aria-label={`Add ${offer.title} from ${offer.store} to cart`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd();
-              }}
-              sx={addToCartBtnSx}
-            >
-              Add to Cart
-            </Box>
-          )}
         </Box>
       </Box>
     </Box>
