@@ -9,9 +9,13 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  HttpException,
   UsePipes,
   ValidationPipe,
   UseGuards,
+  Optional,
+  Req,
+  Res,
 } from '@nestjs/common';
 import { CurrentPrincipal } from '../../auth/current-principal.decorator';
 import { OptionalPrincipalGuard } from '../../auth/optional-principal.guard';
@@ -24,10 +28,20 @@ import { ReplaceCardsDto } from './dto/replace-cards.dto';
 import { UpdateNameDto } from './dto/update-name.dto';
 import { OptimizeListQueryDto } from './dto/optimize-list-query.dto';
 import { DeliveryOptionsDto } from './dto/delivery-options.dto';
+import { XRequestedWithGuard } from '../checkout/csrf.guard';
+import type { Request } from 'express';
+import type { Response } from 'express';
+import { CheckoutRateLimiterService } from '../checkout/checkout-rate-limiter.service';
+import { hashIp } from '../checkout/ip-hash.util';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('lists')
 export class ListsController {
-  constructor(private readonly listsService: ListsService) {}
+  constructor(
+    private readonly listsService: ListsService,
+    @Optional() private readonly quoteRateLimiter?: CheckoutRateLimiterService,
+    @Optional() private readonly configService?: ConfigService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -81,15 +95,32 @@ export class ListsController {
     );
   }
 
-  @Post(':listId/delivery-options')
-  @UseGuards(PrincipalGuard)
+  @Post(':listId/optimizations/:jobId/delivery-options')
+  @UseGuards(XRequestedWithGuard, PrincipalGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async deliveryOptions(
     @Param('listId') listId: string,
+    @Param('jobId') jobId: string,
     @Body() dto: DeliveryOptionsDto,
     @CurrentPrincipal() principal: PrincipalContext,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.listsService.createDeliveryQuote(listId, principal.principalUuid, dto);
+    if (!this.configService?.get<boolean>('delivery.addressQuotesEnabled')) {
+      throw new HttpException('Address-based delivery quotes are disabled', HttpStatus.NOT_FOUND);
+    }
+    const principalLimit = principal.kind === 'user' ? 10 : 3;
+    if (!this.quoteRateLimiter) return this.listsService.createDeliveryQuote(listId, jobId, principal.principalUuid, dto);
+    const [principalDecision, ipDecision] = await Promise.all([
+      this.quoteRateLimiter.check(`delivery-quote:p:${principal.principalUuid}`, principalLimit, 60),
+      this.quoteRateLimiter.check(`delivery-quote:ip:${hashIp(req)}`, 15, 60),
+    ]);
+    const denied = !principalDecision.allowed ? principalDecision : !ipDecision.allowed ? ipDecision : null;
+    if (denied) {
+      res.setHeader('Retry-After', String(denied.retryAfterSec));
+      throw new HttpException({ error: 'rate-limited', retryAfterSec: denied.retryAfterSec }, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    return this.listsService.createDeliveryQuote(listId, jobId, principal.principalUuid, dto);
   }
 
   @Get(':listId/optimizations/:jobId')

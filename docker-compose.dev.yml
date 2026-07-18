@@ -72,15 +72,14 @@ services:
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
       - FRONTEND_URL=http://localhost:${UI_PORT:-3000}
+      - ENABLE_DELIVERY_ADDRESS_QUOTES=false
       - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
       - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     volumes:
       # Mount source code for hot reload
       - ./apps/api/src:/app/apps/api/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/api/tsconfig.json:/app/apps/api/tsconfig.json:ro
       - ./apps/api/nest-cli.json:/app/apps/api/nest-cli.json:ro
@@ -119,9 +118,7 @@ services:
     volumes:
       - ./apps/auth/src:/app/apps/auth/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       - ./apps/auth/tsconfig.json:/app/apps/auth/tsconfig.json:ro
       - ./apps/auth/nest-cli.json:/app/apps/auth/nest-cli.json:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
@@ -144,12 +141,18 @@ services:
       - apps/ui-v2/.env
     environment:
       - NODE_ENV=development
+      # Route browser API/auth traffic through Vite so cookies are scoped to
+      # the host used to open the UI (localhost or a LAN hostname).
+      - VITE_API_URL=
+      - VITE_AUTH_URL=
+      - VITE_ENABLE_DELIVERY_ADDRESS_QUOTES=false
+      - API_PROXY_TARGET=http://api:5000
+      - AUTH_PROXY_TARGET=http://auth:5002
     volumes:
       # Mount source code for hot reload
       - ./apps/ui-v2/src:/app/apps/ui-v2/src:delegated
       - ./apps/ui-v2/public:/app/apps/ui-v2/public:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       # Mount config files
       - ./apps/ui-v2/vite.config.ts:/app/apps/ui-v2/vite.config.ts:ro
       - ./apps/ui-v2/tsconfig.json:/app/apps/ui-v2/tsconfig.json:ro
@@ -186,9 +189,7 @@ services:
       # Mount source code for hot reload
       - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/scheduler/tsconfig.json:/app/apps/scheduler/tsconfig.json:ro
       - ./apps/scheduler/nest-cli.json:/app/apps/scheduler/nest-cli.json:ro
@@ -221,9 +222,7 @@ services:
       # Mount source code for hot reload
       - ./apps/scraper/src:/app/apps/scraper/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/scraper/tsconfig.json:/app/apps/scraper/tsconfig.json:ro
       - ./apps/scraper/nest-cli.json:/app/apps/scraper/nest-cli.json:ro

@@ -9,10 +9,14 @@ import Stack from '@mui/material/Stack';
 import Paper from '@mui/material/Paper';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
-import { ArrowForward } from '@mui/icons-material';
 import { FilterAlt } from '@mui/icons-material';
 import { ChevronLeft } from '@mui/icons-material';
 import { Construction } from '@mui/icons-material';
+import { MoreVert } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
+import IconButton from '@mui/material/IconButton';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import { useSnackbar } from 'notistack';
 import type { CardWithStore } from '@scoutlgs/shared';
 import { useLists } from '@/components/lists/ListsContext';
@@ -49,7 +53,7 @@ function ListDetailRoute() {
   const { listId } = useParams({ from: '/list/$listId/$slug' });
   const navigate = useNavigate();
   const { get, getList, remove: removeList, removeCardFromList, loading } = useLists();
-  const { add: addToCart, open: openCart } = useCart();
+  const { add: addToCart, items: cartItems } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const confirm = useConfirm();
   const cards = get(listId);
@@ -61,7 +65,7 @@ function ListDetailRoute() {
     key: string;
     results: Record<string, CardState>;
   }>({ key: '', results: {} });
-  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [showNeedsAttentionOnly, setShowNeedsAttentionOnly] = useState(false);
   const results = useMemo<Record<string, CardState>>(() => {
     if (entries.length === 0) return {};
@@ -75,13 +79,11 @@ function ListDetailRoute() {
   useEffect(() => {
     if (entries.length === 0) return;
     const controller = new AbortController();
-    const elapsedStart = Date.now();
     const nextResults: Record<string, CardState> = {};
     let remaining = entries.length;
     const tick = () => {
       remaining -= 1;
       if (remaining <= 0 && !controller.signal.aborted) {
-        setElapsedMs(Date.now() - elapsedStart);
       }
     };
     for (const entry of entries) {
@@ -122,19 +124,17 @@ function ListDetailRoute() {
     [entries, results, showNeedsAttentionOnly],
   );
 
-  const { deckTotal, inStockCount, uniqueStoreCount } = useMemo(() => {
+  const { deckTotal, inStockCount } = useMemo(() => {
     let total = 0;
     let inStock = 0;
-    const stores = new Set<string>();
     for (const entry of entries) {
       const r = results[entry.name];
       if (r && r.state === 'success' && r.cheapest) {
         total += entry.qty * r.cheapest.price;
         inStock += 1;
-        stores.add(r.cheapest.store);
       }
     }
-    return { deckTotal: total, inStockCount: inStock, uniqueStoreCount: stores.size };
+    return { deckTotal: total, inStockCount: inStock };
   }, [entries, results]);
 
   const handleDeleteList = useCallback(async () => {
@@ -194,8 +194,6 @@ function ListDetailRoute() {
   }
 
   const meta = DECK_META[listName] ?? { colors: '', archetype: 'Custom', updated: 'recently' };
-  const checkoutStores = uniqueStoreCount || 0;
-
   const handleAddRowToCart = (cardName: string) => {
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
@@ -209,31 +207,7 @@ function ListDetailRoute() {
     );
   };
 
-  const handleCheckout = () => {
-    if (!isLoaded) return;
-
-    let available = 0;
-    let added = 0;
-    for (const entry of entries) {
-      const r = results[entry.name];
-      if (!r || r.state !== 'success' || !r.cheapest) continue;
-      available += 1;
-      if (addToCart(r.cheapest)) added += 1;
-    }
-
-    if (available === 0) {
-      enqueueSnackbar('No priced cards are available to check out yet', { variant: 'warning' });
-      return;
-    }
-
-    enqueueSnackbar(
-      added > 0
-        ? `Added ${added} ${added === 1 ? 'card' : 'cards'} to cart`
-        : 'Every priced card is already in your cart',
-      { variant: added > 0 ? 'success' : 'default' },
-    );
-    openCart();
-  };
+  const handleBuildCart = () => navigate({ to: '/build/$listId/$slug', params: { listId, slug: listSlug } });
 
   return (
     <Container maxWidth={false} sx={{ maxWidth: 1100 }}>
@@ -278,6 +252,8 @@ function ListDetailRoute() {
             >
               {listName}
             </Typography>
+            <IconButton size="small" aria-label="List actions" onClick={(event) => setMenuAnchor(event.currentTarget)}><MoreVert /></IconButton>
+            <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}><MenuItem onClick={() => { setMenuAnchor(null); void handleDeleteList(); }}>Delete list</MenuItem></Menu>
           </Box>
           <Typography sx={{ fontSize: '0.92rem', color: 'text.secondary', mt: 0.75 }}>
             {colorIdentityName(meta.colors)} · {cards.length} cards
@@ -288,32 +264,9 @@ function ListDetailRoute() {
             variant="contained"
             color="primary"
             startIcon={<Construction sx={{ fontSize: 18 }} />}
-            onClick={() =>
-              navigate({
-                to: '/build/$listId/$slug',
-                params: { listId, slug: listSlug },
-              })
-            }
+            onClick={handleBuildCart}
           >
             Build Cart
-          </Button>
-          <Button
-            variant="outlined"
-            color="primary"
-            onClick={handleDeleteList}
-          >
-            Delete
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            endIcon={<ArrowForward />}
-            disabled={!isLoaded || checkoutStores === 0}
-            onClick={handleCheckout}
-          >
-            {checkoutStores > 0
-              ? `Check Out at ${checkoutStores} ${checkoutStores === 1 ? 'Store' : 'Stores'}`
-              : 'Check Out'}
           </Button>
         </Stack>
       </Box>
@@ -351,15 +304,10 @@ function ListDetailRoute() {
         }}
       >
         <KpiTile
-          label="Deck total"
+          label="Lowest possible price"
           value={isLoaded ? `CA$${deckTotal.toFixed(2)}` : `…`}
           delta={isLoaded ? `${inStockCount} of ${entries.length} priced` : `scouting`}
           deltaTone={isLoaded && inStockCount === entries.length ? 'good' : 'muted'}
-        />
-        <KpiTile
-          label="Stores searched"
-          value={isLoaded ? `${uniqueStoreCount} ${uniqueStoreCount === 1 ? 'store' : 'stores'}` : `…`}
-          delta={isLoaded && elapsedMs != null ? `in ${(elapsedMs / 1000).toFixed(1)}s` : `in progress`}
         />
         <KpiTile
           label="In stock"
@@ -383,26 +331,28 @@ function ListDetailRoute() {
             Cards - {displayedEntries.length}
             {showNeedsAttentionOnly ? ` / ${entries.length}` : ''}
           </Typography>
-          <Button
-            color="primary"
-            variant={showNeedsAttentionOnly ? 'contained' : 'text'}
-            startIcon={<FilterAlt sx={{ fontSize: 14 }} />}
-            onClick={() => setShowNeedsAttentionOnly((value) => !value)}
-          >
-            {showNeedsAttentionOnly ? 'Show All' : 'Needs Attention'}
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
+            <Button
+              color="primary"
+              variant={showNeedsAttentionOnly ? 'contained' : 'text'}
+              startIcon={<FilterAlt sx={{ fontSize: 14 }} />}
+              onClick={() => setShowNeedsAttentionOnly((value) => !value)}
+            >
+              {showNeedsAttentionOnly ? 'Show All' : 'Needs Attention'}
+            </Button>
+          </Box>
         </Box>
         <Stack spacing={1}>
           {displayedEntries.map(({ name, qty }) => {
             const r = results[name];
             let meta = '—';
             let price = 0;
-            let store = '—';
+            const inCart = cartItems.some((item) => item.title === name || item.title.startsWith(`${name} [`));
+            let store = inCart ? 'In cart' : 'Not in cart';
             if (r?.state === 'success' && r.cheapest) {
               const { set, condition } = r.cheapest;
               meta = `${set || `—`} · ${CONDITION_LABELS[condition] ?? condition}`;
               price = qty * r.cheapest.price;
-              store = r.cheapest.store;
             } else if (r?.state === 'pending') {
               meta = 'Scouting…';
             } else if (r?.state === 'error') {
@@ -419,7 +369,7 @@ function ListDetailRoute() {
                 price={price}
                 store={store}
                 onStoreChange={() => handleAddRowToCart(name)}
-                storeActionDisabled={!r || r.state !== 'success' || !r.cheapest}
+                storeActionDisabled={inCart || !r || r.state !== 'success' || !r.cheapest}
                 onOpenBuilder={() => handleOpenBuilderCard(name)}
                 onRemove={() => handleRemoveCard(name)}
               />

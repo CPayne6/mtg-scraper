@@ -13,6 +13,7 @@ import type { Queue } from 'bullmq';
 import {
   CardList,
   CardListEntry,
+  freshOfferCutoff,
   normalizeCondition,
   optimizeCartOptions,
   type CartOptimizationCandidate,
@@ -102,8 +103,7 @@ export interface OptimizeListOptions {
   conditionFlexibility?: ConditionFlexibilityMode;
   maxDowngradeSteps?: number;
   downgradePenaltyPerStep?: number;
-  quoteToken?: string;
-  selectedMethods?: Record<string, { label: string; handle?: string }>;
+  shippingCostByStoreKey?: Record<string, number>;
 }
 
 export interface ListOptimizationResponse {
@@ -165,10 +165,9 @@ export class ListsService {
     options: OptimizeListOptions = {},
   ): Promise<{ jobId: string; status: 'queued' }> {
     const list = await this.findVisibleList(listUuid, principalUuid);
-    const delivery = options.quoteToken
-      ? this.deliveryQuotes?.consume(options.quoteToken, principalUuid ?? '', list.id, options.selectedMethods)
-      : { mode: 'legacy' as const, shippingCostByStoreKey: Object.fromEntries((this.parseCsvFilter(options.stores ?? list.filterStores) ?? []).map((store) => [store, 3])), selectedMethodByStoreKey: {} };
-    if (!delivery) throw new Error('Delivery quote service is unavailable');
+    const requestedStores = this.parseCsvFilter(options.stores ?? list.filterStores) ?? [];
+    const shippingCostByStoreKey = Object.fromEntries(requestedStores.map((store) => [store, Math.max(0, Math.min(1000, Number(options.shippingCostByStoreKey?.[store] ?? 3)) || 0)]));
+    const delivery = { mode: 'legacy' as const, shippingCostByStoreKey };
     const minimumCondition = this.resolveMinimumCondition(options.minimumCondition, list.filterConditions);
     if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
     const job = await this.optimizationQueue.add(JOB_NAMES.CARD_OPTIMIZATION, {
@@ -190,10 +189,14 @@ export class ListsService {
     return { jobId: String(job.id), status: 'queued' };
   }
 
-  async createDeliveryQuote(listUuid: string, principalUuid: string, dto: DeliveryOptionsDto) {
+  async createDeliveryQuote(listUuid: string, jobId: string, principalUuid: string, dto: DeliveryOptionsDto) {
     const list = await this.findVisibleList(listUuid, principalUuid);
     if (!this.deliveryQuotes) throw new Error('Delivery quote service is unavailable');
-    return this.deliveryQuotes.quote(principalUuid, list.id, dto.stores, dto.address);
+    if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
+    const job = await this.optimizationQueue.getJob(jobId);
+    if (!job || job.data.listUuid !== listUuid || job.data.listId !== list.id) throw new NotFoundException('Optimization not found');
+    if (await job.getState() !== 'completed' || !job.returnvalue?.result) throw new ConflictException('Optimization is not complete');
+    return this.deliveryQuotes.quoteSelected(job.returnvalue.result.selectedOffers, dto.address);
   }
 
   async getOptimizationStatus(listUuid: string, jobId: string, principalUuid?: string) {
@@ -307,6 +310,7 @@ export class ListsService {
     listUuid: string,
     principalUuid?: string,
   ): Promise<ListWithPricesResponse> {
+    const offerCutoff = freshOfferCutoff();
     const list = await this.cardListRepository.findOne({
       where: { uuid: listUuid },
     });
@@ -333,8 +337,20 @@ export class ListsService {
 
     // Run cheapest variant + count queries in parallel
     const [cheapestRows, countRows] = await Promise.all([
-      this.getCheapestVariants(list.id, storeFilter, conditionFilter, setFilter),
-      this.getListingCounts(list.id, storeFilter, conditionFilter, setFilter),
+      this.getCheapestVariants(
+        list.id,
+        storeFilter,
+        conditionFilter,
+        setFilter,
+        offerCutoff,
+      ),
+      this.getListingCounts(
+        list.id,
+        storeFilter,
+        conditionFilter,
+        setFilter,
+        offerCutoff,
+      ),
     ]);
 
     // Build count lookup
@@ -527,6 +543,7 @@ export class ListsService {
     setCode: string | null,
     preferredSetPairs: Array<{ cardNameId: number; setCode: string }>,
     minimumCondition: Condition,
+    offerCutoff: Date = freshOfferCutoff(),
   ): Promise<OptimizationCandidateRow[]> {
     if (cardNameIds.length === 0) return [];
     const preferredCardNameIds = preferredSetPairs.map((pair) => pair.cardNameId);
@@ -605,6 +622,7 @@ export class ListsService {
           AND ($2::text[] IS NULL OR s.name = ANY($2))
           AND ($3::text IS NULL OR ps.code = $3)
           AND v.in_stock = TRUE
+          AND v.price_updated_at > $8
       ),
       bounded_candidates AS (
         SELECT *
@@ -676,6 +694,7 @@ export class ListsService {
         preferredSetCodes,
         acceptableConditionCodes,
         MAX_OPTIMIZATION_TOTAL_CANDIDATES_PER_CARD,
+        offerCutoff,
       ],
     );
   }
@@ -779,6 +798,7 @@ export class ListsService {
     stores: string[] | null,
     conditions: string[] | null,
     setCode: string | null,
+    offerCutoff: Date,
   ): Promise<any[]> {
     return this.entityManager.query(
       `
@@ -838,13 +858,14 @@ export class ListsService {
           AND ($3::text[] IS NULL OR c.code = ANY($3))
           AND ($4::text IS NULL OR ps.code = $4)
           AND v.in_stock = TRUE
+          AND v.price_updated_at > $5
         ORDER BY v.price ASC
         LIMIT 1
       ) best ON true
       WHERE e.card_list_id = $1
       ORDER BY e.position ASC
       `,
-      [listId, stores, conditions, setCode],
+      [listId, stores, conditions, setCode, offerCutoff],
     );
   }
 
@@ -853,6 +874,7 @@ export class ListsService {
     stores: string[] | null,
     conditions: string[] | null,
     setCode: string | null,
+    offerCutoff: Date,
   ): Promise<any[]> {
     return this.entityManager.query(
       `
@@ -873,9 +895,10 @@ export class ListsService {
         AND ($3::text[] IS NULL OR c.code = ANY($3))
         AND ($4::text IS NULL OR ps.code = $4)
         AND v.in_stock = TRUE
+        AND v.price_updated_at > $5
       GROUP BY e.card_name_id
       `,
-      [listId, stores, conditions, setCode],
+      [listId, stores, conditions, setCode, offerCutoff],
     );
   }
 

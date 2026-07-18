@@ -85,6 +85,11 @@ export function getSession(): Promise<SessionResponse> {
   );
 }
 
+export type DeliveryAddress = { address1: string; address2?: string; city: string; province: string; postalCode: string; countryCode: 'CA' };
+export function getDeliveryAddress(): Promise<{ address: DeliveryAddress | null }> { return authFetch('/auth/delivery-address', { method: 'GET' }, 'Failed to load saved address'); }
+export function saveDeliveryAddress(address: DeliveryAddress): Promise<{ address: DeliveryAddress }> { return authFetch('/auth/delivery-address', { method: 'PUT', body: JSON.stringify(address) }, 'Failed to save address'); }
+export function removeDeliveryAddress(): Promise<{ address: null }> { return authFetch('/auth/delivery-address', { method: 'DELETE' }, 'Failed to remove saved address'); }
+
 // Email/password auth is disabled until email verification is in place.
 // Keep the input types and helpers around so they can be re-enabled later.
 // export type SignupInput = {

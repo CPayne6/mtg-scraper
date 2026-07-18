@@ -16,4 +16,5 @@ export const validationSchema = Joi.object({
   SCHEDULER_INTERNAL_URL: Joi.string()
     .uri()
     .default('http://scheduler:5001'),
+  ENABLE_DELIVERY_ADDRESS_QUOTES: Joi.boolean().truthy('true').falsy('false').default(false),
 });

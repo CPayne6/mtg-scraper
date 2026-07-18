@@ -47,6 +47,10 @@ export class User {
   @Column({ name: 'disabled_at', type: 'timestamp', nullable: true })
   disabledAt?: Date | null;
 
+  /** Explicitly opt-in saved delivery address. Never used for anonymous sessions. */
+  @Column({ name: 'delivery_address', type: 'jsonb', nullable: true })
+  deliveryAddress?: { address1: string; address2?: string; city: string; province: string; postalCode: string; countryCode: 'CA' } | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

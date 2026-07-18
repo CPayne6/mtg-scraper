@@ -39,11 +39,10 @@ export interface CardOptimizationJobData {
   conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
   maxDowngradeSteps?: number;
   downgradePenaltyPerStep?: number;
-  /** Frozen before queuing.  Never contains an address or a live cart id. */
+  /** Always the initial CA$3/store sourcing estimate. Never contains an address or cart id. */
   delivery: {
-    mode: 'quoted' | 'legacy';
+    mode: 'legacy';
     shippingCostByStoreKey: Record<string, number>;
-    selectedMethodByStoreKey: Record<string, { label: string; handle?: string }>;
   };
   enqueuedAt: number;
 }

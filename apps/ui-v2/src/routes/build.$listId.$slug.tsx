@@ -9,12 +9,18 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
+import IconButton from '@mui/material/IconButton';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
+import CloseIcon from '@mui/icons-material/Close';
 import { fetchCard } from '@/api/cards';
-import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse } from '@/api/lists';
+import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
+import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
 import { useCart, cartItemId } from '@/components/cart/CartContext';
+import { useAuth } from '@/components/auth/AuthContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { groupByName } from '@/utils/parseDeckList';
@@ -53,6 +59,9 @@ export const Route = createFileRoute('/build/$listId/$slug')({
 
 // Builder filters/state operate on the store's slug (`key`), never displayName.
 const ALL_STORE_KEYS = STORE_FACETS.map((s) => s.key);
+// Keep live Shopify/address quoting opt-in while delivery estimates are being
+// rolled out. The sourcing pass continues to use CA$3 per store either way.
+const ADDRESS_DELIVERY_QUOTES_ENABLED = import.meta.env.VITE_ENABLE_DELIVERY_ADDRESS_QUOTES === 'true';
 const STORE_LABEL_BY_KEY: Record<string, string> = Object.fromEntries(
   STORE_FACETS.map((s) => [s.key, s.label]),
 );
@@ -102,6 +111,7 @@ function BuilderRoute() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { get, getList, loading } = useLists();
+  const { session } = useAuth();
   const {
     add: addToCart,
     addMany: addManyToCart,
@@ -162,8 +172,11 @@ function BuilderRoute() {
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryOptionsResponse | null>(null);
-  const [selectedDeliveryMethods, setSelectedDeliveryMethods] = useState<Record<string, { label: string; handle?: string }>>({});
-  const [deliveryAddress, setDeliveryAddress] = useState({ address1: '', city: '', province: '', postalCode: '', countryCode: 'CA' });
+  const [selectedDeliveryMethods, setSelectedDeliveryMethods] = useState<Record<string, string>>({});
+  const [pendingOptimization, setPendingOptimization] = useState<ListOptimizationOption | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState({ address1: '', city: '', province: '', postalCode: '', countryCode: 'CA' as const });
+  const [saveDeliveryAddressForLater, setSaveDeliveryAddressForLater] = useState(false);
+  const [estimatedShippingByStore, setEstimatedShippingByStore] = useState<Record<string, number>>({});
   const appliedUrlSelectionForListRef = useRef<string | null>(null);
   const syncSelectedCardUrl = useCallback(
     (name: string | null) => {
@@ -334,7 +347,7 @@ function BuilderRoute() {
   const canAddBestCards =
     entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
 
-  const runOptimization = useCallback(async (delivery?: { quoteToken: string; selectedMethods: Record<string, { label: string; handle?: string }> }) => {
+  const runOptimization = useCallback(async (quoteAddress?: typeof deliveryAddress, shippingCostByStoreKey?: Record<string, number>) => {
     if (selectedStores.length === 0) {
       enqueueSnackbar('Select at least one store before adding best cards', {
         variant: 'warning',
@@ -349,7 +362,7 @@ function BuilderRoute() {
         minimumCondition: optimizationMinimumCondition,
         conditionFlexibility: 'allow-if-needed',
         maxDowngradeSteps: 2,
-        ...delivery,
+        shippingCostByStoreKey,
       });
       const deadline = Date.now() + 60_000;
       let completed: Awaited<ReturnType<typeof fetchListOptimizationStatus>> | undefined;
@@ -369,6 +382,23 @@ function BuilderRoute() {
         enqueueSnackbar('No purchasable cards were found for this list', {
           variant: 'warning',
         });
+        return;
+      }
+
+      if (quoteAddress) {
+        setPendingOptimization(bestOption);
+        const quote = await fetchDeliveryOptions(listId, created.jobId, quoteAddress);
+        setDeliveryQuote(quote);
+        const defaults: Record<string, string> = {};
+        for (const store of quote.stores) {
+          if (store.state === 'quoted') {
+            for (const [groupIndex, group] of store.groups.entries()) {
+              const method = group.options.filter((item) => item.currency === 'CAD' && item.price > 0).sort((a, b) => a.price - b.price)[0];
+              defaults[`${store.store}:${groupIndex}`] = method ? `verified:${method.handle ?? method.label}` : 'pickup';
+            }
+          }
+        }
+        setSelectedDeliveryMethods(defaults);
         return;
       }
 
@@ -422,30 +452,34 @@ function BuilderRoute() {
       return;
     }
     setDeliveryQuote(null);
+    setEstimatedShippingByStore(Object.fromEntries(selectedStores.map((store) => [store, 3])));
     setDeliveryOpen(true);
-  }, [enqueueSnackbar, selectedStores.length]);
+  }, [enqueueSnackbar, runOptimization, selectedStores.length]);
+
+
+  useEffect(() => {
+    if (!deliveryOpen || !session?.user || deliveryAddress.address1) return;
+    void getDeliveryAddress().then(({ address }) => {
+      if (address) setDeliveryAddress(address);
+    }).catch(() => undefined);
+  }, [deliveryAddress.address1, deliveryOpen, session?.user]);
 
   const loadDeliveryOptions = useCallback(async () => {
     setDeliveryLoading(true);
     try {
-      const quote = await fetchDeliveryOptions(listId, deliveryAddress, selectedStores);
-      setDeliveryQuote(quote);
-      setSelectedDeliveryMethods(Object.fromEntries(Object.entries(quote.methods).map(([store, methods]) => {
-        const method = methods.filter((item) => item.price > 0).sort((a, b) => a.price - b.price)[0] ?? methods[0];
-        return [store, { label: method.label, ...(method.handle ? { handle: method.handle } : {}) }];
-      })));
-    } catch (err) {
-      enqueueSnackbar(err instanceof Error ? err.message : 'Unable to quote delivery options', { variant: 'error' });
-    } finally {
-      setDeliveryLoading(false);
+      await runOptimization(deliveryAddress);
+      if (saveDeliveryAddressForLater && session?.user) await saveDeliveryAddress(deliveryAddress);
     }
-  }, [deliveryAddress, enqueueSnackbar, listId, selectedStores]);
+    finally { setDeliveryLoading(false); }
+  }, [deliveryAddress, runOptimization, saveDeliveryAddressForLater, session?.user]);
 
   const startQuotedFill = useCallback(() => {
-    if (!deliveryQuote) return;
+    if (!deliveryQuote || !pendingOptimization) return;
     setDeliveryOpen(false);
-    void runOptimization({ quoteToken: deliveryQuote.quoteToken, selectedMethods: selectedDeliveryMethods });
-  }, [deliveryQuote, runOptimization, selectedDeliveryMethods]);
+    const result = addManyToCart(pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer));
+    if (result.added) { openCart(); enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart`, { variant: 'success' }); }
+    setPendingOptimization(null);
+  }, [addManyToCart, deliveryQuote, enqueueSnackbar, openCart, pendingOptimization]);
 
   const selectedIndex = selectedName ? sortedNames.indexOf(selectedName) : -1;
   const selectedPosition =
@@ -649,13 +683,13 @@ function BuilderRoute() {
         />
       </Box>
       <Dialog open={deliveryOpen} onClose={() => !deliveryLoading && setDeliveryOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Set up delivery for this fill</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 1.5, pt: '12px !important' }}>
-          {!deliveryQuote ? <>
+        <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>Set up delivery for this fill<IconButton aria-label="Close delivery setup" onClick={() => setDeliveryOpen(false)} disabled={deliveryLoading}><CloseIcon /></IconButton></DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 1.5, pt: '12px !important', maxHeight: '65vh', overflowY: 'auto' }}>
+          {!deliveryQuote && ADDRESS_DELIVERY_QUOTES_ENABLED ? <>
             <Box sx={{ color: 'text.secondary', fontSize: 14 }}>
               Delivery prices are locked for this fill and may differ at merchant checkout. Your address is used only to request these quotes.
             </Box>
-            <TextField required label="Street address" value={deliveryAddress.address1} onChange={(event) => setDeliveryAddress((value) => ({ ...value, address1: event.target.value }))} helperText="Use your browser's saved-address autofill or enter it manually" inputProps={{ autoComplete: 'street-address' }} />
+            <TextField required label="Address" value={deliveryAddress.address1} onChange={(event) => setDeliveryAddress((value) => ({ ...value, address1: event.target.value }))} inputProps={{ autoComplete: 'street-address' }} />
             <TextField required label="City" value={deliveryAddress.city} onChange={(event) => setDeliveryAddress((value) => ({ ...value, city: event.target.value }))} inputProps={{ autoComplete: 'address-level2' }} />
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
               <TextField required select label="Province or territory" value={deliveryAddress.province} onChange={(event) => setDeliveryAddress((value) => ({ ...value, province: event.target.value }))} SelectProps={{ native: false }} inputProps={{ autoComplete: 'address-level1' }}>
@@ -663,24 +697,53 @@ function BuilderRoute() {
               </TextField>
               <TextField required label="Postal code" value={deliveryAddress.postalCode} onChange={(event) => setDeliveryAddress((value) => ({ ...value, postalCode: formatCanadianPostalCode(event.target.value) }))} error={deliveryAddress.postalCode.length > 0 && !/^[A-Z]\d[A-Z] \d[A-Z]\d$/.test(deliveryAddress.postalCode)} helperText={deliveryAddress.postalCode && !/^[A-Z]\d[A-Z] \d[A-Z]\d$/.test(deliveryAddress.postalCode) ? 'Use A1A 1A1' : ' '} inputProps={{ autoComplete: 'postal-code', maxLength: 7 }} />
             </Box>
-          </> : <>
-            <Box sx={{ color: 'text.secondary', fontSize: 14 }}>The lowest positive-priced method is selected by default. Pickup remains CA$0.</Box>
-            {Object.entries(deliveryQuote.methods).map(([store, methods]) => {
-              const selected = methods.find((method) => method.label === selectedDeliveryMethods[store]?.label && method.handle === selectedDeliveryMethods[store]?.handle);
-              return <Box key={store} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.25 }}>
-                <Box sx={{ fontWeight: 700 }}>{STORE_LABEL_BY_KEY[store] ?? store}</Box>
-                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
-                  {methods.map((method) => <Button key={`${method.label}-${method.handle ?? ''}`} size="small" variant={selected === method ? 'contained' : 'outlined'} onClick={() => setSelectedDeliveryMethods((current) => ({ ...current, [store]: { label: method.label, ...(method.handle ? { handle: method.handle } : {}) } }))}>{method.label}: CA${method.price.toFixed(2)}</Button>)}
-                </Box>
-                <Box sx={{ fontSize: 14 }}>{selected ? `${selected.label} — CA$${selected.price.toFixed(2)}` : 'No quoted method available'}</Box>
-              </Box>;
+            {session?.user && <FormControlLabel control={<Checkbox checked={saveDeliveryAddressForLater} onChange={(event) => setSaveDeliveryAddressForLater(event.target.checked)} />} label="Save this address for future delivery estimates" />}
+          </> : !deliveryQuote ? <>
+            <Box sx={{ color: 'text.secondary', fontSize: 14 }}>Set your pickup stores or an estimated shipping cost. These assumptions are used to choose the best fill.</Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 120px', alignItems: 'end', gap: 1 }}>
+              <Box sx={{ fontWeight: 700, fontSize: 14 }}>Estimated shipping</Box>
+              <Box />
+              <Box sx={{ fontWeight: 700, fontSize: 14, textAlign: 'right' }}>Cost (CA$)</Box>
+            </Box>
+            {selectedStores.map((store) => {
+              const pickup = estimatedShippingByStore[store] === 0;
+              return <Box key={store} sx={{ display: 'grid', gridTemplateColumns: '1fr auto 120px', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ fontWeight: 700 }}>{STORE_LABEL_BY_KEY[store] ?? store}</Box>
+              <Box sx={{ display: 'inline-flex', border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+                <Button size="small" variant={pickup ? 'text' : 'contained'} onClick={() => setEstimatedShippingByStore((current) => ({ ...current, [store]: current[store] === 0 ? 3 : current[store] ?? 3 }))} sx={{ minWidth: 52, borderRadius: 0 }}>Ship</Button>
+                <Button size="small" variant={pickup ? 'contained' : 'text'} onClick={() => setEstimatedShippingByStore((current) => ({ ...current, [store]: 0 }))} sx={{ minWidth: 58, borderRadius: 0 }}>Pickup</Button>
+              </Box>
+              <TextField size="small" type="number" disabled={pickup} value={pickup ? '' : estimatedShippingByStore[store] ?? 3} onChange={(event) => setEstimatedShippingByStore((current) => ({ ...current, [store]: Math.max(0, Number(event.target.value) || 0) }))} inputProps={{ min: 0, max: 1000, step: 0.01 }} sx={{ width: 120, '& input[type=number]': { MozAppearance: 'textfield' }, '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': { WebkitAppearance: 'none', margin: 0 } }} />
+            </Box>;
             })}
+          </> : <>
+            <Box sx={{ color: 'text.secondary', fontSize: 14 }}>Verified Shopify methods are selected at the lowest positive CAD rate. Pickup and estimates are assumptions.</Box>
+            {deliveryQuote.stores.map((store) => <Box key={store.store} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.25 }}>
+              <Box sx={{ fontWeight: 700 }}>{store.storeName || STORE_LABEL_BY_KEY[store.store] || store.store}</Box>
+              {store.state === 'unavailable' ? <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
+                <Box sx={{ fontSize: 13, color: 'warning.main' }}>Shopify quote unavailable — editable estimated shipping: CA$3.00</Box>
+                <TextField select size="small" label="Delivery assumption" value={selectedDeliveryMethods[`${store.store}:fallback`] ?? 'estimated'} onChange={(event) => setSelectedDeliveryMethods((current) => ({ ...current, [`${store.store}:fallback`]: event.target.value }))}>
+                  <MenuItem value="estimated">Estimated shipping — CA$3.00</MenuItem><MenuItem value="pickup">Assume pickup — CA$0.00</MenuItem><MenuItem value="letter">Assume letter mail — CA$3.00</MenuItem>
+                </TextField>
+              </Box> : store.groups.map((group, groupIndex) => {
+                const key = `${store.store}:${groupIndex}`;
+                return <Box key={group.id ?? key} sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
+                  <Box sx={{ fontSize: 13, color: 'text.secondary' }}>Delivery group {groupIndex + 1} · verified</Box>
+                  <TextField select size="small" label="Method" value={selectedDeliveryMethods[key] ?? 'pickup'} onChange={(event) => setSelectedDeliveryMethods((current) => ({ ...current, [key]: event.target.value }))}>
+                    {group.options.map((method) => <MenuItem key={`verified:${method.handle ?? method.label}`} value={`verified:${method.handle ?? method.label}`}>{method.label} — {method.currency === 'CAD' ? 'CA$' : `${method.currency} `}{method.price.toFixed(2)}{method.methodType ? ` (${method.methodType})` : ''}</MenuItem>)}
+                    <MenuItem value="pickup">Assume pickup — CA$0.00</MenuItem><MenuItem value="letter">Assume letter mail — CA$3.00</MenuItem>
+                  </TextField>
+                </Box>;
+              })}
+            </Box>)}
           </>}
         </DialogContent>
         <DialogActions>
-          <Button variant="outlined" color="inherit" onClick={() => { setDeliveryOpen(false); void runOptimization(); }} disabled={deliveryLoading}>Skip (estimate CA$3/store)</Button>
-          {!deliveryQuote
+          <Button color="inherit" onClick={() => setDeliveryOpen(false)} disabled={deliveryLoading}>Cancel</Button>
+          {ADDRESS_DELIVERY_QUOTES_ENABLED && <Button variant="outlined" color="inherit" onClick={() => { setDeliveryOpen(false); void runOptimization(); }} disabled={deliveryLoading}>Skip (estimate CA$3/store)</Button>}
+          {!deliveryQuote && ADDRESS_DELIVERY_QUOTES_ENABLED
             ? <Button variant="contained" onClick={() => void loadDeliveryOptions()} disabled={deliveryLoading || !deliveryAddress.address1 || !deliveryAddress.city || !deliveryAddress.province || !deliveryAddress.postalCode}>{deliveryLoading ? 'Getting quotes…' : 'Get delivery options'}</Button>
+            : !deliveryQuote ? <Button variant="contained" onClick={() => { setDeliveryOpen(false); void runOptimization(undefined, estimatedShippingByStore); }}>Fill Best Cards</Button>
             : <Button variant="contained" onClick={startQuotedFill}>Fill Best Cards</Button>}
         </DialogActions>
       </Dialog>
