@@ -148,6 +148,10 @@ services:
       - VITE_ENABLE_DELIVERY_ADDRESS_QUOTES=false
       - API_PROXY_TARGET=http://api:5000
       - AUTH_PROXY_TARGET=http://auth:5002
+      # The route tree is generated in the bind-mounted src directory. Keep
+      # TanStack's temporary file there too so its atomic rename is not across
+      # Docker filesystems (which fails with EXDEV on Docker Desktop).
+      - TSR_TMP_DIR=/app/apps/ui-v2/src/.tanstack/tmp
     volumes:
       # Mount source code for hot reload
       - ./apps/ui-v2/src:/app/apps/ui-v2/src:delegated
