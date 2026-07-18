@@ -19,7 +19,8 @@ export const tileContainerSx = (
   overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
-  border: `1px solid ${isCheapest ? theme.palette.primary.main : theme.palette.divider}`,
+  // Keep the layout stable without showing a resting border on ordinary cards.
+  border: `1px solid ${isCheapest ? theme.palette.primary.main : 'transparent'}`,
   transition:
     'border-color 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {

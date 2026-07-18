@@ -1,0 +1,40 @@
+name: scoutlgs-codex
+
+services:
+  codex:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile.codex
+    image: scoutlgs-codex-dev:local
+    working_dir: ${CODEX_WORKSPACE_PATH:-/workspace}
+    environment:
+      HOME: /root
+      CODEX_HOME: /root/.codex
+      # Keep GitHub CLI credentials in the persisted Codex home volume.
+      GH_CONFIG_DIR: /root/.codex/gh
+    stdin_open: true
+    tty: true
+    volumes:
+      # On Docker Desktop, the launcher sets the target to the repository's path
+      # inside Docker Desktop's Linux VM. This lets nested Compose bind mounts work.
+      - type: bind
+        source: .
+        target: ${CODEX_WORKSPACE_PATH:-/workspace}
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: ${CODEX_SSH_KEY_PATH}
+        target: /run/host-ssh/id_ed25519
+        read_only: true
+      - type: bind
+        source: ${CODEX_KNOWN_HOSTS_PATH}
+        target: /run/host-ssh/known_hosts
+        read_only: true
+      # Persist only Codex authentication/configuration outside the disposable container.
+      - type: volume
+        source: codex-home
+        target: /root/.codex
+
+volumes:
+  codex-home:
