@@ -1,6 +1,25 @@
 # Dependencies
 node_modules
 **/node_modules
+# Keep these explicit paths in addition to the globs above. Docker Desktop's
+# Windows context walker can otherwise descend into a workspace junction
+# before applying a wildcard rule, which fails on inaccessible files.
+apps/api/node_modules
+apps/auth/node_modules
+apps/optimizer/node_modules
+apps/scheduler/node_modules
+apps/scraper/node_modules
+apps/ui/node_modules
+apps/ui-v2/node_modules
+packages/core/node_modules
+packages/shared/node_modules
+# Docker on Windows does not consistently match junction targets with the
+# globstar form above. Keep every workspace package's host dependencies out
+# of the build context; each Dockerfile runs pnpm install in Linux instead.
+apps/*/node_modules
+packages/*/node_modules
+apps/**/node_modules/**
+packages/**/node_modules/**
 npm-debug.log
 yarn-error.log
 pnpm-debug.log
