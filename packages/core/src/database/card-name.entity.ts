@@ -22,6 +22,9 @@ export class CardName {
   @Column({ name: 'oracle_id', type: 'uuid', nullable: true, unique: true })
   oracleId?: string;
 
+  @Column({ name: 'color_identity', type: 'varchar', length: 5, nullable: true })
+  colorIdentity: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

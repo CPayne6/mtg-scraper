@@ -12,6 +12,7 @@ import { DeckCard } from '@/components/lists/DeckCard';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useConfirm } from '@/components/feedback/ConfirmDialog';
 import { DECK_META, STORE_COUNT } from '@/data/sample';
+import { getListColorIdentity } from '@/components/lists/colorIdentity';
 import { slugifyName } from '@/utils/slugify';
 
 export const Route = createFileRoute('/lists')({
@@ -127,16 +128,13 @@ function ListsRoute() {
           }}
         >
           {lists.map((list) => {
-            const meta = DECK_META[list.name] ?? {
-              colors: '',
-              archetype: 'Custom',
-              updated: 'recently',
-            };
+            const meta = DECK_META[list.name] ?? { archetype: 'Custom', updated: 'recently' };
+            const identity = getListColorIdentity(list.cardRecords);
             return (
               <DeckCard
                 key={list.id}
                 name={list.name}
-                colors={meta.colors}
+                colors={identity.colors}
                 archetype={meta.archetype}
                 count={list.cards.length}
                 updated={meta.updated}

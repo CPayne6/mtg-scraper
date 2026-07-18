@@ -26,8 +26,8 @@ import { useConfirm } from '@/components/feedback/ConfirmDialog';
 import { ColorPips } from '@/components/lists/ColorPips';
 import { KpiTile } from '@/components/results/KpiTile';
 import { DecklistRow } from '@/components/results/DecklistRow';
-import { DECK_META } from '@/data/sample';
-import { colorIdentityName } from '@/data/colors';
+import { getListColorIdentity } from '@/components/lists/colorIdentity';
+import { ListRenameDialog } from '@/components/lists/ListRenameDialog';
 import { groupByName } from '@/utils/parseDeckList';
 import { fetchCard } from '@/api/cards';
 
@@ -66,6 +66,7 @@ function ListDetailRoute() {
     results: Record<string, CardState>;
   }>({ key: '', results: {} });
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [showNeedsAttentionOnly, setShowNeedsAttentionOnly] = useState(false);
   const results = useMemo<Record<string, CardState>>(() => {
     if (entries.length === 0) return {};
@@ -193,7 +194,7 @@ function ListDetailRoute() {
     );
   }
 
-  const meta = DECK_META[listName] ?? { colors: '', archetype: 'Custom', updated: 'recently' };
+  const identity = getListColorIdentity(list?.cardRecords ?? []);
   const handleAddRowToCart = (cardName: string) => {
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
@@ -239,7 +240,7 @@ function ListDetailRoute() {
             All lists
           </Button>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.75, flexWrap: 'wrap' }}>
-            <ColorPips colors={meta.colors} size={32} />
+            {identity.colors === null ? <Box sx={{ fontSize: 24, color: 'text.secondary' }}>?</Box> : <ColorPips colors={identity.colors} size={32} />}
             <Typography
               sx={{
                 fontSize: { xs: '2rem', md: '2.4rem' },
@@ -253,10 +254,10 @@ function ListDetailRoute() {
               {listName}
             </Typography>
             <IconButton size="small" aria-label="List actions" onClick={(event) => setMenuAnchor(event.currentTarget)}><MoreVert /></IconButton>
-            <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}><MenuItem onClick={() => { setMenuAnchor(null); void handleDeleteList(); }}>Delete list</MenuItem></Menu>
+            <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}><MenuItem onClick={() => { setMenuAnchor(null); setRenameOpen(true); }}>Rename list</MenuItem><MenuItem onClick={() => { setMenuAnchor(null); void handleDeleteList(); }}>Delete list</MenuItem></Menu>
           </Box>
           <Typography sx={{ fontSize: '0.92rem', color: 'text.secondary', mt: 0.75 }}>
-            {colorIdentityName(meta.colors)} · {cards.length} cards
+            {identity.label} · {cards.length} cards
           </Typography>
         </Box>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
@@ -270,6 +271,7 @@ function ListDetailRoute() {
           </Button>
         </Stack>
       </Box>
+      <ListRenameDialog list={list ? { id: list.id, name: list.name } : null} open={renameOpen} onClose={() => setRenameOpen(false)} onRenamed={(name) => navigate({ to: '/list/$listId/$slug', params: { listId, slug: slugifyName(name) }, replace: true })} />
 
       {!isLoaded && entries.length > 0 && (
         <Box sx={{ mb: 3 }}>

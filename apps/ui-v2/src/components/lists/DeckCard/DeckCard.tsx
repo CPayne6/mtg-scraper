@@ -19,7 +19,7 @@ export function DeckCard({
   onOpen,
   onDelete,
 }: DeckCardProps) {
-  const gradient = gradientForColors(colors);
+  const gradient = gradientForColors(colors ?? '');
   return (
     <Paper
       role="button"
@@ -31,7 +31,7 @@ export function DeckCard({
       sx={containerSx(gradient)}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-        <ColorPips colors={colors} size={26} />
+        {colors === null ? <Box sx={{ fontSize: 18, color: 'text.secondary' }}>?</Box> : <ColorPips colors={colors} size={26} />}
         <Tooltip title="Delete">
           <IconButton
             size="small"
@@ -50,7 +50,7 @@ export function DeckCard({
       <Box sx={{ flex: 1, mb: 2 }}>
         <Typography sx={titleSx}>{name}</Typography>
         <Typography sx={{ fontSize: '0.78rem', color: 'text.secondary', mt: 0.5 }}>
-          {colorIdentityName(colors)} · {archetype}
+          {colors === null ? 'Identity unavailable' : colorIdentityName(colors)} · {archetype}
         </Typography>
       </Box>
       <Box sx={footerSx}>
