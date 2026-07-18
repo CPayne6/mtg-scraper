@@ -9,7 +9,7 @@ import Stack from '@mui/material/Stack';
 import Paper from '@mui/material/Paper';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
-import { FilterAlt } from '@mui/icons-material';
+import Select from '@mui/material/Select';
 import { ChevronLeft } from '@mui/icons-material';
 import { Construction } from '@mui/icons-material';
 import { MoreVert } from '@mui/icons-material';
@@ -40,6 +40,8 @@ type CardState =
   | { state: 'success'; cheapest: CardWithStore | null }
   | { state: 'error'; message: string };
 
+type CardFilter = 'all' | 'in-cart' | 'not-in-cart' | 'not-available';
+
 const CONDITION_LABELS: Record<string, string> = {
   nm: 'NM',
   lp: 'LP',
@@ -67,7 +69,7 @@ function ListDetailRoute() {
   }>({ key: '', results: {} });
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [showNeedsAttentionOnly, setShowNeedsAttentionOnly] = useState(false);
+  const [cardFilter, setCardFilter] = useState<CardFilter>('all');
   const results = useMemo<Record<string, CardState>>(() => {
     if (entries.length === 0) return {};
     const pending = Object.fromEntries(
@@ -114,16 +116,26 @@ function ListDetailRoute() {
   const loadedCount = Object.values(results).filter((r) => r.state !== 'pending').length;
   const isLoaded = entries.length > 0 && loadedCount === entries.length;
   const anyErrors = Object.values(results).some((r) => r.state === 'error');
-  const displayedEntries = useMemo(
-    () =>
-      showNeedsAttentionOnly
-        ? entries.filter((entry) => {
-            const result = results[entry.name];
-            return !result || result.state !== 'success' || !result.cheapest;
-          })
-        : entries,
-    [entries, results, showNeedsAttentionOnly],
+  const inCartByName = useCallback(
+    (name: string) =>
+      cartItems.some((item) => item.title === name || item.title.startsWith(`${name} [`)),
+    [cartItems],
   );
+  const displayedEntries = useMemo(() => {
+    switch (cardFilter) {
+      case 'in-cart':
+        return entries.filter((entry) => inCartByName(entry.name));
+      case 'not-in-cart':
+        return entries.filter((entry) => !inCartByName(entry.name));
+      case 'not-available':
+        return entries.filter((entry) => {
+          const result = results[entry.name];
+          return result?.state === 'success' && !result.cheapest;
+        });
+      default:
+        return entries;
+    }
+  }, [cardFilter, entries, inCartByName, results]);
 
   const { deckTotal, inStockCount } = useMemo(() => {
     let total = 0;
@@ -331,17 +343,21 @@ function ListDetailRoute() {
         >
           <Typography variant="h3">
             Cards - {displayedEntries.length}
-            {showNeedsAttentionOnly ? ` / ${entries.length}` : ''}
+            {cardFilter !== 'all' ? ` / ${entries.length}` : ''}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
-            <Button
-              color="primary"
-              variant={showNeedsAttentionOnly ? 'contained' : 'text'}
-              startIcon={<FilterAlt sx={{ fontSize: 14 }} />}
-              onClick={() => setShowNeedsAttentionOnly((value) => !value)}
+            <Select
+              size="small"
+              value={cardFilter}
+              onChange={(event) => setCardFilter(event.target.value as CardFilter)}
+              inputProps={{ 'aria-label': 'Filter cards' }}
+              sx={{ minWidth: 160 }}
             >
-              {showNeedsAttentionOnly ? 'Show All' : 'Needs Attention'}
-            </Button>
+              <MenuItem value="all">All shown</MenuItem>
+              <MenuItem value="in-cart">In cart</MenuItem>
+              <MenuItem value="not-in-cart">Not in cart</MenuItem>
+              <MenuItem value="not-available">Not available</MenuItem>
+            </Select>
           </Box>
         </Box>
         <Stack spacing={1}>
@@ -349,7 +365,7 @@ function ListDetailRoute() {
             const r = results[name];
             let meta = '—';
             let price = 0;
-            const inCart = cartItems.some((item) => item.title === name || item.title.startsWith(`${name} [`));
+            const inCart = inCartByName(name);
             let store = inCart ? 'In cart' : 'Not in cart';
             if (r?.state === 'success' && r.cheapest) {
               const { set, condition } = r.cheapest;

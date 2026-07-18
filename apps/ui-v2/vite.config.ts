@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import path from 'path'
 
+const API_PROXY_TARGET = process.env.API_PROXY_TARGET || 'http://localhost:5000'
+const AUTH_PROXY_TARGET = process.env.AUTH_PROXY_TARGET || 'http://localhost:5002'
+
 export default defineConfig({
   plugins: [
     tanstackRouter(),
@@ -27,6 +30,16 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     host: true,
+    proxy: {
+      '/api': {
+        target: API_PROXY_TARGET,
+        changeOrigin: true,
+      },
+      '/auth': {
+        target: AUTH_PROXY_TARGET,
+        changeOrigin: true,
+      },
+    },
     watch: {
       usePolling: true,
     },
