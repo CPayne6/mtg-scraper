@@ -13,8 +13,12 @@ COPY apps/ui-v2/package.json ./apps/ui-v2/
 RUN pnpm install --frozen-lockfile
 
 # Copy all source code
-COPY packages/shared ./packages/shared
-COPY apps/ui-v2 ./apps/ui-v2
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.build.json ./packages/shared/
+COPY apps/ui-v2/src ./apps/ui-v2/src
+COPY apps/ui-v2/public ./apps/ui-v2/public
+COPY apps/ui-v2/index.html apps/ui-v2/vite.config.ts apps/ui-v2/vite-env.d.ts ./apps/ui-v2/
+COPY apps/ui-v2/tsconfig.json apps/ui-v2/tsconfig.app.json apps/ui-v2/tsconfig.node.json ./apps/ui-v2/
 COPY tsconfig.json nx.json ./
 
 # Build only the shared package dependency (not the UI itself)

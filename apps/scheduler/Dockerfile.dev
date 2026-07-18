@@ -14,9 +14,12 @@ COPY apps/scheduler/package.json ./apps/scheduler/
 RUN pnpm install --frozen-lockfile
 
 # Copy all source code
-COPY packages/shared ./packages/shared
-COPY packages/core ./packages/core
-COPY apps/scheduler ./apps/scheduler
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.build.json ./packages/shared/
+COPY packages/core/src ./packages/core/src
+COPY packages/core/tsconfig.json packages/core/tsconfig.build.json ./packages/core/
+COPY apps/scheduler/src ./apps/scheduler/src
+COPY apps/scheduler/tsconfig.json apps/scheduler/nest-cli.json ./apps/scheduler/
 COPY tsconfig.json nx.json ./
 
 # Build using Nx (automatically builds dependencies)

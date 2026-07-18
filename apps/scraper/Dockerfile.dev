@@ -14,9 +14,12 @@ COPY apps/scraper/package.json ./apps/scraper/
 RUN pnpm install --frozen-lockfile
 
 # Copy all source code
-COPY packages/shared ./packages/shared
-COPY packages/core ./packages/core
-COPY apps/scraper ./apps/scraper
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.build.json ./packages/shared/
+COPY packages/core/src ./packages/core/src
+COPY packages/core/tsconfig.json packages/core/tsconfig.build.json ./packages/core/
+COPY apps/scraper/src ./apps/scraper/src
+COPY apps/scraper/tsconfig.json apps/scraper/nest-cli.json ./apps/scraper/
 COPY tsconfig.json nx.json ./
 
 # Build using Nx (automatically builds dependencies)
