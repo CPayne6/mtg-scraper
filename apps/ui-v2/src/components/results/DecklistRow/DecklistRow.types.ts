@@ -6,6 +6,7 @@ export type DecklistRowProps = {
   store: string;
   onStoreChange?: () => void;
   storeActionDisabled?: boolean;
+  storeActionStatic?: boolean;
   onOpenBuilder?: () => void;
   onRemove?: () => void;
 };

@@ -369,7 +369,8 @@ function ListDetailRoute() {
                 price={price}
                 store={store}
                 onStoreChange={() => handleAddRowToCart(name)}
-                storeActionDisabled={inCart || !r || r.state !== 'success' || !r.cheapest}
+                storeActionDisabled
+                storeActionStatic
                 onOpenBuilder={() => handleOpenBuilderCard(name)}
                 onRemove={() => handleRemoveCard(name)}
               />
