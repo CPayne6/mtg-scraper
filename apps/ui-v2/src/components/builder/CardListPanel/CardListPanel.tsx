@@ -2,7 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { Add as AddIcon, AddShoppingCart } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  AddShoppingCart,
+  CheckBox,
+  CheckBoxOutlineBlank,
+} from '@mui/icons-material';
 import { CardListRow } from '../CardListRow';
 import { SortByMenu } from '../SortByMenu';
 import { AddCardPopover } from '../AddCardPopover';
@@ -19,6 +24,7 @@ import {
   historyIconSx,
   historyBadgeSx,
   addBtnSx,
+  cartFilterBtnSx,
   sortRowSx,
   sortLabelSx,
   listSx,
@@ -69,7 +75,7 @@ export function CardListPanel({
   );
   const bestCardsDisabled = !canAddBestCards || isAddingBestCards;
   const visibleEntries = needsAttentionOnly
-    ? sortedEntries.filter((entry) => results[entry.name]?.state !== 'success')
+    ? sortedEntries.filter((entry) => !inCartByName(entry.name))
     : sortedEntries;
   const handleListScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
@@ -161,7 +167,21 @@ export function CardListPanel({
             Sort by
           </Typography>
           <SortByMenu value={sortBy} onChange={onSortByChange} />
-          <Box component="button" type="button" onClick={() => setNeedsAttentionOnly((value) => !value)} sx={addBtnSx(needsAttentionOnly)}>{needsAttentionOnly ? 'Show all' : 'Needs attention'}</Box>
+          <Box
+            component="button"
+            type="button"
+            onClick={() => setNeedsAttentionOnly((value) => !value)}
+            aria-pressed={needsAttentionOnly}
+            aria-label="Only cards not in cart"
+            sx={cartFilterBtnSx(needsAttentionOnly)}
+          >
+            {needsAttentionOnly ? (
+              <CheckBox sx={{ fontSize: 15 }} />
+            ) : (
+              <CheckBoxOutlineBlank sx={{ fontSize: 15 }} />
+            )}
+            <span>Only cards not in cart</span>
+          </Box>
         </Box>
       </Box>
 
