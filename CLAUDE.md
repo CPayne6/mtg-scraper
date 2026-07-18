@@ -359,6 +359,16 @@ or started manually:
 4. If a bucket reaches Shopify's 25,000-product pagination limit, it is split
    into two smaller time ranges and retried from the beginning of each range.
 
+#### Dense timestamp edge case
+
+Time-range splitting cannot divide more than 25,000 products that share the
+same Shopify `created_at` timestamp. If this occurs, the planner should first
+try supported `updated_at` ranges, then stable store facets such as `vendor`,
+`product_type`, or tags when those values provide a complete partition. Do not
+use product ID as a query boundary: it is not a supported Storefront product
+filter. If no supported predicate can split the cluster, surface it as an
+explicit unsplittable-query error rather than silently omitting products.
+
 ```bash
 # One store
 docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/storefront/trigger?storeId=1', {method: 'PUT'}).then(r => r.json()).then(console.log)"
