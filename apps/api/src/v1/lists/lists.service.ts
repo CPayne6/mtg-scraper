@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  UnprocessableEntityException,
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -54,6 +55,7 @@ export interface CheapestVariant {
   position: number;
   cardNameId: number;
   cardName: string;
+  colorIdentity: string | null;
   variantId: number | null;
   price: number | null;
   foil: boolean | null;
@@ -366,6 +368,7 @@ export class ListsService {
         position: parseInt(row.position, 10),
         cardNameId,
         cardName: row.card_name,
+        colorIdentity: row.color_identity ?? null,
         variantId: row.variant_id ? parseInt(row.variant_id, 10) : null,
         price: row.price ? parseFloat(row.price) : null,
         foil: row.foil != null ? row.foil : null,
@@ -434,11 +437,12 @@ export class ListsService {
     listUuid: string,
     ownerPrincipalUuid: string,
     cards: string[],
-  ): Promise<{ cardCount: number; warnings: string[] }> {
+  ): Promise<{ cardCount: number; cards: Array<{ cardName: string; colorIdentity: string | null }>; warnings: string[] }> {
     const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
 
     const { resolved, unresolved } =
       await this.cardNameResolver.resolveCardNames(cards);
+    if (resolved.length === 0) throw new UnprocessableEntityException({ message: 'None of the supplied cards could be found', warnings: unresolved.map((name) => `"${name}" could not be found`) });
 
     // Delete old entries and insert new ones
     await this.cardListEntryRepository.delete({ cardListId: list.id });
@@ -470,7 +474,10 @@ export class ListsService {
       warnings.push(`"${name}" could not be found`);
     }
 
-    return { cardCount: resolved.length, warnings };
+    const canonicalCards: Array<{ card_name: string; color_identity: string | null }> = await this.entityManager.query(
+      `SELECT cn.name AS card_name, cn.color_identity FROM card_list_entries e JOIN card_names cn ON cn.id = e.card_name_id WHERE e.card_list_id = $1 ORDER BY e.position ASC`, [list.id],
+    );
+    return { cardCount: resolved.length, cards: canonicalCards.map((card) => ({ cardName: card.card_name, colorIdentity: card.color_identity })), warnings };
   }
 
   async deleteList(
@@ -526,6 +533,7 @@ export class ListsService {
         e.position,
         e.card_name_id,
         cn.name AS card_name,
+        cn.color_identity,
         e.preferred_set_code
       FROM card_list_entries e
       JOIN card_names cn ON cn.id = e.card_name_id
@@ -806,6 +814,7 @@ export class ListsService {
         e.position,
         e.card_name_id,
         cn.name AS card_name,
+        cn.color_identity,
         best.variant_id,
         best.price,
         best.foil,

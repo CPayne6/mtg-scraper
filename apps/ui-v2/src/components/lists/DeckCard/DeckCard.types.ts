@@ -1,6 +1,6 @@
 export type DeckCardProps = {
   name: string;
-  colors: string;
+  colors: string | null;
   archetype: string;
   count: number;
   updated: string;

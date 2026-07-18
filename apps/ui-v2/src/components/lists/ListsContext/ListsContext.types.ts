@@ -2,6 +2,7 @@ export type ServerList = {
   id: string;
   name: string;
   cards: string[];
+  cardRecords: ListCardRecord[];
 };
 
 export type ListsContextValue = {
@@ -21,3 +22,4 @@ export type ListsContextValue = {
   addCardToList: (id: string, cardName: string) => Promise<void>;
   removeCardFromList: (id: string, cardName: string) => Promise<void>;
 };
+export type ListCardRecord = { cardName: string; colorIdentity: string | null };

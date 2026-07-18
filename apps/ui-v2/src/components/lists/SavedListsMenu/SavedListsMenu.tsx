@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useState, type MouseEvent } from 'react';
 import Button from '@mui/material/Button';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -7,11 +7,6 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import TextField from '@mui/material/TextField';
 import { KeyboardArrowDown } from '@mui/icons-material';
 import { Edit as EditIcon } from '@mui/icons-material';
 import { DeleteOutline as DeleteIcon } from '@mui/icons-material';
@@ -19,14 +14,14 @@ import { useNavigate } from '@tanstack/react-router';
 import { useLists } from '@/components/lists/ListsContext';
 import { useConfirm } from '@/components/feedback/ConfirmDialog';
 import { slugifyName } from '@/utils/slugify';
+import { ListRenameDialog } from '@/components/lists/ListRenameDialog';
 
 export function SavedListsMenu() {
   const navigate = useNavigate();
-  const { lists, count, rename, remove } = useLists();
+  const { lists, count, remove } = useLists();
   const confirm = useConfirm();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
-  const [draft, setDraft] = useState('');
   const open = Boolean(anchor);
 
   const handleOpen = (e: MouseEvent<HTMLElement>) => setAnchor(e.currentTarget);
@@ -35,7 +30,6 @@ export function SavedListsMenu() {
   const startEdit = (e: MouseEvent<HTMLElement>, id: string, name: string) => {
     e.stopPropagation();
     setEditing({ id, name });
-    setDraft(name);
     setAnchor(null);
   };
 
@@ -52,19 +46,6 @@ export function SavedListsMenu() {
     },
     [confirm, remove],
   );
-
-  const trimmedDraft = useMemo(() => draft.trim(), [draft]);
-  const canSave =
-    editing != null &&
-    trimmedDraft.length > 0 &&
-    trimmedDraft !== editing.name &&
-    !lists.some((l) => l.id !== editing.id && l.name === trimmedDraft);
-
-  const handleSave = async () => {
-    if (!editing || !canSave) return;
-    await rename(editing.id, trimmedDraft);
-    setEditing(null);
-  };
 
   const handleOpenList = (id: string, name: string) => {
     setAnchor(null);
@@ -161,30 +142,7 @@ export function SavedListsMenu() {
         ))}
       </Menu>
 
-      <Dialog open={editing != null} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Rename Decklist</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Decklist name"
-            fullWidth
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && canSave) handleSave();
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button variant="outlined" color="primary" onClick={() => setEditing(null)}>
-            Cancel
-          </Button>
-          <Button variant="contained" color="primary" disabled={!canSave} onClick={handleSave}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ListRenameDialog list={editing} open={editing != null} onClose={() => setEditing(null)} />
     </>
   );
 }

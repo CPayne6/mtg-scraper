@@ -19,6 +19,7 @@ export interface CheapestVariant {
   position: number;
   cardNameId: number;
   cardName: string;
+  colorIdentity: string | null;
   variantId: number | null;
   price: number | null;
   foil: boolean | null;
@@ -126,6 +127,7 @@ export interface CreateListInput {
 
 export interface ReplaceCardsResponse {
   cardCount: number;
+  cards: Array<{ cardName: string; colorIdentity: string | null }>;
   warnings: string[];
 }
 

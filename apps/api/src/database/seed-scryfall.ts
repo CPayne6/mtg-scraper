@@ -81,6 +81,12 @@ function normalizeCardName(name: string): string {
     .replace(/[""]/g, '"');
 }
 
+function normalizeColorIdentity(colors: unknown): string {
+  const values = Array.isArray(colors) ? colors : [];
+  return 'WUBRG'.split('').filter((color) => values.includes(color)).join('');
+}
+const SCRYFALL_HEADERS = { 'User-Agent': 'ScoutLGS/1.0 (https://github.com/CPayne6/mtg-scraper)', Accept: 'application/json' };
+
 /**
  * Escape a value for COPY tab-delimited format.
  * NULL → \N, tabs/newlines/backslashes escaped.
@@ -95,9 +101,7 @@ function copyEscape(value: unknown): string {
 }
 
 async function getDownloadUrl(bulkType: string): Promise<string> {
-  const res = await fetch(
-    `https://api.scryfall.com/bulk-data/${bulkType}`,
-  );
+  const res = await fetch(`https://api.scryfall.com/bulk-data/${bulkType}`, { headers: SCRYFALL_HEADERS });
   if (!res.ok)
     throw new Error(`Failed to fetch bulk data info: ${res.status}`);
   const data = (await res.json()) as { download_uri: string };
@@ -127,13 +131,14 @@ async function seedScryfall() {
       CREATE TEMP TABLE staging_cards (
         oracle_id uuid,
         name text,
-        normalized_name text
+        normalized_name text,
+        color_identity varchar(5)
       )
     `);
 
     // Stream and collect oracle cards
     const oracleCards: any[] = [];
-    const oracleRes = await fetch(oracleUrl);
+    const oracleRes = await fetch(oracleUrl, { headers: SCRYFALL_HEADERS });
     if (!oracleRes.ok || !oracleRes.body)
       throw new Error('Failed to download oracle cards');
 
@@ -151,6 +156,7 @@ async function seedScryfall() {
           oracle_id: card.oracle_id,
           name: card.name,
           normalized_name: normalizeCardName(card.name),
+          color_identity: normalizeColorIdentity(card.color_identity),
         });
       } else if (TOKEN_LAYOUTS.has(card.layout)) {
         const parsed = parseTypeLine(card.type_line || '');
@@ -178,7 +184,7 @@ async function seedScryfall() {
     console.log('COPY oracle cards into staging table...');
     const oracleCopyStream = client.query(
       copyFrom(
-        `COPY staging_cards (oracle_id, name, normalized_name) FROM STDIN`,
+        `COPY staging_cards (oracle_id, name, normalized_name, color_identity) FROM STDIN`,
       ),
     );
 
@@ -188,6 +194,7 @@ async function seedScryfall() {
           copyEscape(card.oracle_id),
           copyEscape(card.name),
           copyEscape(card.normalized_name),
+          copyEscape(card.color_identity),
         ].join('\t') + '\n',
       ),
     );
@@ -199,14 +206,23 @@ async function seedScryfall() {
     // DISTINCT ON dedupes by normalized_name — Scryfall sometimes has multiple
     // oracle_ids that normalize to the same name (e.g. art variants).
     const cardResult = await client.query(`
-      INSERT INTO card_names (oracle_id, name, normalized_name)
-      SELECT DISTINCT ON (normalized_name) oracle_id, name, normalized_name
-      FROM staging_cards
-      ORDER BY normalized_name, oracle_id
-      ON CONFLICT (normalized_name) DO UPDATE SET
-        oracle_id = EXCLUDED.oracle_id,
-        name = EXCLUDED.name,
-        updated_at = NOW()
+      WITH unique_cards AS (
+        SELECT DISTINCT ON (normalized_name) oracle_id, name, normalized_name, color_identity
+        FROM staging_cards
+        ORDER BY normalized_name, oracle_id
+      )
+      UPDATE card_names cn
+      SET color_identity = sc.color_identity, updated_at = NOW()
+      FROM unique_cards sc
+      WHERE cn.normalized_name = sc.normalized_name OR cn.oracle_id = sc.oracle_id
+    `);
+    await client.query(`
+      INSERT INTO card_names (oracle_id, name, normalized_name, color_identity)
+      SELECT sc.oracle_id, sc.name, sc.normalized_name, sc.color_identity
+      FROM (SELECT DISTINCT ON (normalized_name) oracle_id, name, normalized_name, color_identity FROM staging_cards ORDER BY normalized_name, oracle_id) sc
+      LEFT JOIN card_names cn ON cn.normalized_name = sc.normalized_name OR cn.oracle_id = sc.oracle_id
+      WHERE cn.id IS NULL
+      ON CONFLICT DO NOTHING
     `);
     console.log(`Upserted ${cardResult.rowCount} card names`);
 

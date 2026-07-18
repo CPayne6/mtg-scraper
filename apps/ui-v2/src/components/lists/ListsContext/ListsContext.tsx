@@ -38,9 +38,10 @@ async function loadList(
       id: full.id,
       name: full.name,
       cards: full.cards.map((c) => c.cardName),
+      cardRecords: full.cards.map(({ cardName, colorIdentity }) => ({ cardName, colorIdentity })),
     };
   } catch {
-    return { id: summary.id, name: summary.name, cards: [] };
+    return { id: summary.id, name: summary.name, cards: [], cardRecords: [] };
   }
 }
 
@@ -149,6 +150,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
           id: full.id,
           name: full.name,
           cards: full.cards.map((c) => c.cardName),
+          cardRecords: full.cards.map(({ cardName, colorIdentity }) => ({ cardName, colorIdentity })),
         };
         setLists((prev) => [...prev, newList]);
         if (created.warnings.length > 0) {
@@ -207,13 +209,15 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const replaceCardsForList = useCallback(
-    async (id: string, prevCards: string[], nextCards: string[]) => {
+    async (id: string, prevCards: ServerList['cardRecords'], nextCards: string[]) => {
       try {
-        await replaceListCards(id, nextCards);
+        const response = await replaceListCards(id, nextCards);
+        setLists((current) => current.map((l) => l.id === id ? { ...l, cards: response.cards.map((card) => card.cardName), cardRecords: response.cards } : l));
+        if (response.warnings.length) enqueueSnackbar(response.warnings.join(' · '), { variant: 'info' });
       } catch (err) {
         // Roll back to the pre-mutation cards.
         setLists((current) =>
-          current.map((l) => (l.id === id ? { ...l, cards: prevCards } : l)),
+          current.map((l) => (l.id === id ? { ...l, cards: prevCards.map((card) => card.cardName), cardRecords: prevCards } : l)),
         );
         const msg = err instanceof Error ? err.message : 'Failed to update list';
         enqueueSnackbar(msg, { variant: 'error' });
@@ -227,10 +231,11 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       const current = lists.find((l) => l.id === id);
       if (!current) return;
       const nextCards = [...current.cards, cardName];
+      const nextRecords = [...current.cardRecords, { cardName, colorIdentity: null }];
       setLists((all) =>
-        all.map((l) => (l.id === id ? { ...l, cards: nextCards } : l)),
+        all.map((l) => (l.id === id ? { ...l, cards: nextCards, cardRecords: nextRecords } : l)),
       );
-      await replaceCardsForList(id, current.cards, nextCards);
+      await replaceCardsForList(id, current.cardRecords, nextCards);
     },
     [lists, replaceCardsForList],
   );
@@ -252,10 +257,12 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       }
       const nextCards = current.cards.slice();
       nextCards.splice(idx, 1);
+      const nextRecords = current.cardRecords.slice();
+      nextRecords.splice(idx, 1);
       setLists((all) =>
-        all.map((l) => (l.id === id ? { ...l, cards: nextCards } : l)),
+        all.map((l) => (l.id === id ? { ...l, cards: nextCards, cardRecords: nextRecords } : l)),
       );
-      await replaceCardsForList(id, current.cards, nextCards);
+      await replaceCardsForList(id, current.cardRecords, nextCards);
     },
     [lists, replaceCardsForList, enqueueSnackbar],
   );
