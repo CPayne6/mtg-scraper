@@ -10,13 +10,6 @@ export type SchedulerJson = Record<string, unknown>;
 
 interface StorefrontTriggerOptions {
   storeId?: number;
-  splitRanges?: number;
-  incremental?: boolean;
-}
-
-interface StorefrontTriggerAllOptions {
-  splitRanges?: number;
-  incremental?: boolean;
 }
 
 interface ExtractionTriggerOptions {
@@ -40,20 +33,14 @@ export class AdminService {
   triggerStorefront(opts: StorefrontTriggerOptions): Promise<SchedulerJson> {
     const url = new URL('/manual/storefront/trigger', this.schedulerBase());
     this.setOptionalNumber(url, 'storeId', opts.storeId);
-    this.setOptionalNumber(url, 'splitRanges', opts.splitRanges);
-    this.setOptionalBoolean(url, 'incremental', opts.incremental);
     return this.send('PUT', url, 10_000);
   }
 
-  triggerStorefrontAll(
-    opts: StorefrontTriggerAllOptions,
-  ): Promise<SchedulerJson> {
+  triggerStorefrontAll(): Promise<SchedulerJson> {
     const url = new URL(
       '/manual/storefront/trigger-all',
       this.schedulerBase(),
     );
-    this.setOptionalNumber(url, 'splitRanges', opts.splitRanges);
-    this.setOptionalBoolean(url, 'incremental', opts.incremental);
     return this.send('PUT', url, 10_000);
   }
 

@@ -94,10 +94,8 @@ export class ExtractionOrchestrator {
     this.logger.log(`Created extraction run #${savedRun.id} (trigger: ${savedRun.trigger})`);
 
     for (const store of targetStores) {
-      // V2: enqueue a per-store plan job. The plan probes the store's
-      // created_at range and fans out one bucket job per year. This replaces
-      // the legacy single-chain id-pagination model which silently lost
-      // products due to Shopify's undocumented `id:>X` filter behaviour.
+      // Enqueue a per-store plan job. It probes the created_at range and
+      // fans out one cursor-paginated bucket job per year.
       await this.queueService.enqueueStorefrontPlanJob(store.id, {
         discoveryRunId: savedRun.id,
       });
