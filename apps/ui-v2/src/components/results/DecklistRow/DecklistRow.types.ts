@@ -2,10 +2,11 @@ export type DecklistRowProps = {
   qty: number;
   name: string;
   meta: string;
-  price: number;
-  store: string;
-  onStoreChange?: () => void;
-  storeActionDisabled?: boolean;
+  cartOffer?: {
+    price: number;
+    store: string;
+  };
   onOpenBuilder?: () => void;
-  onRemove?: () => void;
+  onRemoveFromCart?: () => void;
+  onRemoveFromList?: () => void;
 };

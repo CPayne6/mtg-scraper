@@ -44,12 +44,21 @@ export const headerSx = (isMobile: boolean): SxProps<Theme> => (theme) => ({
 });
 
 export const storeHeaderSx: SxProps<Theme> = (theme) => ({
+  position: 'sticky',
+  top: '-1px',
+  zIndex: 1,
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   gap: 1,
-  mb: 1.5,
-  py: 1,
+  mb: 0,
+  py: 1.75,
+  // Extend across the drawer's padded scroll area so rows never show through
+  // around a sticky store heading.
+  width: `calc(100% + ${theme.spacing(5)})`,
+  ml: -2.5,
+  px: 2.5,
+  bgcolor: 'background.default',
   borderBottom: `1px dashed ${theme.palette.divider}`,
 });
 

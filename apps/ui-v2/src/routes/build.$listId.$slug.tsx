@@ -18,6 +18,7 @@ import { useCart, cartItemId } from '@/components/cart/CartContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { groupByName } from '@/utils/parseDeckList';
+import { normalizeCardName } from '@/utils/listCartStatus';
 import type { PriceLookupState } from '@/hooks/useListPrices';
 import { useListEditor } from '@/hooks/useListEditor';
 import { BuilderFilterBar } from '@/components/builder/BuilderFilterBar';
@@ -197,14 +198,13 @@ function BuilderRoute() {
   const cartCardKeys = useMemo(() => {
     const s = new Set<string>();
     for (const item of cartItems) {
-      s.add(item.title.toLowerCase());
-      s.add(item.title.replace(/\s*\[[^\]]+\]\s*$/, '').trim().toLowerCase());
+      s.add(normalizeCardName(item.title));
     }
     return s;
   }, [cartItems]);
 
   const inCartByName = useCallback(
-    (name: string) => cartCardKeys.has(name.toLowerCase()),
+    (name: string) => cartCardKeys.has(normalizeCardName(name)),
     [cartCardKeys],
   );
 
@@ -372,14 +372,22 @@ function BuilderRoute() {
         return;
       }
 
-      const result = addManyToCart(
-        bestOption.selectedOffers.map((selectedOffer) => selectedOffer.offer),
-      );
+      // `addMany` de-duplicates offer IDs, but an optimization can select a
+      // different printing/store for a card name already in the cart. A fill
+      // must never add another copy of an already-carted card.
+      const offersToAdd = bestOption.selectedOffers
+        .map((selectedOffer) => selectedOffer.offer)
+        .filter((offer) => !cartCardKeys.has(normalizeCardName(offer.title)));
+      const alreadyInCart = bestOption.selectedOffers.length - offersToAdd.length;
+      const result = addManyToCart(offersToAdd);
       const skipped =
         result.skippedDuplicate + result.skippedInvalid + result.skippedCapacity;
       const details = [
         bestOption.missingCards.length > 0
           ? `${bestOption.missingCards.length} missing`
+          : null,
+        alreadyInCart > 0
+          ? `${alreadyInCart} already in cart`
           : null,
         skipped > 0 ? `${skipped} skipped` : null,
       ].filter(Boolean);
@@ -410,6 +418,7 @@ function BuilderRoute() {
   }, [
     addManyToCart,
     enqueueSnackbar,
+    cartCardKeys,
     listId,
     openCart,
     optimizationMinimumCondition,
