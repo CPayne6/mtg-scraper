@@ -8,6 +8,7 @@ import {
   type SessionResponse,
 } from '@/api/auth';
 import type { AuthContextValue, AuthStatus } from './AuthContext.types';
+import { clearRecentSearchesStorage } from '@/hooks/useRecentSearches';
 // import type { LoginInput, SignupInput } from './AuthContext.types';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await logoutRequest();
+    clearRecentSearchesStorage();
     resetAnonymousSessionCache();
     setSession(null);
     setStatus('loading');

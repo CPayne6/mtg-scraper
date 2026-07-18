@@ -10,7 +10,6 @@ import TextField from '@mui/material/TextField';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
-import { SavedListsMenu } from '@/components/lists/SavedListsMenu';
 import { ProductTile } from '@/components/results/ProductTile';
 import { Tip } from '@/components/feedback/Tip';
 import { useLists } from '@/components/lists/ListsContext';
@@ -95,9 +94,6 @@ function HomeRoute() {
         >
           Paste a card or a card list to compare available offers in seconds.
         </Typography>
-        <Box sx={{ mt: 2.5, display: 'inline-flex', position: 'relative' }}>
-          <SavedListsMenu />
-        </Box>
       </Box>
 
       <Paper

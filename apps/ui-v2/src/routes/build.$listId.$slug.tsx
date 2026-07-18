@@ -234,7 +234,6 @@ function BuilderRoute() {
     if (entries.length === 0) {
       appliedUrlSelectionForListRef.current = listId;
       if (selectedName !== null) setSelectedName(null);
-      if (search.card) syncSelectedCardUrl(null);
       return;
     }
 
@@ -254,16 +253,12 @@ function BuilderRoute() {
     if (selectedName !== nextName) {
       setSelectedName(nextName);
     }
-    if (search.card !== nextName) {
-      syncSelectedCardUrl(nextName);
-    }
   }, [
     entries,
     listId,
     search.card,
     selectedName,
     setSelectedName,
-    syncSelectedCardUrl,
   ]);
 
   const handleToggleStore = useCallback(
