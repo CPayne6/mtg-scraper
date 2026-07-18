@@ -1,7 +1,7 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
-import { STORE_COUNT, STORE_FACETS } from '@/data/sample';
+import { STORE_FACETS } from '@/data/sample';
 
 function FooterHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -79,8 +79,7 @@ export function Footer() {
             color="text.secondary"
             sx={{ fontSize: 12, maxWidth: 320, lineHeight: 1.5 }}
           >
-            ScoutLGS is independent. We do not sell cards. We point you to {STORE_COUNT} game
-            stores that do.
+            ScoutLGS is independent. We do not sell cards. We point you to stores that do.
           </Typography>
         </Box>
         <Box>

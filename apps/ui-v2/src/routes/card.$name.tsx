@@ -21,7 +21,7 @@ import { fetchCard } from '@/api/cards';
 import { FiltersSidebar } from '@/components/results/FiltersSidebar';
 import { ProductTile } from '@/components/results/ProductTile';
 import { StaleNotice } from '@/components/results/StaleNotice';
-import { DEFAULT_STORE_KEYS, STORE_COUNT, STORE_FACETS } from '@/data/sample';
+import { DEFAULT_STORE_KEYS, STORE_FACETS } from '@/data/sample';
 import { useLists } from '@/components/lists/ListsContext';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
@@ -287,7 +287,7 @@ function CardRoute() {
               })}
             />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Scouting {Math.min(STORE_COUNT, stores.length)} of {STORE_COUNT} stores... streaming results in.
+              Scouting available offers... streaming results in.
             </Typography>
           </Box>
         ) : error ? (

@@ -17,7 +17,6 @@ import { useLists } from '@/components/lists/ListsContext';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { parseDeckList } from '@/utils/parseDeckList';
 import { slugifyName } from '@/utils/slugify';
-import { STORE_COUNT } from '@/data/sample';
 
 type HomeSearch = { mode?: 'card' | 'deck' };
 
@@ -94,7 +93,7 @@ function HomeRoute() {
             lineHeight: 1.5,
           }}
         >
-          Paste a card or a card list. We'll check {STORE_COUNT} game stores in seconds.
+          Paste a card or a card list to compare available offers in seconds.
         </Typography>
         <Box sx={{ mt: 2.5, display: 'inline-flex', position: 'relative' }}>
           <SavedListsMenu />
