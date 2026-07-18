@@ -27,6 +27,7 @@ import {
 } from '@/components/cart/CartContext';
 import { cartVariantIds } from '@/components/cart/CartContext/CartContext.utils';
 import { CardPreview, CartThumbnail } from '@/components/cart/ItemThumbnail';
+import { BuyMeAPackButton } from '@/components/BuyMeAPackButton';
 
 export const Route = createFileRoute('/checkout')({
   component: CheckoutRoute,
@@ -258,12 +259,21 @@ function CheckoutRoute() {
       <Typography sx={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'primary.main', mb: 0.5 }}>
         Checkout
       </Typography>
-      <Typography variant="h2" sx={{ mb: 1 }}>
-        Check out at each store
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Each store has its own cart. We prepare the checkout links now; open each store in a new tab when you're ready. ScoutLGS doesn't take payment.
-      </Typography>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 2,
+          mb: 3,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Typography variant="h2">
+          Check out at each store
+        </Typography>
+        <BuyMeAPackButton />
+      </Box>
 
       {droppedNoVariant > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
