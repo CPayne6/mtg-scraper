@@ -1,9 +1,12 @@
 import {
   Controller,
+  Body,
+  Delete,
   Get,
   Logger,
   NotFoundException,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -64,6 +67,21 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     return this.authSessionService.createAnonymousSession(req, res);
+  }
+
+  @Get('delivery-address')
+  getDeliveryAddress(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return this.authSessionService.getDeliveryAddress(req, res);
+  }
+
+  @Put('delivery-address')
+  saveDeliveryAddress(@Body() address: Record<string, unknown>, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return this.authSessionService.saveDeliveryAddress(req, res, address);
+  }
+
+  @Delete('delivery-address')
+  removeDeliveryAddress(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return this.authSessionService.removeDeliveryAddress(req, res);
   }
 
   // @Post('signup')

@@ -17,5 +17,6 @@ import { XRequestedWithGuard } from './csrf.guard';
     CheckoutAuditService,
     XRequestedWithGuard,
   ],
+  exports: [CheckoutRateLimiterService, XRequestedWithGuard],
 })
 export class CheckoutModule {}

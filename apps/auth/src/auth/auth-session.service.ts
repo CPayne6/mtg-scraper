@@ -13,7 +13,7 @@ import { EntityManager, IsNull, MoreThan, Repository } from 'typeorm';
 import { AnonymousSession } from '../database/entities/anonymous-session.entity';
 import { Principal } from '../database/entities/principal.entity';
 import { UserSession } from '../database/entities/user-session.entity';
-import { UserRole } from '../database/entities/user.entity';
+import { User, UserRole } from '../database/entities/user.entity';
 import { JwtService } from './jwt.service';
 import { TokenHashService } from './token-hash.service';
 import { extractClientIp } from './client-ip.util';
@@ -47,6 +47,8 @@ export class AuthSessionService {
     private readonly anonymousSessionRepository: Repository<AnonymousSession>,
     @InjectRepository(UserSession)
     private readonly userSessionRepository: Repository<UserSession>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly entityManager: EntityManager,
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
@@ -93,6 +95,38 @@ export class AuthSessionService {
 
     const principal = await this.createAnonymousPrincipal(req, res);
     return this.toSessionResponse(principal);
+  }
+
+  async getDeliveryAddress(req: RequestWithCookies, res: Response) {
+    const session = await this.getSession(req, res);
+    if (!session.user) throw new UnauthorizedException('Sign in to save a delivery address');
+    const user = await this.userRepository.findOneByOrFail({ uuid: session.user.uuid });
+    return { address: user.deliveryAddress ?? null };
+  }
+
+  async saveDeliveryAddress(req: RequestWithCookies, res: Response, input: Record<string, unknown>) {
+    const session = await this.getSession(req, res);
+    if (!session.user) throw new UnauthorizedException('Sign in to save a delivery address');
+    const address = this.normalizeCanadianAddress(input);
+    await this.userRepository.update({ uuid: session.user.uuid }, { deliveryAddress: address });
+    return { address };
+  }
+
+  async removeDeliveryAddress(req: RequestWithCookies, res: Response) {
+    const session = await this.getSession(req, res);
+    if (!session.user) throw new UnauthorizedException('Sign in to save a delivery address');
+    await this.userRepository.update({ uuid: session.user.uuid }, { deliveryAddress: null });
+    return { address: null };
+  }
+
+  private normalizeCanadianAddress(input: Record<string, unknown>) {
+    const text = (key: string) => typeof input[key] === 'string' ? input[key].trim() : '';
+    const address1 = text('address1'); const city = text('city'); const province = text('province').toUpperCase();
+    const postalCode = text('postalCode').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^(.{3})(.{3})$/, '$1 $2');
+    const provinces = new Set(['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT']);
+    if (text('countryCode').toUpperCase() !== 'CA' || !address1 || !city || !provinces.has(province) || !/^[ABCEGHJKLMNPRSTVXY]\d[ABCEGHJKLMNPRSTVWXYZ] \d[ABCEGHJKLMNPRSTVWXYZ]\d$/.test(postalCode)) throw new HttpException('Enter a complete Canadian delivery address', HttpStatus.BAD_REQUEST);
+    const address2 = text('address2');
+    return { address1, ...(address2 ? { address2 } : {}), city, province, postalCode, countryCode: 'CA' as const };
   }
 
   private async getPrincipalFromAccessToken(

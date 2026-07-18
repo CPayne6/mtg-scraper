@@ -14,6 +14,9 @@ export default () => ({
     internalUrl:
       process.env.SCHEDULER_INTERNAL_URL ?? 'http://scheduler:5001',
   },
+  delivery: {
+    addressQuotesEnabled: process.env.ENABLE_DELIVERY_ADDRESS_QUOTES === 'true',
+  },
   // V2 Scraping: Use database-first approach instead of cache-first
   useDatabaseFirst: process.env.USE_DATABASE_FIRST === 'true',
 });

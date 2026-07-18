@@ -20,6 +20,7 @@ export function DecklistRow({
   store,
   onStoreChange,
   storeActionDisabled,
+  storeActionStatic,
   onOpenBuilder,
   onRemove,
 }: DecklistRowProps) {
@@ -63,7 +64,7 @@ export function DecklistRow({
       >
         CA${price.toFixed(2)}
       </Typography>
-      <Box
+      {storeActionStatic ? <Box sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>{store}</Box> : <Box
         component="button"
         type="button"
         onClick={onStoreChange}
@@ -75,7 +76,7 @@ export function DecklistRow({
         <Box component="span" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {store}
         </Box>
-      </Box>
+      </Box>}
       <Tooltip title="Remove from list">
         <IconButton size="small" aria-label={`Remove ${name} from list`} onClick={onRemove}>
           <DeleteOutline sx={{ fontSize: 18 }} />
