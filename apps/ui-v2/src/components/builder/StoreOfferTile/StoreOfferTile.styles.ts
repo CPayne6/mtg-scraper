@@ -5,32 +5,48 @@ import type { CondVisual } from './StoreOfferTile.types';
 // store/price/condition text reads cleanly over any printing.
 export const OVERLAY_GRADIENT =
   'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.88) 70%, rgba(0,0,0,0.98) 88%, rgba(0,0,0,1) 100%)';
+export const ACTIVE_OVERLAY_GRADIENT =
+  'linear-gradient(to bottom, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.2) 18%, rgba(0,0,0,0.5) 42%, rgba(0,0,0,0.82) 63%, rgba(0,0,0,0.97) 83%, rgba(0,0,0,1) 100%)';
 
 export const tileContainerSx = (
   isCheapest: boolean,
   placeholderGradient: string,
 ): SxProps<Theme> => (theme) => ({
   position: 'relative',
+  width: '100%',
+  maxWidth: '100%',
+  minWidth: 0,
   // Real Magic card aspect ratio (2.5" x 3.5" = 5/7). The text content
   // overlays the lower half of the card via the gradient.
   aspectRatio: '5 / 7',
   background: placeholderGradient,
   borderRadius: '12px',
   overflow: 'hidden',
-  display: 'flex',
-  flexDirection: 'column',
-  // Keep the layout stable without showing a resting border on ordinary cards.
-  border: `1px solid ${isCheapest ? theme.palette.primary.main : 'transparent'}`,
+  display: 'grid',
+  gridTemplateRows: 'minmax(0, 1fr) auto',
+  border: 0,
+  boxShadow: isCheapest
+    ? `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
+      ? '0 6px 18px rgba(0, 0, 0, 0.55)'
+      : '0 6px 16px rgba(15, 23, 42, 0.22)'}`
+    : theme.palette.mode === 'dark'
+      ? '0 6px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08)'
+      : '0 6px 16px rgba(15, 23, 42, 0.22), 0 1px 0 rgba(255, 255, 255, 0.45)',
   transition:
-    'border-color 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+    'box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
-    borderColor: theme.palette.primary.main,
-    boxShadow: theme.shadows[3],
-    transform: 'translateY(-1px)',
+    boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
+      ? '0 10px 24px rgba(0, 0, 0, 0.65)'
+      : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
+    transform: 'translateY(-2px)',
+  },
+  '& .cart-action:hover ~ .cart-gradient, & .cart-action:focus-visible ~ .cart-gradient': {
+    background: ACTIVE_OVERLAY_GRADIENT,
   },
   '&:focus-within': {
-    borderColor: theme.palette.primary.main,
-    boxShadow: theme.shadows[3],
+    boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
+      ? '0 10px 24px rgba(0, 0, 0, 0.65)'
+      : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
   },
 });
 
@@ -46,13 +62,14 @@ export const imgSx = (imageLoaded: boolean): SxProps<Theme> => ({
   transition: 'opacity 180ms ease-in-out',
 });
 
-export const gradientOverlaySx: SxProps<Theme> = {
+export const gradientOverlaySx = (active: boolean): SxProps<Theme> => ({
   position: 'absolute',
   inset: 0,
-  background: OVERLAY_GRADIENT,
+  background: active ? ACTIVE_OVERLAY_GRADIENT : OVERLAY_GRADIENT,
+  transition: 'background 180ms ease',
   zIndex: 1,
   pointerEvents: 'none',
-};
+});
 
 export const cheapestBadgeSx: SxProps<Theme> = (theme) => ({
   position: 'absolute',
@@ -73,7 +90,8 @@ export const cheapestBadgeSx: SxProps<Theme> = (theme) => ({
 export const contentOverlaySx: SxProps<Theme> = {
   position: 'relative',
   zIndex: 2,
-  marginTop: 'auto',
+  gridRow: 2,
+  minWidth: 0,
   padding: '12px 12px 10px',
   display: 'flex',
   flexDirection: 'column',
