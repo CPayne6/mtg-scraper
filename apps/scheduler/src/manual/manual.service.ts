@@ -73,19 +73,8 @@ export class ManualService {
   // Storefront extraction
   // ---------------------------------------------------------------------------
 
-  /**
-   * Trigger storefront extraction for one or all stores.
-   * Routes based on store.platformType — currently only 'shopify_storefront'.
-   *
-   * @param opts.splitRanges  If > 1, enqueues a bootstrap job that splits the
-   *                          store's ID range into N parallel extraction jobs.
-   *                          Omit (or pass 1) for the default sequential paging.
-   */
-  async triggerStorefrontExtraction(opts: {
-    storeId?: number;
-    splitRanges?: number;
-    incremental?: boolean;
-  }) {
+  /** Trigger the modern storefront planner for one store. */
+  async triggerStorefrontExtraction(opts: { storeId?: number }) {
     if (!opts.storeId) {
       throw new BadRequestException('storeId is required. Use trigger-all for all stores.');
     }
@@ -108,57 +97,31 @@ export class ManualService {
       );
     }
 
-    const updatedSince = opts.incremental
-      ? (await this.extractionOrchestrator.resolveIncrementalCutoff()) ?? undefined
-      : undefined;
-
-    const splitRanges = opts.splitRanges && opts.splitRanges > 1 ? opts.splitRanges : 0;
-    if (splitRanges > 0) {
-      await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges, {
-        updatedSince,
-      });
-    } else {
-      await this.queueService.enqueueStorefrontExtractionJob(
-        store.id,
-        1,
-        undefined,
-        updatedSince,
-      );
-    }
+    // Always use the planner used by scheduled extraction runs. It discovers
+    // the created_at range and fans out independent, cursor-paginated time
+    // buckets, keeping every available scraper worker busy.
+    await this.queueService.enqueueStorefrontPlanJob(store.id);
 
     this.logger.log(
-      `Triggered storefront extraction for ${store.name}` +
-        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)') +
-        (updatedSince ? ` (incremental since ${updatedSince})` : ''),
+      `Triggered planned storefront extraction for ${store.name}`,
     );
 
     return {
-      message: `Extraction triggered for ${store.name}`,
+      message: `Planned extraction triggered for ${store.name}`,
       storeId: store.id,
       platformType: store.platformType,
       scope,
-      mode: splitRanges > 0 ? `parallel-${splitRanges}` : 'sequential',
-      updatedSince: updatedSince ?? null,
+      mode: 'parallel-time-buckets',
+      updatedSince: null,
     };
   }
 
-  /**
-   * Trigger storefront extraction for all active stores.
-   *
-   * @param opts.splitRanges  Same as triggerStorefrontExtraction; applied to
-   *                          every store that's enqueued.
-   */
-  async triggerAllStorefrontExtractions(
-    opts: { splitRanges?: number; incremental?: boolean } = {},
-  ) {
+  /** Trigger the modern storefront planner for every active storefront. */
+  async triggerAllStorefrontExtractions() {
     const stores = await this.storeRepository.find({
       where: { isActive: true, platformType: 'shopify_storefront' as any },
     });
 
-    const splitRanges = opts.splitRanges && opts.splitRanges > 1 ? opts.splitRanges : 0;
-    const updatedSince = opts.incremental
-      ? (await this.extractionOrchestrator.resolveIncrementalCutoff()) ?? undefined
-      : undefined;
     const results: { store: string; error?: string }[] = [];
 
     for (const store of stores) {
@@ -168,32 +131,19 @@ export class ManualService {
         continue;
       }
 
-      if (splitRanges > 0) {
-        await this.queueService.enqueueStorefrontBootstrapJob(store.id, splitRanges, {
-          updatedSince,
-        });
-      } else {
-        await this.queueService.enqueueStorefrontExtractionJob(
-          store.id,
-          1,
-          undefined,
-          updatedSince,
-        );
-      }
+      await this.queueService.enqueueStorefrontPlanJob(store.id);
       results.push({ store: store.name });
     }
 
     this.logger.log(
-      `Triggered storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores` +
-        (splitRanges > 0 ? ` (splitRanges=${splitRanges})` : ' (sequential)') +
-        (updatedSince ? ` (incremental since ${updatedSince})` : ''),
+      `Triggered planned storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores`,
     );
 
     return {
       triggered: results.filter((r) => !r.error).length,
       total: stores.length,
-      mode: splitRanges > 0 ? `parallel-${splitRanges}` : 'sequential',
-      updatedSince: updatedSince ?? null,
+      mode: 'parallel-time-buckets',
+      updatedSince: null,
       results,
     };
   }

@@ -17,9 +17,7 @@ import {
   PRODUCT_CREATED_AT_ASC_QUERY,
   PRODUCT_CREATED_AT_DESC_QUERY,
   PRODUCTS_BY_CREATED_AT_QUERY,
-  PRODUCTS_QUERY,
-  PRODUCT_ID_ASC_QUERY,
-  PRODUCT_ID_DESC_QUERY,
+  PRODUCTS_BY_QUERY,
 } from './storefront.queries';
 import type {
   StorefrontProduct,
@@ -133,25 +131,10 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     );
   }
 
-  /**
-   * Fetch a single page of products using ID-based stepping.
-   * Returns the extracted products and the last ID for the next page.
-   * Returns empty products array when the catalog is exhausted.
-   *
-   * @param store         - Store to extract from
-   * @param scope         - Query scope (e.g. 'product_type:"MTG Single"')
-   * @param lastId        - Shopify product ID to start after (null for first page)
-   * @param maxId         - Optional upper bound. When set, only products with
-   *                        `id <= maxId` are returned (used for range-split jobs).
-   * @param updatedSince  - Optional ISO-8601 timestamp. When set, only products
-   *                        with `updated_at > updatedSince` are returned.
-   */
-  async fetchPage(
+  /** Fetch products that match an exact Storefront search query. */
+  async fetchProductsByQuery(
     store: Store,
-    scope: string,
-    lastId?: string | null,
-    maxId?: string | null,
-    updatedSince?: string | null,
+    query: string,
   ): Promise<{
     products: Array<{
       shopifyProductId: string;
@@ -159,37 +142,20 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       updatedAt: Date;
       variants: ExtractedCardVariant[];
     }>;
-    nextLastId: string | null;
   }> {
-    const parts = [scope];
-    if (lastId) parts.push(`id:>${lastId}`);
-    if (maxId) parts.push(`id:<=${maxId}`);
-    if (updatedSince) parts.push(`updated_at:>'${updatedSince}'`);
-    const query = parts.join(' ');
-
     const data = await this.storefrontClient.query<ProductsQueryData>(
       store,
-      PRODUCTS_QUERY,
+      PRODUCTS_BY_QUERY,
       { query, first: 250 },
     );
 
     const { edges } = data.products;
-    if (edges.length === 0) {
-      return { products: [], nextLastId: null };
-    }
-
-    const products = edges.map(({ node: product }) => ({
+    return { products: edges.map(({ node: product }) => ({
       shopifyProductId: product.id.split('/').pop()!,
       handle: product.handle,
       updatedAt: new Date(product.updatedAt),
       variants: this.extractVariantsFromProduct(store, product),
-    }));
-
-    const nextLastId = edges.length < 250
-      ? null  // last page
-      : edges[edges.length - 1].node.id.split('/').pop()!;
-
-    return { products, nextLastId };
+    })) };
   }
 
   /**
@@ -301,132 +267,6 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       products: { edges: { node: { id: string } }[] };
     }>(store, PRODUCT_BUCKET_PROBE_QUERY, { query });
     return data.products.edges.length > 0;
-  }
-
-  /**
-   * Find the next product strictly greater than `afterId` for this scope.
-   * Used by the @OnQueueFailed recovery handler to skip past a page that
-   * permanently failed all retries — returns the first product on the
-   * next page, so pagination can resume from there.
-   *
-   * Returns `null` if there is no product after `afterId` (genuine end of catalog).
-   */
-  async findNextProductId(
-    store: Store,
-    scope: string,
-    afterId: string,
-    updatedSince?: string | null,
-  ): Promise<string | null> {
-    const parts = [scope, `id:>${afterId}`];
-    if (updatedSince) parts.push(`updated_at:>'${updatedSince}'`);
-    const query = parts.join(' ');
-
-    const data = await this.storefrontClient.query<{
-      products: { edges: { node: { id: string } }[] };
-    }>(store, PRODUCT_ID_ASC_QUERY, { query });
-
-    const edge = data.products.edges[0]?.node.id;
-    return edge ? edge.split('/').pop() ?? null : null;
-  }
-
-  /**
-   * Get the lowest and highest Shopify product IDs for the given scope.
-   * Two cheap single-product queries (sorted by ID asc / desc).
-   *
-   * Returns `null` for both endpoints if the scope matches no products.
-   */
-  async fetchIdRange(
-    store: Store,
-    scope: string,
-    updatedSince?: string | null,
-  ): Promise<{ minId: string | null; maxId: string | null }> {
-    const query = updatedSince
-      ? `${scope} updated_at:>'${updatedSince}'`
-      : scope;
-    const [asc, desc] = await Promise.all([
-      this.storefrontClient.query<{
-        products: { edges: { node: { id: string } }[] };
-      }>(store, PRODUCT_ID_ASC_QUERY, { query }),
-      this.storefrontClient.query<{
-        products: { edges: { node: { id: string } }[] };
-      }>(store, PRODUCT_ID_DESC_QUERY, { query }),
-    ]);
-
-    const ascEdge = asc.products.edges[0]?.node.id;
-    const descEdge = desc.products.edges[0]?.node.id;
-
-    return {
-      minId: ascEdge ? ascEdge.split('/').pop() ?? null : null,
-      maxId: descEdge ? descEdge.split('/').pop() ?? null : null,
-    };
-  }
-
-  /**
-   * Paginate through all products matching a scope using ID-based stepping.
-   *
-   * Uses `products(query: "scope id:>lastId", sortKey: ID)` to step through
-   * the entire catalog. Each request starts fresh from the last seen ID,
-   * so there's no cursor accumulation and no 25K pagination limit.
-   *
-   * Products are yielded in ascending ID order with zero duplicates.
-   *
-   * @param store - Store to extract from
-   * @param scope - Query scope (e.g. 'product_type:"MTG Single"')
-   */
-  async *extractByIdPagination(
-    store: Store,
-    scope: string,
-  ): AsyncGenerator<{
-    shopifyProductId: string;
-    handle: string;
-    updatedAt: Date;
-    variants: ExtractedCardVariant[];
-  }> {
-    let lastId: string | undefined;
-    let totalYielded = 0;
-    let pageNumber = 0;
-
-    while (true) {
-      pageNumber++;
-      const query = lastId ? `${scope} id:>${lastId}` : scope;
-
-      const data = await this.storefrontClient.query<ProductsQueryData>(
-        store,
-        PRODUCTS_QUERY,
-        { query, first: 250 },
-      );
-
-      const { edges } = data.products;
-      if (edges.length === 0) break;
-
-      for (const { node: product } of edges) {
-        const variants = this.extractVariantsFromProduct(store, product);
-        totalYielded++;
-
-        yield {
-          shopifyProductId: product.id.split('/').pop()!,
-          handle: product.handle,
-          updatedAt: new Date(product.updatedAt),
-          variants,
-        };
-      }
-
-      // Use the last product's numeric ID for the next page
-      const lastProduct = edges[edges.length - 1].node;
-      lastId = lastProduct.id.split('/').pop()!;
-
-      if (edges.length < 250) break;
-
-      if (pageNumber % 20 === 0) {
-        this.logger.warn(
-          `${store.name}: page ${pageNumber}, ${totalYielded} products extracted (lastId: ${lastId})`,
-        );
-      }
-    }
-
-    this.logger.warn(
-      `${store.name}: finished ID-based extraction — ${totalYielded} products in ${pageNumber} pages`,
-    );
   }
 
   /**

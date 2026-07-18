@@ -61,12 +61,10 @@ describe('AdminController', () => {
       ),
     ).resolves.toBe(true);
 
-    await controller.triggerStorefront(2, 4, true);
+    await controller.triggerStorefront(2);
 
     expect(adminService.triggerStorefront).toHaveBeenCalledWith({
       storeId: 2,
-      splitRanges: 4,
-      incremental: true,
     });
   });
 

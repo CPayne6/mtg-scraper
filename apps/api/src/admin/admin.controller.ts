@@ -21,26 +21,13 @@ export class AdminController {
   @Post('storefront/trigger')
   triggerStorefront(
     @Query('storeId', new ParseIntPipe({ optional: true })) storeId?: number,
-    @Query('splitRanges', new ParseIntPipe({ optional: true }))
-    splitRanges?: number,
-    @Query('incremental', new ParseBoolPipe({ optional: true }))
-    incremental?: boolean,
   ) {
-    return this.adminService.triggerStorefront({
-      storeId,
-      splitRanges,
-      incremental,
-    });
+    return this.adminService.triggerStorefront({ storeId });
   }
 
   @Post('storefront/trigger-all')
-  triggerStorefrontAll(
-    @Query('splitRanges', new ParseIntPipe({ optional: true }))
-    splitRanges?: number,
-    @Query('incremental', new ParseBoolPipe({ optional: true }))
-    incremental?: boolean,
-  ) {
-    return this.adminService.triggerStorefrontAll({ splitRanges, incremental });
+  triggerStorefrontAll() {
+    return this.adminService.triggerStorefrontAll();
   }
 
   @Get('storefront/status')

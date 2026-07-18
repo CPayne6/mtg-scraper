@@ -11,9 +11,6 @@ export { Condition } from './card.types';
 export type {
   PlatformType,
   StoreDiscoveryConfig,
-  StorefrontExtractionJobData,
-  StorefrontExtractionJobResult,
-  StorefrontBootstrapJobData,
   StorefrontPlanJobData,
   StorefrontBucketJobData,
   StorefrontBucketJobResult,
