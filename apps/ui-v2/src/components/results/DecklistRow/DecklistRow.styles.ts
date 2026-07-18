@@ -71,3 +71,28 @@ export const cartStatusSx: SxProps<Theme> = (theme) => ({
   fontWeight: 500,
   fontFamily: 'inherit',
 });
+
+export const storeBtnSx = (disabled = false): SxProps<Theme> => (theme) => ({
+  display: { xs: 'none', sm: 'inline-flex' },
+  alignItems: 'center',
+  gap: 0.75,
+  justifyContent: 'space-between',
+  minWidth: 0,
+  bgcolor: theme.palette.surfaceHover,
+  border: `1px solid ${theme.palette.divider}`,
+  py: '7px',
+  px: 1.5,
+  borderRadius: 1,
+  fontSize: 13,
+  color: 'inherit',
+  fontWeight: 500,
+  fontFamily: 'inherit',
+  cursor: disabled ? 'default' : 'pointer',
+  transition: 'background 150ms ease',
+  '&:hover': disabled ? {} : { bgcolor: theme.palette.primarySoftHover },
+  '&:disabled': { opacity: 0.65 },
+  '&:focus-visible': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: 2,
+  },
+});
