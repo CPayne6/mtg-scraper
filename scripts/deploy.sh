@@ -40,6 +40,7 @@ validate_secrets() {
         "api_database_password"
         "ui_vite_api_url"
         "scraper_database_password"
+        "optimizer_database_password"
         "scraper_webshare_username"
         "scraper_webshare_password"
     )

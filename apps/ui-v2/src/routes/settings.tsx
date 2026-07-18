@@ -1,13 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
+import Button from '@mui/material/Button';
+import TextField from '@mui/material/TextField';
 import { useColorMode } from '@/components/ui/color-mode';
 import { DEFAULT_STORE_KEYS, STORE_FACETS } from '@/data/sample';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { getDeliveryAddress, removeDeliveryAddress, saveDeliveryAddress, type DeliveryAddress } from '@/api/auth';
+import { useAuth } from '@/components/auth/AuthContext';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsRoute,
@@ -69,6 +74,10 @@ function Segmented({
 
 function SettingsRoute() {
   const { colorMode, setColorMode } = useColorMode();
+  const { session } = useAuth();
+  const [address, setAddress] = useState<DeliveryAddress | null>(null);
+  const [addressSaving, setAddressSaving] = useState(false);
+  useEffect(() => { if (session?.user) void getDeliveryAddress().then((result) => setAddress(result.address)).catch(() => setAddress(null)); }, [session?.user]);
   const [defaultCondition, setDefaultCondition] = useLocalStorage<string>(
     'scoutlgs:default-condition',
     'LP',
@@ -110,6 +119,20 @@ function SettingsRoute() {
               onChange={(v) => setColorMode(v === 'Dark' ? 'dark' : 'light')}
             />
           </Box>
+
+          {session?.user && <Box sx={{ display: 'grid', gap: 1.25 }}>
+            <Box>
+              <Typography variant="h6">Saved delivery address</Typography>
+              <Typography variant="body2" color="text.secondary">Used only when you choose it for a future delivery estimate.</Typography>
+            </Box>
+            <TextField label="Street address" value={address?.address1 ?? ''} onChange={(event) => setAddress((current) => ({ ...(current ?? { city: '', province: '', postalCode: '', countryCode: 'CA' }), address1: event.target.value }))} />
+            <Box sx={{ display: 'grid', gridTemplateColumns: { sm: '1fr 1fr 1fr' }, gap: 1 }}>
+              <TextField label="City" value={address?.city ?? ''} onChange={(event) => setAddress((current) => ({ ...(current ?? { address1: '', province: '', postalCode: '', countryCode: 'CA' }), city: event.target.value }))} />
+              <TextField label="Province" value={address?.province ?? ''} onChange={(event) => setAddress((current) => ({ ...(current ?? { address1: '', city: '', postalCode: '', countryCode: 'CA' }), province: event.target.value.toUpperCase() }))} />
+              <TextField label="Postal code" value={address?.postalCode ?? ''} onChange={(event) => setAddress((current) => ({ ...(current ?? { address1: '', city: '', province: '', countryCode: 'CA' }), postalCode: event.target.value.toUpperCase() }))} />
+            </Box>
+            <Stack direction="row" spacing={1}><Button variant="contained" disabled={!address || addressSaving} onClick={() => { if (!address) return; setAddressSaving(true); void saveDeliveryAddress(address).finally(() => setAddressSaving(false)); }}>Save address</Button><Button color="error" disabled={!address || addressSaving} onClick={() => { setAddressSaving(true); void removeDeliveryAddress().then(() => setAddress(null)).finally(() => setAddressSaving(false)); }}>Remove address</Button></Stack>
+          </Box>}
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
             <Box>

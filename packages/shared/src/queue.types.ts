@@ -9,10 +9,6 @@ export const PUBSUB_CHANNELS = {
 
 export const JOB_NAMES = {
   CARD_OPTIMIZATION: 'optimize-card-list',
-  /** @deprecated id:>X chained pagination — replaced by the bucket flow. */
-  EXTRACT_STOREFRONT_COLLECTION: 'extract-storefront-collection',
-  /** @deprecated id-range bootstrap — replaced by STOREFRONT_PLAN. */
-  BOOTSTRAP_STOREFRONT_EXTRACTION: 'bootstrap-storefront-extraction',
   /**
    * Per-store plan job: probes the store's `created_at` range and fans out
    * one bucket job per year. Replaces the legacy id-based bootstrap.
@@ -43,11 +39,10 @@ export interface CardOptimizationJobData {
   conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
   maxDowngradeSteps?: number;
   downgradePenaltyPerStep?: number;
-  /** Frozen before queuing.  Never contains an address or a live cart id. */
+  /** Always the initial CA$3/store sourcing estimate. Never contains an address or cart id. */
   delivery: {
-    mode: 'quoted' | 'legacy';
+    mode: 'legacy';
     shippingCostByStoreKey: Record<string, number>;
-    selectedMethodByStoreKey: Record<string, { label: string; handle?: string }>;
   };
   enqueuedAt: number;
 }
@@ -65,57 +60,6 @@ export type PlatformType = 'shopify' | 'shopify_storefront' | 'conduct_commerce'
 export interface StoreDiscoveryConfig {
   discoveryEnabled: boolean;
   discoverySchedule?: string;
-}
-
-/**
- * Job data for extracting one page of products from Shopify Storefront API.
- * Each job fetches 250 products, processes them, then enqueues the next page.
- * With concurrency 5, pages from all stores interleave naturally.
- */
-export interface StorefrontExtractionJobData {
-  storeId: number;
-  /** Shopify product ID to start from (id:>lastId). Null for first page. */
-  lastId?: string | null;
-  /**
-   * Upper bound on Shopify product ID for this job (id:<=maxId).
-   * Used when a store's range is split into N parallel jobs by the bootstrap
-   * step. Omit for "no upper bound" (default behavior).
-   */
-  maxId?: string | null;
-  /** Scope query for this store (e.g. 'product_type:"MTG Single"') */
-  scope?: string;
-  /**
-   * ISO-8601 timestamp for incremental mode. When set, the query gets
-   * `updated_at:>'<value>'` appended so only products modified after this
-   * cutoff are returned. Propagated unchanged to next-page jobs so an
-   * entire run uses a single, stable cutoff.
-   */
-  updatedSince?: string;
-  priority?: number;
-  discoveryRunId?: number;
-  maxCardsAdded?: number;
-  /**
-   * Bumped by the @OnQueueFailed recovery handler each time a permanent
-   * failure auto-re-enqueues this job. Caps the recovery loop so a
-   * genuinely-broken page doesn't spin forever.
-   */
-  recoveryDepth?: number;
-}
-
-/**
- * Job data for the bootstrap phase that splits a store's ID range into N
- * parallel extraction jobs. Optional optimization triggered by passing
- * `splitRanges > 1` to the trigger endpoint.
- */
-export interface StorefrontBootstrapJobData {
-  storeId: number;
-  /** Number of parallel range jobs to create. */
-  splitRanges: number;
-  scope?: string;
-  /** Same as StorefrontExtractionJobData.updatedSince. Propagated to each range job. */
-  updatedSince?: string;
-  discoveryRunId?: number;
-  maxCardsAdded?: number;
 }
 
 /**
@@ -142,26 +86,10 @@ export interface ReextractUnmatchedJobResult {
 }
 
 /**
- * Result from extracting one page of products
- */
-export interface StorefrontExtractionJobResult {
-  storeId: number;
-  productsProcessed: number;
-  cardsAdded: number;
-  errors: number;
-  /** True if this was the last page (< 250 products returned) */
-  isLastPage: boolean;
-  success: boolean;
-  error?: string;
-}
-
-/**
  * Per-store plan job. Probes the store's `created_at` range and fans out
  * one bucket job per year between the min and max. The bucket jobs then
  * cursor-paginate within their date range.
  *
- * Replaces the legacy chained-pagination model (which silently lost
- * products due to Shopify's undocumented `id:>X` behaviour).
  */
 export interface StorefrontPlanJobData {
   storeId: number;

@@ -53,6 +53,7 @@ export function CardListPanel({
 }: CardListPanelProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const addAnchorRef = useRef<HTMLButtonElement | null>(null);
   const historyAnchorRef = useRef<HTMLButtonElement | null>(null);
 
@@ -67,6 +68,9 @@ export function CardListPanel({
     [entries, sortBy, results],
   );
   const bestCardsDisabled = !canAddBestCards || isAddingBestCards;
+  const visibleEntries = needsAttentionOnly
+    ? sortedEntries.filter((entry) => results[entry.name]?.state !== 'success')
+    : sortedEntries;
   const handleListScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       if (!hasMorePrices || isLoadingMorePrices) return;
@@ -157,6 +161,7 @@ export function CardListPanel({
             Sort by
           </Typography>
           <SortByMenu value={sortBy} onChange={onSortByChange} />
+          <Box component="button" type="button" onClick={() => setNeedsAttentionOnly((value) => !value)} sx={addBtnSx(needsAttentionOnly)}>{needsAttentionOnly ? 'Show all' : 'Needs attention'}</Box>
         </Box>
       </Box>
 
@@ -178,11 +183,11 @@ export function CardListPanel({
 
       {/* Scrollable list */}
       <Box sx={listSx} onScroll={handleListScroll}>
-        {sortedEntries.length === 0 ? (
+        {visibleEntries.length === 0 ? (
           <Box sx={emptyListSx}>No cards match your filters.</Box>
         ) : (
           <>
-            {sortedEntries.map((e) => (
+            {visibleEntries.map((e) => (
               <CardListRow
                 key={e.name}
                 name={e.name}

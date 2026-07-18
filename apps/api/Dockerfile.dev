@@ -14,9 +14,12 @@ COPY apps/api/package.json ./apps/api/
 RUN pnpm install --frozen-lockfile
 
 # Copy all source code
-COPY packages/shared ./packages/shared
-COPY packages/core ./packages/core
-COPY apps/api ./apps/api
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.build.json ./packages/shared/
+COPY packages/core/src ./packages/core/src
+COPY packages/core/tsconfig.json packages/core/tsconfig.build.json ./packages/core/
+COPY apps/api/src ./apps/api/src
+COPY apps/api/tsconfig.json apps/api/nest-cli.json ./apps/api/
 COPY tsconfig.json nx.json ./
 
 # Build using Nx (automatically builds dependencies)

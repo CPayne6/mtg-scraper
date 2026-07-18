@@ -129,6 +129,7 @@ jobs:
             apps/ui-v2/dist
             apps/scraper/dist
             apps/scheduler/dist
+            apps/optimizer/dist
             packages/core/dist
             packages/shared/dist
           key: ${{ runner.os }}-build-${{ github.sha }}
@@ -144,6 +145,7 @@ jobs:
             apps/ui-v2/dist
             apps/scraper/dist
             apps/scheduler/dist
+            apps/optimizer/dist
             packages/core/dist
             packages/shared/dist
           retention-days: 7
@@ -172,6 +174,8 @@ jobs:
             dockerfile: apps/scraper/Dockerfile
           - name: scheduler
             dockerfile: apps/scheduler/Dockerfile
+          - name: optimizer
+            dockerfile: apps/optimizer/Dockerfile
 
     steps:
       - name: Checkout code

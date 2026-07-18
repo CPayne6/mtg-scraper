@@ -1,4 +1,5 @@
 import type { CardWithStore } from '@scoutlgs/shared';
+import { getSession } from '@/api/auth';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
@@ -88,15 +89,14 @@ export interface FetchListOptimizationsInput {
   stores?: string[];
   conditionFlexibility?: 'strict' | 'allow-if-needed' | 'allow-if-cheaper';
   maxDowngradeSteps?: number;
-  quoteToken?: string;
-  selectedMethods?: Record<string, { label: string; handle?: string }>;
+  shippingCostByStoreKey?: Record<string, number>;
 }
 
-export type DeliveryMethod = { label: string; handle?: string; price: number };
+export type DeliveryMethod = { label: string; handle?: string; methodType?: string; price: number; currency: string };
+export type DeliveryGroup = { id?: string; options: DeliveryMethod[] };
+export type StoreDeliveryQuote = { state: 'quoted'; store: string; storeName: string; groups: DeliveryGroup[] } | { state: 'unavailable'; store: string; storeName: string };
 export type DeliveryOptionsResponse = {
-  methods: Record<string, DeliveryMethod[]>;
-  quoteToken: string;
-  expiresAt: number;
+  stores: StoreDeliveryQuote[];
 };
 export type DeliveryAddress = {
   address1: string;
@@ -158,11 +158,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  let response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
     credentials: 'include',
   });
+
+  // Auth can rotate its short-lived access token after a service restart.
+  // Refresh through the same-origin auth route once, then replay this
+  // idempotent browser request with its original JSON body and headers.
+  if (response.status === 401) {
+    await getSession().catch(() => undefined);
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    });
+  }
 
   if (!response.ok) {
     throw new ListsApiError(await readError(response), response.status);
@@ -195,16 +207,16 @@ export function createListOptimization(
   );
 }
 
-/** Addresses are sent only for this request; the API returns a token containing prices, not the address. */
+/** Addresses are used only for this request and are never returned or stored. */
 export function fetchDeliveryOptions(
   listId: string,
+  jobId: string,
   address: DeliveryAddress,
-  stores: string[],
   signal?: AbortSignal,
 ): Promise<DeliveryOptionsResponse> {
   return request<DeliveryOptionsResponse>(
-    `/api/v1/lists/${encodeURIComponent(listId)}/delivery-options`,
-    { method: 'POST', signal, body: JSON.stringify({ address, stores }) },
+    `/api/v1/lists/${encodeURIComponent(listId)}/optimizations/${encodeURIComponent(jobId)}/delivery-options`,
+    { method: 'POST', signal, headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: JSON.stringify({ address }) },
   );
 }
 

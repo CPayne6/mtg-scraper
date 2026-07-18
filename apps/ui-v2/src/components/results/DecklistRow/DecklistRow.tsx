@@ -2,24 +2,27 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import { RemoveShoppingCart } from '@mui/icons-material';
+import { AddShoppingCart } from '@mui/icons-material';
 import { DeleteOutline } from '@mui/icons-material';
 import type { DecklistRowProps } from './DecklistRow.types';
 import {
   cardNameButtonSx,
   containerSx,
   qtyBadgeSx,
-  cartStatusSx,
+  storeBtnSx,
 } from './DecklistRow.styles';
 
 export function DecklistRow({
   qty,
   name,
   meta,
-  cartOffer,
+  price,
+  store,
+  onStoreChange,
+  storeActionDisabled,
+  storeActionStatic,
   onOpenBuilder,
-  onRemoveFromCart,
-  onRemoveFromList,
+  onRemove,
 }: DecklistRowProps) {
   return (
     <Box sx={containerSx}>
@@ -47,7 +50,7 @@ export function DecklistRow({
           {meta}
           <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>
             {' · '}
-            {cartOffer ? cartOffer.store : 'Not in cart'}
+            {store}
           </Box>
         </Typography>
       </Box>
@@ -59,29 +62,26 @@ export function DecklistRow({
           whiteSpace: 'nowrap',
         }}
       >
-        {cartOffer ? `CA$${cartOffer.price.toFixed(2)}` : 'Not in cart'}
+        CA${price.toFixed(2)}
       </Typography>
-      <Box
-        sx={cartStatusSx}
+      {storeActionStatic ? <Box sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>{store}</Box> : <Box
+        component="button"
+        type="button"
+        onClick={onStoreChange}
+        disabled={storeActionDisabled}
+        aria-label={`Add ${name} from ${store} to cart`}
+        sx={storeBtnSx(storeActionDisabled)}
       >
+        <AddShoppingCart sx={{ fontSize: 14, flexShrink: 0 }} />
         <Box component="span" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {cartOffer ? cartOffer.store : 'Not in cart'}
+          {store}
         </Box>
-      </Box>
-      {cartOffer && (
-        <Tooltip title="Remove selected offer from cart">
-          <IconButton size="small" aria-label={`Remove ${name} from cart`} onClick={onRemoveFromCart}>
-            <RemoveShoppingCart sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip>
-      )}
-      {!cartOffer && (
-        <Tooltip title="Remove from list">
-          <IconButton size="small" aria-label={`Remove ${name} from list`} onClick={onRemoveFromList}>
-            <DeleteOutline sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip>
-      )}
+      </Box>}
+      <Tooltip title="Remove from list">
+        <IconButton size="small" aria-label={`Remove ${name} from list`} onClick={onRemove}>
+          <DeleteOutline sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 }

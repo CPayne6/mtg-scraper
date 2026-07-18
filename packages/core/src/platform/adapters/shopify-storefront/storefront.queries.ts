@@ -119,14 +119,11 @@ export const SEARCH_PRODUCTS_QUERY = `
 `;
 
 /**
- * Root products query with full variant details, sorted by ID.
- * Used by the legacy `id:>X` pagination path. Being replaced by the
- * created_at + cursor strategy in PRODUCTS_BY_CREATED_AT_QUERY — once
- * the migration is done this whole query can go.
+ * Root products query with full variant details for exact product lookups.
  *
- * Variables: $query (filter string including id:>X), $first.
+ * Variables: $query (for example `id:X OR id:Y`), $first.
  */
-export const PRODUCTS_QUERY = `
+export const PRODUCTS_BY_QUERY = `
   query ProductsByQuery($query: String!, $first: Int!) {
     products(first: $first, query: $query, sortKey: ID) {
       edges {
@@ -239,35 +236,6 @@ export const PRODUCTS_BY_CREATED_AT_QUERY = `
       pageInfo {
         hasNextPage
         endCursor
-      }
-    }
-  }
-`;
-
-/**
- * Lightweight query returning only the product ID, sorted by ID.
- * Used to bootstrap min/max ID discovery for range-split extraction.
- * The `reverse: true` variant is requested via a separate query string.
- */
-export const PRODUCT_ID_ASC_QUERY = `
-  query ProductIdAsc($query: String!) {
-    products(first: 1, query: $query, sortKey: ID) {
-      edges {
-        node {
-          id
-        }
-      }
-    }
-  }
-`;
-
-export const PRODUCT_ID_DESC_QUERY = `
-  query ProductIdDesc($query: String!) {
-    products(first: 1, query: $query, sortKey: ID, reverse: true) {
-      edges {
-        node {
-          id
-        }
       }
     }
   }
