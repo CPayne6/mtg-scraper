@@ -7,6 +7,7 @@ export const validationSchema = Joi.object({
   AUTH_DATABASE_PORT: Joi.number().default(5433),
   AUTH_DATABASE_USER: Joi.string().default('postgres'),
   AUTH_DATABASE_PASSWORD: Joi.string().default('postgres'),
+  AUTH_DATABASE_PASSWORD_FILE: Joi.string().optional(),
   AUTH_DATABASE_NAME: Joi.string().default('scoutlgs_auth'),
   EXTRACTION_ENABLED: Joi.string().default('false'),
   EXTRACTION_CRON_TIME: Joi.string().default('0 1 * * *'),

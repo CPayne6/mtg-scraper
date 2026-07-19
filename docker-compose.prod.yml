@@ -229,6 +229,11 @@ services:
       - DATABASE_PORT=5432
       - DATABASE_NAME=scoutlgs
       - DATABASE_USER=postgres
+      - AUTH_DATABASE_HOST=auth-postgres
+      - AUTH_DATABASE_PORT=5432
+      - AUTH_DATABASE_NAME=scoutlgs_auth
+      - AUTH_DATABASE_USER=postgres
+      - AUTH_DATABASE_PASSWORD_FILE=/run/secrets/auth_database_password
       - PORT=5001
       - USE_DOCKER_SECRETS=true
       - EXTRACTION_ENABLED=true
@@ -245,9 +250,11 @@ services:
       - "5001:5001"
     secrets:
       - scheduler_database_password
+      - auth_database_password
     networks:
       - redis-network
       - postgres-network
+      - auth-postgres-network
       - scheduler-internal-network
     healthcheck:
       test: ["CMD", "pgrep", "-f", "node dist/main.js"]
