@@ -12,6 +12,7 @@ import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import CloseIcon from '@mui/icons-material/Close';
@@ -803,7 +804,7 @@ function BuilderRoute() {
                 <Button size="small" variant={pickup ? 'text' : 'contained'} onClick={() => setEstimatedShippingByStore((current) => ({ ...current, [store]: current[store] === 0 ? 3 : current[store] ?? 3 }))} sx={{ minWidth: 52, borderRadius: 0 }}>Ship</Button>
                 <Button size="small" variant={pickup ? 'contained' : 'text'} onClick={() => setEstimatedShippingByStore((current) => ({ ...current, [store]: 0 }))} sx={{ minWidth: 58, borderRadius: 0 }}>Pickup</Button>
               </Box>
-              <TextField size="small" type="number" disabled={pickup} value={pickup ? '' : estimatedShippingByStore[store] ?? 3} onChange={(event) => setEstimatedShippingByStore((current) => ({ ...current, [store]: Math.max(0, Number(event.target.value) || 0) }))} inputProps={{ min: 0, max: 1000, step: 0.01 }} sx={{ width: 120, '& input[type=number]': { MozAppearance: 'textfield' }, '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': { WebkitAppearance: 'none', margin: 0 } }} />
+              <TextField size="small" type="number" disabled={pickup} value={pickup ? '' : (estimatedShippingByStore[store] ?? 3).toFixed(2)} onChange={(event) => setEstimatedShippingByStore((current) => ({ ...current, [store]: Math.max(0, Number(event.target.value) || 0) }))} inputProps={{ min: 0, max: 1000, step: 0.01 }} slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }} sx={{ width: 120, '& input[type=number]': { MozAppearance: 'textfield' }, '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': { WebkitAppearance: 'none', margin: 0 } }} />
             </Box>;
             })}
           </> : <>
