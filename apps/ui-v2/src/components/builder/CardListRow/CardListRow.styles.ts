@@ -1,7 +1,7 @@
 import type { SxProps, Theme } from '@mui/material/styles';
 import { ROW_GRADIENT } from './CardListRow.utils';
 
-export const containerSx = (selected: boolean): SxProps<Theme> => (theme) => ({
+export const containerSx: SxProps<Theme> = {
   position: 'relative',
   height: 46,
   mb: '4px',
@@ -12,15 +12,11 @@ export const containerSx = (selected: boolean): SxProps<Theme> => (theme) => ({
   transition:
     'transform 120ms cubic-bezier(0.4, 0, 0.2, 1), outline-color 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   isolation: 'isolate',
-  outline: selected
-    ? `2px solid ${theme.palette.honey.main}`
-    : '0 solid transparent',
-  outlineOffset: selected ? '-2px' : 0,
   '&:hover': { transform: 'translateX(2px)' },
   '&:hover .row-remove-btn, &:focus-within .row-remove-btn': {
     opacity: 1,
   },
-});
+};
 
 export const gradientOverlaySx: SxProps<Theme> = {
   position: 'absolute',
@@ -28,13 +24,31 @@ export const gradientOverlaySx: SxProps<Theme> = {
   background: ROW_GRADIENT,
 };
 
+/**
+ * Selection must be a layer above the card art: an inset shadow on the row
+ * itself is obscured by the absolutely positioned art image.
+ */
+export const selectedHighlightSx: SxProps<Theme> = (theme) => ({
+  position: 'absolute',
+  inset: 0,
+  // Deliberately above all row layers, including the artwork and text. The
+  // frame has no hit target, so it cannot affect selecting/removing a card.
+  zIndex: 4,
+  pointerEvents: 'none',
+  borderRadius: 'inherit',
+  boxSizing: 'border-box',
+  border: `3px solid ${theme.palette.honey.main}`,
+  background: `linear-gradient(90deg, ${theme.palette.honey.main}66, ${theme.palette.honey.main}24 58%, transparent)`,
+  boxShadow: `inset 0 0 20px ${theme.palette.honey.main}, 0 0 0 1px ${theme.palette.honey.dark}`,
+});
+
 export const innerSx: SxProps<Theme> = {
   position: 'relative',
   height: '100%',
   display: 'flex',
   alignItems: 'center',
   padding: '0 42px 0 14px',
-  zIndex: 1,
+  zIndex: 2,
 };
 
 export const nameSx: SxProps<Theme> = {
@@ -61,7 +75,7 @@ export const inCartBadgeSx: SxProps<Theme> = (theme) => ({
   justifyContent: 'center',
   cursor: 'not-allowed',
   color: '#fff',
-  zIndex: 2,
+  zIndex: 3,
   background: theme.palette.primary.main,
   boxShadow: `0 0 0 2px ${theme.palette.onImageOutline}`,
 });
@@ -78,7 +92,7 @@ export const removeBtnSx: SxProps<Theme> = {
   background: 'rgba(0,0,0,0.45)',
   color: 'rgba(255,255,255,0.9)',
   opacity: 0.85,
-  zIndex: 2,
+  zIndex: 3,
   transition:
     'opacity 120ms cubic-bezier(0.4, 0, 0.2, 1), background 120ms cubic-bezier(0.4, 0, 0.2, 1), color 120ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
