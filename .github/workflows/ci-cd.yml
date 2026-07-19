@@ -217,6 +217,7 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VITE_API_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca/api' || '' }}
+            VITE_AUTH_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca' || '' }}
             VITE_ADSENSE_CLIENT_ID=${{ matrix.service.name == 'ui' && vars.VITE_ADSENSE_CLIENT_ID || '' }}
             VITE_AD_SLOT_BANNER=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_BANNER || '' }}
             VITE_AD_SLOT_LEFT=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_LEFT || '' }}

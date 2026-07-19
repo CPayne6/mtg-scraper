@@ -38,7 +38,13 @@ validate_secrets() {
         "cloudflare_tunnel_token"
         "api_frontend_url"
         "api_database_password"
+        "auth_database_password"
+        "auth_jwt_private_key"
+        "auth_token_hash_secret"
+        "auth_google_client_id"
+        "auth_google_client_secret"
         "ui_vite_api_url"
+        "scheduler_database_password"
         "scraper_database_password"
         "optimizer_database_password"
         "scraper_webshare_username"
@@ -109,31 +115,34 @@ create_backup() {
     log_info "Backup created: $BACKUP_FILE"
 }
 
-# Function to run database migrations
-# Returns 1 on failure to trigger rollback
+# Function to run a service's production migrations with its Docker secret.
+# docker exec bypasses the image entrypoint, so DATABASE_PASSWORD must be read
+# directly from the mounted secret for the TypeORM CLI.
 run_migrations() {
-    log_info "Running database migrations..."
+    local service=$1
+    local database_secret=$2
+    local container
 
-    # Wait for API container to be fully ready
+    log_info "Running ${service} database migrations..."
     sleep 5
 
-    # Get API container ID (may have multiple replicas, get the first running one)
-    API_CONTAINER=$(docker ps -q -f name="${STACK_NAME}_api" | head -1)
+    # Get the first running service container.
+    container=$(docker ps -q -f name="${STACK_NAME}_${service}" | head -1)
 
-    if [ -z "$API_CONTAINER" ]; then
-        log_error "API container not found - cannot run migrations"
+    if [ -z "$container" ]; then
+        log_error "${service} container not found - cannot run migrations"
         return 1
     fi
 
-    log_info "Running migrations in container: $API_CONTAINER"
+    log_info "Running migrations in container: $container"
 
-    # Run production migrations inside the container
-    # Uses compiled JS files via migration:run:prod script
-    if docker exec "$API_CONTAINER" npm run migration:run:prod; then
-        log_info "Migrations completed successfully"
+    if docker exec \
+        -e DATABASE_PASSWORD_FILE="/run/secrets/${database_secret}" \
+        "$container" npm run migration:run:prod; then
+        log_info "${service} migrations completed successfully"
         return 0
     else
-        log_error "Migration failed - this is a critical error"
+        log_error "${service} migrations failed - this is a critical error"
         return 1
     fi
 }
@@ -240,15 +249,29 @@ deploy() {
         exit 1
     fi
 
-    # Run database migrations after postgres is healthy
-    # Migrations must complete successfully before API can serve traffic
-    if ! run_migrations; then
+    if ! check_service_health "auth-postgres"; then
+        rollback
+        exit 1
+    fi
+
+    # Both services use separate databases and compiled production migrations.
+    if ! run_migrations "auth" "auth_database_password"; then
+        rollback
+        exit 1
+    fi
+
+    if ! run_migrations "api" "api_database_password"; then
         rollback
         exit 1
     fi
 
     # Check application services
     if ! check_service_health "api"; then
+        rollback
+        exit 1
+    fi
+
+    if ! check_service_health "auth"; then
         rollback
         exit 1
     fi
