@@ -43,6 +43,7 @@ export function CardListPanel({
   onSortByChange,
   results,
   inCartByName,
+  cartPriceByName,
   history,
   existingNames,
   onAddCard,
@@ -213,6 +214,7 @@ export function CardListPanel({
                 name={e.name}
                 selected={selectedName === e.name}
                 inCart={inCartByName(e.name)}
+                cartPrice={cartPriceByName(e.name)}
                 onSelect={() => onSelect(e.name)}
                 onRemove={onRemoveCard}
               />

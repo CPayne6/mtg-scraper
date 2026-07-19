@@ -10,6 +10,7 @@ import {
   gradientOverlaySx,
   innerSx,
   nameSx,
+  cartPriceSx,
   inCartBadgeSx,
   removeBtnSx,
 } from './CardListRow.styles';
@@ -18,6 +19,7 @@ export function CardListRow({
   name,
   selected,
   inCart,
+  cartPrice,
   onSelect,
   onRemove,
 }: CardListRowProps) {
@@ -50,12 +52,17 @@ export function CardListRow({
       {/* Gradient overlay */}
       <Box aria-hidden="true" sx={gradientOverlaySx} />
       {/* Inner */}
-      <Box sx={innerSx}>
+      <Box sx={innerSx(inCart)}>
         <Box component="span" sx={nameSx}>
           {name}
         </Box>
       </Box>
       {/* Right-edge status / remove slot */}
+      {inCart && cartPrice !== undefined && (
+        <Box component="span" sx={cartPriceSx}>
+          CA${cartPrice.toFixed(2)}
+        </Box>
+      )}
       {inCart ? (
         <Tooltip
           title="In cart — remove from cart first to delete from list"

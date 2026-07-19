@@ -11,6 +11,7 @@ export type CardListPanelProps = {
   onSortByChange: (sortBy: SortBy) => void;
   results: Record<string, PriceLookupState>;
   inCartByName: (name: string) => boolean;
+  cartPriceByName: (name: string) => number | undefined;
   history: ListHistoryEntry[];
   existingNames: string[];
   onAddCard: (name: string) => void;
