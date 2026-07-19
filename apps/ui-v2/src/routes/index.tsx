@@ -80,7 +80,7 @@ function HomeRoute() {
             lineHeight: 1.05,
           }}
         >
-          Find Magic cards you need
+          Find the Magic cards you need
         </Typography>
         <Typography
           sx={{
