@@ -21,4 +21,21 @@ describe('Art Series title detection', () => {
       extractor.parseTitle('Liberator, Urza’s Battlethopter - Art Series (Gold-Stamped Signature)'),
     ).toMatchObject({ isArtSeries: true, cardName: '' });
   });
+
+  it.each(extractors)('%s excludes Art Card products before matching', (_store, extractor) => {
+    expect(
+      extractor.parseTitle('Titania, Protector of Argoth Art Card - Modern Horizons 2 Art Series'),
+    ).toMatchObject({ isArtSeries: true, cardName: '' });
+  });
+
+  it.each([
+    'Titania, Protector of Argoth - Art-Card',
+    'Titania, Protector of Argoth - art_series',
+    'Titania, Protector of Argoth - ArtCard',
+  ])('recognizes separator variations: %s', (title) => {
+    expect(new CgRealmCardDetailExtractor().parseTitle(title)).toMatchObject({
+      isArtSeries: true,
+      cardName: '',
+    });
+  });
 });
