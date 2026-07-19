@@ -355,7 +355,7 @@ function BuilderRoute() {
       const created = await createListOptimization(listId, {
         stores: selectedStores,
         minimumCondition: optimizationMinimumCondition,
-        conditionFlexibility: 'allow-if-needed',
+        conditionFlexibility: 'allow-if-cheaper',
         maxDowngradeSteps: 2,
         shippingCostByStoreKey,
       });
