@@ -18,6 +18,8 @@ const DEFAULT_SHIPPING = 3;
 const DEFAULT_BUDGET_MS = 60_000;
 /** A condition downgrade must save enough to be worth the reduced quality. */
 export const MIN_DOWNGRADE_SAVINGS_PERCENT = 0.25;
+/** Avoid a condition downgrade when its absolute saving is less than a dollar. */
+export const MIN_DOWNGRADE_SAVINGS_AMOUNT = 1;
 /** Do not automatically trade condition for savings on inexpensive cards. */
 export const MIN_BASELINE_PRICE_FOR_DOWNGRADE = 2;
 const MIN_DOWNGRADE_CONDITION = Condition.MP;
@@ -152,7 +154,10 @@ function applyDowngradeSavingsPolicy(
     if (!baseline || baseline.price < MIN_BASELINE_PRICE_FOR_DOWNGRADE) {
       return false;
     }
-    return item.price <= baseline.price * (1 - MIN_DOWNGRADE_SAVINGS_PERCENT);
+    return (
+      item.price <= baseline.price * (1 - MIN_DOWNGRADE_SAVINGS_PERCENT) &&
+      baseline.price - item.price >= MIN_DOWNGRADE_SAVINGS_AMOUNT
+    );
   });
 }
 
