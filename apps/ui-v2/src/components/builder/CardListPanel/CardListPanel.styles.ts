@@ -158,6 +158,28 @@ export const loadMorePricesBtnSx = (
       },
 });
 
+export const cartFilterBtnSx = (active: boolean): SxProps<Theme> => (theme) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  padding: '6px 9px',
+  borderRadius: '8px',
+  border: `1px solid ${active ? theme.palette.primary.main : theme.palette.divider}`,
+  background: active ? theme.palette.primary.main : theme.palette.background.paper,
+  color: active ? '#fff' : theme.palette.text.secondary,
+  fontSize: '12px',
+  fontWeight: 600,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  transition:
+    'background 120ms cubic-bezier(0.4, 0, 0.2, 1), border-color 120ms cubic-bezier(0.4, 0, 0.2, 1), color 120ms cubic-bezier(0.4, 0, 0.2, 1)',
+  '&:hover': {
+    borderColor: theme.palette.primary.main,
+    background: active ? theme.palette.primary.dark : theme.palette.background.default,
+    color: active ? '#fff' : theme.palette.text.primary,
+  },
+});
+
 export const footerSx: SxProps<Theme> = (theme) => ({
   padding: '12px 14px',
   borderTop: `1px solid ${theme.palette.divider}`,
