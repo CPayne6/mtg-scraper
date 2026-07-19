@@ -16,6 +16,13 @@ const CONDITION_RANK: Record<Condition, number> = {
 };
 const DEFAULT_SHIPPING = 3;
 const DEFAULT_BUDGET_MS = 60_000;
+/** A condition downgrade must save enough to be worth the reduced quality. */
+export const MIN_DOWNGRADE_SAVINGS_PERCENT = 0.25;
+/** Avoid a condition downgrade when its absolute saving is less than a dollar. */
+export const MIN_DOWNGRADE_SAVINGS_AMOUNT = 1;
+/** Do not automatically trade condition for savings on inexpensive cards. */
+export const MIN_BASELINE_PRICE_FOR_DOWNGRADE = 2;
+const MIN_DOWNGRADE_CONDITION = Condition.MP;
 
 export function normalizeCondition(value: Condition | string | null | undefined): Condition {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -117,8 +124,44 @@ function prepareCandidates(
       };
     })
       .filter((candidate): candidate is SelectedCartOffer => candidate !== null);
-    applyConditionValue(prepared, options);
-    return prepared;
+    const valueEligible = applyDowngradeSavingsPolicy(prepared, options);
+    applyConditionValue(valueEligible, options);
+    return valueEligible;
+  });
+}
+
+/**
+ * `allow-if-cheaper` is deliberately value-aware: a lower-condition copy is
+ * eligible only when it remains at least MP and has a material saving over
+ * the cheapest copy that satisfies the requested condition. When no selected
+ * store has a copy at the requested condition, MP-or-better is allowed as a
+ * needed fallback. This avoids automatically downgrading inexpensive cards
+ * for pennies of savings while still filling cards that otherwise cannot be
+ * bought at all.
+ */
+function applyDowngradeSavingsPolicy(
+  items: SelectedCartOffer[],
+  options: CartOptimizationOptions,
+): SelectedCartOffer[] {
+  if (options.conditionFlexibility?.mode !== 'allow-if-cheaper') return items;
+
+  const baseline = items
+    .filter((item) => item.meetsMinimumCondition)
+    .sort((a, b) => a.price - b.price)[0];
+
+  return items.filter((item) => {
+    if (item.meetsMinimumCondition) return true;
+    if (CONDITION_RANK[item.condition] < CONDITION_RANK[MIN_DOWNGRADE_CONDITION]) {
+      return false;
+    }
+    // No at-or-above-minimum offer exists in the selected candidate pool, so
+    // this is an "if needed" fallback rather than a price-driven downgrade.
+    if (!baseline) return true;
+    if (baseline.price < MIN_BASELINE_PRICE_FOR_DOWNGRADE) return false;
+    return (
+      item.price <= baseline.price * (1 - MIN_DOWNGRADE_SAVINGS_PERCENT) &&
+      baseline.price - item.price >= MIN_DOWNGRADE_SAVINGS_AMOUNT
+    );
   });
 }
 
