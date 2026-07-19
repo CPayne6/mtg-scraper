@@ -6,11 +6,13 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
-import Paper from '@mui/material/Paper';
+import Accordion from '@mui/material/Accordion';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import AccordionSummary from '@mui/material/AccordionSummary';
 import LinearProgress from '@mui/material/LinearProgress';
 import Alert from '@mui/material/Alert';
 import Select from '@mui/material/Select';
-import { ChevronLeft } from '@mui/icons-material';
+import { ChevronLeft, ExpandMore } from '@mui/icons-material';
 import { Construction } from '@mui/icons-material';
 import { MoreVert } from '@mui/icons-material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -337,15 +339,22 @@ function ListDetailRoute() {
         />
       </Box>
 
-      <Paper sx={{ p: { xs: 3, md: 4 }, borderRadius: 3, boxShadow: 2 }}>
-        <Box
-          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5 }}
-        >
+      <Accordion
+        disableGutters
+        elevation={2}
+        sx={{ borderRadius: '12px !important', overflow: 'hidden', '&:before': { display: 'none' } }}
+      >
+        <AccordionSummary expandIcon={<ExpandMore />} sx={{ px: { xs: 3, md: 4 }, minHeight: 76, '& .MuiAccordionSummary-content': { my: 2 } }}>
           <Typography variant="h3">
             Cards - {displayedEntries.length}
             {cardFilter !== 'all' ? ` / ${entries.length}` : ''}
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
+        </AccordionSummary>
+        <AccordionDetails sx={{ px: { xs: 3, md: 4 }, pb: { xs: 3, md: 4 } }}>
+        <Box
+          sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2.5 }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Select
               size="small"
               value={cardFilter}
@@ -395,7 +404,8 @@ function ListDetailRoute() {
             );
           })}
         </Stack>
-      </Paper>
+        </AccordionDetails>
+      </Accordion>
     </Container>
   );
 }

@@ -28,6 +28,7 @@ import { useAuth } from '@/components/auth/AuthContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { groupByName } from '@/utils/parseDeckList';
+import { formatCurrency } from '@/utils/formatCurrency';
 import type { PriceLookupState } from '@/hooks/useListPrices';
 import { useListEditor } from '@/hooks/useListEditor';
 import { BuilderFilterBar } from '@/components/builder/BuilderFilterBar';
@@ -792,7 +793,7 @@ function BuilderRoute() {
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 120px', alignItems: 'end', gap: 1 }}>
               <Box sx={{ fontWeight: 700, fontSize: 14 }}>Estimated shipping</Box>
               <Box />
-              <Box sx={{ fontWeight: 700, fontSize: 14, textAlign: 'right' }}>Cost (CA$)</Box>
+              <Box sx={{ fontWeight: 700, fontSize: 14, textAlign: 'right' }}>Cost ($)</Box>
             </Box>
             {selectedStores.map((store) => {
               const pickup = estimatedShippingByStore[store] === 0;
@@ -810,17 +811,17 @@ function BuilderRoute() {
             {deliveryQuote.stores.map((store) => <Box key={store.store} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.25 }}>
               <Box sx={{ fontWeight: 700 }}>{store.storeName || STORE_LABEL_BY_KEY[store.store] || store.store}</Box>
               {store.state === 'unavailable' ? <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
-                <Box sx={{ fontSize: 13, color: 'warning.main' }}>Shopify quote unavailable — editable estimated shipping: CA$3.00</Box>
+                <Box sx={{ fontSize: 13, color: 'warning.main' }}>Shopify quote unavailable — editable estimated shipping: {formatCurrency(3)}</Box>
                 <TextField select size="small" label="Delivery assumption" value={selectedDeliveryMethods[`${store.store}:fallback`] ?? 'estimated'} onChange={(event) => setSelectedDeliveryMethods((current) => ({ ...current, [`${store.store}:fallback`]: event.target.value }))}>
-                  <MenuItem value="estimated">Estimated shipping — CA$3.00</MenuItem><MenuItem value="pickup">Assume pickup — CA$0.00</MenuItem><MenuItem value="letter">Assume letter mail — CA$3.00</MenuItem>
+                  <MenuItem value="estimated">Estimated shipping — {formatCurrency(3)}</MenuItem><MenuItem value="pickup">Assume pickup — {formatCurrency(0)}</MenuItem><MenuItem value="letter">Assume letter mail — {formatCurrency(3)}</MenuItem>
                 </TextField>
               </Box> : store.groups.map((group, groupIndex) => {
                 const key = `${store.store}:${groupIndex}`;
                 return <Box key={group.id ?? key} sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
                   <Box sx={{ fontSize: 13, color: 'text.secondary' }}>Delivery group {groupIndex + 1} · verified</Box>
                   <TextField select size="small" label="Method" value={selectedDeliveryMethods[key] ?? 'pickup'} onChange={(event) => setSelectedDeliveryMethods((current) => ({ ...current, [key]: event.target.value }))}>
-                    {group.options.map((method) => <MenuItem key={`verified:${method.handle ?? method.label}`} value={`verified:${method.handle ?? method.label}`}>{method.label} — {method.currency === 'CAD' ? 'CA$' : `${method.currency} `}{method.price.toFixed(2)}{method.methodType ? ` (${method.methodType})` : ''}</MenuItem>)}
-                    <MenuItem value="pickup">Assume pickup — CA$0.00</MenuItem><MenuItem value="letter">Assume letter mail — CA$3.00</MenuItem>
+                    {group.options.map((method) => <MenuItem key={`verified:${method.handle ?? method.label}`} value={`verified:${method.handle ?? method.label}`}>{method.label} — {formatCurrency(method.price, method.currency)}{method.methodType ? ` (${method.methodType})` : ''}</MenuItem>)}
+                    <MenuItem value="pickup">Assume pickup — {formatCurrency(0)}</MenuItem><MenuItem value="letter">Assume letter mail — {formatCurrency(3)}</MenuItem>
                   </TextField>
                 </Box>;
               })}
@@ -829,7 +830,7 @@ function BuilderRoute() {
         </DialogContent>
         <DialogActions>
           <Button color="inherit" onClick={() => setDeliveryOpen(false)} disabled={deliveryLoading}>Cancel</Button>
-          {ADDRESS_DELIVERY_QUOTES_ENABLED && <Button variant="outlined" color="inherit" onClick={skipDeliveryQuotes} disabled={deliveryLoading}>Skip (estimate CA$3/store)</Button>}
+          {ADDRESS_DELIVERY_QUOTES_ENABLED && <Button variant="outlined" color="inherit" onClick={skipDeliveryQuotes} disabled={deliveryLoading}>Skip (estimate {formatCurrency(3)}/store)</Button>}
           {!deliveryQuote && ADDRESS_DELIVERY_QUOTES_ENABLED
             ? <Button variant="contained" onClick={() => void loadDeliveryOptions()} disabled={deliveryLoading || !deliveryAddress.address1 || !deliveryAddress.city || !deliveryAddress.province || !deliveryAddress.postalCode}>{deliveryLoading ? 'Getting quotes…' : 'Get delivery options'}</Button>
             : !deliveryQuote ? <Button variant="contained" onClick={startEstimatedFill}>Fill Best Cards</Button>
