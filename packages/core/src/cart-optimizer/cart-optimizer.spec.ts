@@ -183,6 +183,25 @@ describe('optimizeCart', () => {
     });
   });
 
+  it('uses an MP-or-better fallback only when no offer meets the requested condition', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Unavailable Near Mint Card', Condition.NM)],
+      candidates: [
+        candidate('Unavailable Near Mint Card', {
+          price: 1.5,
+          condition: Condition.MP,
+        }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.MP,
+      price: 1.5,
+      meetsMinimumCondition: false,
+    });
+  });
+
   it('keeps the requested condition when a downgrade saves less than 25 percent', () => {
     const result = optimizeCart({
       wantedCards: [wanted('Fetchland', Condition.NM)],

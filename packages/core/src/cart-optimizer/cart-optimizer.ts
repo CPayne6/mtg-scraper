@@ -133,8 +133,11 @@ function prepareCandidates(
 /**
  * `allow-if-cheaper` is deliberately value-aware: a lower-condition copy is
  * eligible only when it remains at least MP and has a material saving over
- * the cheapest copy that satisfies the requested condition. This avoids
- * automatically downgrading inexpensive cards for pennies of savings.
+ * the cheapest copy that satisfies the requested condition. When no selected
+ * store has a copy at the requested condition, MP-or-better is allowed as a
+ * needed fallback. This avoids automatically downgrading inexpensive cards
+ * for pennies of savings while still filling cards that otherwise cannot be
+ * bought at all.
  */
 function applyDowngradeSavingsPolicy(
   items: SelectedCartOffer[],
@@ -151,9 +154,10 @@ function applyDowngradeSavingsPolicy(
     if (CONDITION_RANK[item.condition] < CONDITION_RANK[MIN_DOWNGRADE_CONDITION]) {
       return false;
     }
-    if (!baseline || baseline.price < MIN_BASELINE_PRICE_FOR_DOWNGRADE) {
-      return false;
-    }
+    // No at-or-above-minimum offer exists in the selected candidate pool, so
+    // this is an "if needed" fallback rather than a price-driven downgrade.
+    if (!baseline) return true;
+    if (baseline.price < MIN_BASELINE_PRICE_FOR_DOWNGRADE) return false;
     return (
       item.price <= baseline.price * (1 - MIN_DOWNGRADE_SAVINGS_PERCENT) &&
       baseline.price - item.price >= MIN_DOWNGRADE_SAVINGS_AMOUNT
