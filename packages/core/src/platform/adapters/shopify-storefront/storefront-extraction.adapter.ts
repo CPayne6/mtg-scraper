@@ -139,6 +139,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     products: Array<{
       shopifyProductId: string;
       handle: string;
+      rawProductTitle: string;
       updatedAt: Date;
       isArtSeries: boolean;
       variants: ExtractedCardVariant[];
@@ -154,6 +155,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     return { products: edges.map(({ node: product }) => ({
       shopifyProductId: product.id.split('/').pop()!,
       handle: product.handle,
+      rawProductTitle: product.title,
       updatedAt: new Date(product.updatedAt),
       isArtSeries: this.isArtSeriesProduct(store, product),
       variants: this.extractVariantsFromProduct(store, product),
@@ -189,6 +191,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     products: Array<{
       shopifyProductId: string;
       handle: string;
+      rawProductTitle: string;
       updatedAt: Date;
       isArtSeries: boolean;
       variants: ExtractedCardVariant[];
@@ -218,6 +221,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const products = edges.map(({ node: product }) => ({
       shopifyProductId: product.id.split('/').pop()!,
       handle: product.handle,
+      rawProductTitle: product.title,
       updatedAt: new Date(product.updatedAt),
       isArtSeries: this.isArtSeriesProduct(store, product),
       variants: this.extractVariantsFromProduct(store, product),

@@ -45,6 +45,10 @@ export class ShopifyProduct {
   @Column({ name: 'store_id' })
   storeId: number;
 
+  /** Exact title returned by Shopify, retained for auditing and future re-matching. */
+  @Column({ name: 'raw_product_title', length: 500, nullable: true })
+  rawProductTitle: string | null;
+
   @ManyToOne(() => ProductUrl, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'product_url_id' })
   productUrl: ProductUrl;

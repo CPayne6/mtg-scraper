@@ -376,6 +376,7 @@ describe('StorefrontExtractionAdapter', () => {
 
       expect(result.products).toHaveLength(1);
       expect(result.products[0].handle).toBe(product.handle);
+      expect(result.products[0].rawProductTitle).toBe(product.title);
       expect(result.nextCursor).toBe('next-cursor');
     });
 

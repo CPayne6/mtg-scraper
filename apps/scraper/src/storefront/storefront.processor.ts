@@ -30,6 +30,7 @@ import { PrintingMatcherService } from '../extraction/printing-matcher.service';
 interface ExtractedProduct {
   shopifyProductId: string;
   handle: string;
+  rawProductTitle: string;
   updatedAt: Date;
   isArtSeries?: boolean;
   variants: ExtractedCardVariant[];
@@ -560,6 +561,11 @@ export class StorefrontProcessor implements OnModuleInit {
       }
     }
 
+    await this.bulkUpdateShopifyProductTitles(
+      storeId,
+      knownProducts.map(({ product }) => product),
+    );
+
     // Step 4: New products — full pipeline
     if (newProducts.length > 0) {
       const productUrlMap = await this.bulkUpsertProductUrls(
@@ -575,6 +581,7 @@ export class StorefrontProcessor implements OnModuleInit {
         matchStatus: string;
         isToken: boolean;
         cardListingId: number | null;
+        rawProductTitle: string;
       }[] = [];
 
       for (const product of newProducts) {
@@ -622,6 +629,7 @@ export class StorefrontProcessor implements OnModuleInit {
               matchStatus,
               isToken,
               cardListingId,
+              rawProductTitle: product.rawProductTitle,
             });
           } else {
             errors++;
@@ -635,6 +643,7 @@ export class StorefrontProcessor implements OnModuleInit {
               matchStatus: 'unmatched',
               isToken: false,
               cardListingId: null,
+              rawProductTitle: product.rawProductTitle,
             });
           }
         } catch (error) {
@@ -693,6 +702,7 @@ export class StorefrontProcessor implements OnModuleInit {
               matchStatus: 'excluded',
               isToken: false,
               cardListingId: null,
+              rawProductTitle: product.rawProductTitle,
             }]
           : [];
       }),
@@ -747,6 +757,7 @@ export class StorefrontProcessor implements OnModuleInit {
       matchStatus: string;
       isToken: boolean;
       cardListingId: number | null;
+      rawProductTitle: string;
     }[],
   ): Promise<void> {
     if (inserts.length === 0) return;
@@ -759,6 +770,7 @@ export class StorefrontProcessor implements OnModuleInit {
         inserts.map((row) => ({
           shopifyProductId: row.shopifyProductId,
           storeId,
+          rawProductTitle: row.rawProductTitle,
           productUrlId: row.productUrlId,
           cardListingId: row.cardListingId,
           isToken: row.isToken,
@@ -767,9 +779,30 @@ export class StorefrontProcessor implements OnModuleInit {
         })),
       )
       .orUpdate(
-        ['card_listing_id', 'match_status', 'is_token', 'updated_at'],
+        ['raw_product_title', 'card_listing_id', 'match_status', 'is_token', 'updated_at'],
         ['shopify_product_id'],
       )
+      .execute();
+  }
+
+  private async bulkUpdateShopifyProductTitles(
+    storeId: number,
+    products: ExtractedProduct[],
+  ): Promise<void> {
+    if (products.length === 0) return;
+
+    await this.shopifyProductRepository
+      .createQueryBuilder()
+      .insert()
+      .values(
+        products.map((product) => ({
+          shopifyProductId: product.shopifyProductId,
+          storeId,
+          rawProductTitle: product.rawProductTitle,
+          updatedAt: new Date(),
+        })),
+      )
+      .orUpdate(['raw_product_title', 'updated_at'], ['shopify_product_id'])
       .execute();
   }
 
