@@ -37,3 +37,4 @@ lerna-debug.log*
 
 # Local QA artifacts
 test-artifacts/
+apps/ui-v2/src/.tanstack/
