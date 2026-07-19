@@ -30,6 +30,8 @@ import { getListColorIdentity } from '@/components/lists/colorIdentity';
 import { ListRenameDialog } from '@/components/lists/ListRenameDialog';
 import { groupByName } from '@/utils/parseDeckList';
 import { fetchCard } from '@/api/cards';
+import { AdSlot } from '@/components/ads';
+import { adsConfig } from '@/config/ads';
 
 export const Route = createFileRoute('/list/$listId/$slug')({
   component: ListDetailRoute,
@@ -396,6 +398,9 @@ function ListDetailRoute() {
           })}
         </Stack>
       </Paper>
+      {isLoaded && entries.length > 0 && (
+        <AdSlot slot={adsConfig.listResultsSlot} ariaLabel="Advertisement after saved list results" />
+      )}
     </Container>
   );
 }

@@ -217,10 +217,10 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VITE_API_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca/api' || '' }}
-            VITE_ADSENSE_CLIENT_ID=${{ matrix.service.name == 'ui' && vars.VITE_ADSENSE_CLIENT_ID || '' }}
-            VITE_AD_SLOT_BANNER=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_BANNER || '' }}
-            VITE_AD_SLOT_LEFT=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_LEFT || '' }}
-            VITE_AD_SLOT_RIGHT=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_RIGHT || '' }}
+            VITE_ADS_ENABLED=${{ matrix.service.name == 'ui' && github.ref == 'refs/heads/production' && 'true' || 'false' }}
+            VITE_ADSENSE_CLIENT_ID=${{ matrix.service.name == 'ui' && github.ref == 'refs/heads/production' && vars.VITE_ADSENSE_CLIENT_ID || '' }}
+            VITE_AD_SLOT_CARD_RESULTS=${{ matrix.service.name == 'ui' && github.ref == 'refs/heads/production' && vars.VITE_AD_SLOT_CARD_RESULTS || '' }}
+            VITE_AD_SLOT_LIST_RESULTS=${{ matrix.service.name == 'ui' && github.ref == 'refs/heads/production' && vars.VITE_AD_SLOT_LIST_RESULTS || '' }}
 
       - name: Generate image summary
         run: |

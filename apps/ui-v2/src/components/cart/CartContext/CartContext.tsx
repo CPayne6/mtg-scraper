@@ -11,8 +11,19 @@ import { clearCart as apiClearCart, fetchCart, replaceCart } from '@/api/cart';
 import { useAuth } from '@/components/auth/AuthContext';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import type { CardWithStore } from '@scoutlgs/shared';
-import type { AddManyResult, CartContextValue, CartItem } from './CartContext.types';
-import { CART_KEY, MAX_CART_ITEMS, cartItemId, cartVariantIds } from './CartContext.utils';
+import type {
+  AddManyResult,
+  CartContextValue,
+  CartDeliverySelection,
+  CartItem,
+} from './CartContext.types';
+import {
+  CART_DELIVERY_KEY,
+  CART_KEY,
+  MAX_CART_ITEMS,
+  cartItemId,
+  cartVariantIds,
+} from './CartContext.utils';
 
 const CartContext = createContext<CartContextValue | null>(null);
 
@@ -30,6 +41,9 @@ function mergeServerItems(serverItems: CartItem[], currentItems: CartItem[]): Ca
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useLocalStorage<CartItem[]>(CART_KEY, []);
+  const [deliveryByStore, setDeliveryByStore] = useLocalStorage<
+    Record<string, CartDeliverySelection>
+  >(CART_DELIVERY_KEY, {});
   const [isOpen, setIsOpen] = useState(false);
   const { status, principalId } = useAuth();
   const itemsRef = useRef(items);
@@ -190,6 +204,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clear = useCallback(() => {
     itemsRef.current = [];
     setItems([]);
+    setDeliveryByStore({});
     const version = ++syncVersionRef.current;
     void apiClearCart()
       .then((response) => {
@@ -199,7 +214,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch((err) => console.warn('Failed to clear cart', err));
-  }, [setItems]);
+  }, [setDeliveryByStore, setItems]);
+
+  const setDeliverySelections = useCallback(
+    (selections: Record<string, CartDeliverySelection>) => {
+      setDeliveryByStore((current) => ({ ...current, ...selections }));
+    },
+    [setDeliveryByStore],
+  );
 
   const has = useCallback((id: string) => items.some((c) => cartItemId(c) === id), [items]);
 
@@ -219,8 +241,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       clear,
       has,
       sync,
+      deliveryByStore,
+      setDeliverySelections,
     }),
-    [items, total, isOpen, open, close, add, addMany, remove, clear, has, sync],
+    [
+      items,
+      total,
+      isOpen,
+      open,
+      close,
+      add,
+      addMany,
+      remove,
+      clear,
+      has,
+      sync,
+      deliveryByStore,
+      setDeliverySelections,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

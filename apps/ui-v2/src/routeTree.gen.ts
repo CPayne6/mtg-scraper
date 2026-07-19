@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ListsRouteImport } from './routes/lists'
 import { Route as CheckoutRouteImport } from './routes/checkout'
@@ -21,6 +22,11 @@ import { Route as BuildListIdSlugRouteImport } from './routes/build.$listId.$slu
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/checkout': typeof CheckoutRoute
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/checkout': typeof CheckoutRoute
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/checkout': typeof CheckoutRoute
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/lists'
     | '/login'
+    | '/privacy'
     | '/settings'
     | '/card/$name'
     | '/build/$listId/$slug'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/lists'
     | '/login'
+    | '/privacy'
     | '/settings'
     | '/card/$name'
     | '/build/$listId/$slug'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/lists'
     | '/login'
+    | '/privacy'
     | '/settings'
     | '/card/$name'
     | '/build/$listId/$slug'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   CheckoutRoute: typeof CheckoutRoute
   ListsRoute: typeof ListsRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   SettingsRoute: typeof SettingsRoute
   CardNameRoute: typeof CardNameRoute
   BuildListIdSlugRoute: typeof BuildListIdSlugRoute
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   CheckoutRoute: CheckoutRoute,
   ListsRoute: ListsRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   SettingsRoute: SettingsRoute,
   CardNameRoute: CardNameRoute,
   BuildListIdSlugRoute: BuildListIdSlugRoute,

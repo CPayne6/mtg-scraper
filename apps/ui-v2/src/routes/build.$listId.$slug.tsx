@@ -19,7 +19,11 @@ import { fetchCard } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
-import { useCart, cartItemId } from '@/components/cart/CartContext';
+import {
+  useCart,
+  cartItemId,
+  type CartDeliverySelection,
+} from '@/components/cart/CartContext';
 import { useAuth } from '@/components/auth/AuthContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -106,6 +110,16 @@ function minimumConditionFromFilter(labels: string[]): Condition | undefined {
   return selected.sort((a, b) => CONDITION_RANK[a] - CONDITION_RANK[b])[0];
 }
 
+function assumedDeliverySelection(choice: string): CartDeliverySelection {
+  if (choice === 'pickup') {
+    return { label: 'Pickup', price: 0, currency: 'CAD' };
+  }
+  if (choice === 'letter') {
+    return { label: 'Letter mail (estimated)', price: 3, currency: 'CAD' };
+  }
+  return { label: 'Shipping (estimated)', price: 3, currency: 'CAD' };
+}
+
 function BuilderRoute() {
   const { listId, slug } = useParams({ from: '/build/$listId/$slug' });
   const search = Route.useSearch();
@@ -117,6 +131,7 @@ function BuilderRoute() {
     addMany: addManyToCart,
     items: cartItems,
     open: openCart,
+    setDeliverySelections,
   } = useCart();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
@@ -219,6 +234,19 @@ function BuilderRoute() {
   const inCartByName = useCallback(
     (name: string) => cartCardKeys.has(name.toLowerCase()),
     [cartCardKeys],
+  );
+
+  const cartPriceByName = useCallback(
+    (name: string) => {
+      const normalizedName = name.toLowerCase();
+      const matchingItems = cartItems.filter((item) =>
+        item.title.toLowerCase() === normalizedName ||
+        item.title.replace(/\s*\[[^\]]+\]\s*$/, '').trim().toLowerCase() === normalizedName,
+      );
+      if (matchingItems.length === 0) return undefined;
+      return matchingItems.reduce((sum, item) => sum + (item.price ?? 0), 0);
+    },
+    [cartItems],
   );
 
   // Editor: add/remove + history.
@@ -355,7 +383,7 @@ function BuilderRoute() {
       const created = await createListOptimization(listId, {
         stores: selectedStores,
         minimumCondition: optimizationMinimumCondition,
-        conditionFlexibility: 'allow-if-needed',
+        conditionFlexibility: 'allow-if-cheaper',
         maxDowngradeSteps: 2,
         shippingCostByStoreKey,
       });
@@ -470,11 +498,76 @@ function BuilderRoute() {
 
   const startQuotedFill = useCallback(() => {
     if (!deliveryQuote || !pendingOptimization) return;
+    const selections: Record<string, CartDeliverySelection> = {};
+    for (const store of deliveryQuote.stores) {
+      if (store.state === 'unavailable') {
+        selections[store.store] = assumedDeliverySelection(
+          selectedDeliveryMethods[`${store.store}:fallback`] ?? 'estimated',
+        );
+        continue;
+      }
+
+      const selectedMethods = store.groups.map((group, groupIndex) => {
+        const choice = selectedDeliveryMethods[`${store.store}:${groupIndex}`] ?? 'pickup';
+        if (!choice.startsWith('verified:')) return assumedDeliverySelection(choice);
+        const method = group.options.find(
+          (option) => `verified:${option.handle ?? option.label}` === choice,
+        );
+        return method
+          ? { label: method.label, price: method.price, currency: method.currency }
+          : assumedDeliverySelection('pickup');
+      });
+      if (selectedMethods.length > 0) {
+        selections[store.store] = {
+          label: selectedMethods.map((method) => method.label).join(' + '),
+          price: selectedMethods.reduce((sum, method) => sum + method.price, 0),
+          currency: selectedMethods[0].currency,
+        };
+      }
+    }
+    setDeliverySelections(selections);
     setDeliveryOpen(false);
     const result = addManyToCart(pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer));
     if (result.added) { openCart(); enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart`, { variant: 'success' }); }
     setPendingOptimization(null);
-  }, [addManyToCart, deliveryQuote, enqueueSnackbar, openCart, pendingOptimization]);
+  }, [
+    addManyToCart,
+    deliveryQuote,
+    enqueueSnackbar,
+    openCart,
+    pendingOptimization,
+    selectedDeliveryMethods,
+    setDeliverySelections,
+  ]);
+
+  const startEstimatedFill = useCallback(() => {
+    setDeliverySelections(
+      Object.fromEntries(
+        selectedStores.map((store) => [
+          store,
+          estimatedShippingByStore[store] === 0
+            ? assumedDeliverySelection('pickup')
+            : {
+                label: 'Shipping (estimated)',
+                price: estimatedShippingByStore[store] ?? 3,
+                currency: 'CAD',
+              },
+        ]),
+      ),
+    );
+    setDeliveryOpen(false);
+    void runOptimization(undefined, estimatedShippingByStore);
+  }, [estimatedShippingByStore, runOptimization, selectedStores, setDeliverySelections]);
+
+  const skipDeliveryQuotes = useCallback(() => {
+    setDeliverySelections(
+      Object.fromEntries(
+        selectedStores.map((store) => [store, assumedDeliverySelection('estimated')]),
+      ),
+    );
+    setDeliveryOpen(false);
+    void runOptimization();
+  }, [runOptimization, selectedStores, setDeliverySelections]);
 
   const selectedIndex = selectedName ? sortedNames.indexOf(selectedName) : -1;
   const selectedPosition =
@@ -662,6 +755,7 @@ function BuilderRoute() {
           onSortByChange={setSortBy}
           results={results}
           inCartByName={inCartByName}
+          cartPriceByName={cartPriceByName}
           history={history}
           existingNames={existingNames}
           onAddCard={handleAddCard}
@@ -735,10 +829,10 @@ function BuilderRoute() {
         </DialogContent>
         <DialogActions>
           <Button color="inherit" onClick={() => setDeliveryOpen(false)} disabled={deliveryLoading}>Cancel</Button>
-          {ADDRESS_DELIVERY_QUOTES_ENABLED && <Button variant="outlined" color="inherit" onClick={() => { setDeliveryOpen(false); void runOptimization(); }} disabled={deliveryLoading}>Skip (estimate CA$3/store)</Button>}
+          {ADDRESS_DELIVERY_QUOTES_ENABLED && <Button variant="outlined" color="inherit" onClick={skipDeliveryQuotes} disabled={deliveryLoading}>Skip (estimate CA$3/store)</Button>}
           {!deliveryQuote && ADDRESS_DELIVERY_QUOTES_ENABLED
             ? <Button variant="contained" onClick={() => void loadDeliveryOptions()} disabled={deliveryLoading || !deliveryAddress.address1 || !deliveryAddress.city || !deliveryAddress.province || !deliveryAddress.postalCode}>{deliveryLoading ? 'Getting quotes…' : 'Get delivery options'}</Button>
-            : !deliveryQuote ? <Button variant="contained" onClick={() => { setDeliveryOpen(false); void runOptimization(undefined, estimatedShippingByStore); }}>Fill Best Cards</Button>
+            : !deliveryQuote ? <Button variant="contained" onClick={startEstimatedFill}>Fill Best Cards</Button>
             : <Button variant="contained" onClick={startQuotedFill}>Fill Best Cards</Button>}
         </DialogActions>
       </Dialog>

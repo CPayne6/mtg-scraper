@@ -27,6 +27,8 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { slugifyName } from '@/utils/slugify';
 import { useSnackbar } from 'notistack';
+import { AdSlot } from '@/components/ads';
+import { adsConfig } from '@/config/ads';
 
 export const Route = createFileRoute('/card/$name')({
   component: CardRoute,
@@ -343,6 +345,9 @@ function CardRoute() {
           ))}
         </Box>
       </Box>
+      {!loading && !error && visibleResults.length > 0 && (
+        <AdSlot slot={adsConfig.cardResultsSlot} ariaLabel="Advertisement after card search results" />
+      )}
     </Container>
   );
 }

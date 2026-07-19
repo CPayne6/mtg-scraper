@@ -5,6 +5,7 @@ import { TopNav } from '@/components/layout/TopNav';
 import { Footer } from '@/components/layout/Footer';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
+import { AdSenseBootstrap } from '@/components/ads';
 
 const TanStackRouterDevtools = import.meta.env.PROD
   ? () => null
@@ -31,6 +32,7 @@ function RootLayout() {
           overflowX: 'hidden',
         }}
       >
+        <AdSenseBootstrap />
         <TopNav />
         <Box component="main" sx={{ flex: 1, py: { xs: 3, md: 5 }, px: { xs: 2, md: 3 } }}>
           <Outlet />

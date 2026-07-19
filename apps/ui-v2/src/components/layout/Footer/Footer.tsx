@@ -105,6 +105,8 @@ export function Footer() {
           <FooterHeading>Account</FooterHeading>
           <Stack>
             <FooterLink href="/login">Sign in</FooterLink>
+            <FooterLink href="/privacy">Privacy &amp; cookies</FooterLink>
+            <FooterLink href="/privacy#privacy-settings">Privacy settings</FooterLink>
           </Stack>
         </Box>
       </Box>
