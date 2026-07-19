@@ -166,6 +166,87 @@ describe('optimizeCart', () => {
     });
   });
 
+  it('only downgrades to MP when it saves at least 25 percent', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Fetchland', Condition.NM)],
+      candidates: [
+        candidate('Fetchland', { price: 12, condition: Condition.NM }),
+        candidate('Fetchland', { price: 9, condition: Condition.MP }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.MP,
+      price: 9,
+      conditionDowngradeSteps: 2,
+    });
+  });
+
+  it('keeps the requested condition when a downgrade saves less than 25 percent', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Fetchland', Condition.NM)],
+      candidates: [
+        candidate('Fetchland', { price: 12, condition: Condition.NM }),
+        candidate('Fetchland', { price: 9.5, condition: Condition.MP }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.NM,
+      price: 12,
+    });
+  });
+
+  it('keeps the requested condition when a 25 percent downgrade saves less than CA$1', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Moderately Priced Card', Condition.NM)],
+      candidates: [
+        candidate('Moderately Priced Card', { price: 3, condition: Condition.NM }),
+        candidate('Moderately Priced Card', { price: 2.25, condition: Condition.MP }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.NM,
+      price: 3,
+    });
+  });
+
+  it('does not automatically downgrade cards below CA$2 even when the saving is large', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Cheap Staple', Condition.NM)],
+      candidates: [
+        candidate('Cheap Staple', { price: 1.99, condition: Condition.NM }),
+        candidate('Cheap Staple', { price: 0.5, condition: Condition.MP }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.NM,
+      price: 1.99,
+    });
+  });
+
+  it('never automatically downgrades below MP', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Premium Card', Condition.NM)],
+      candidates: [
+        candidate('Premium Card', { price: 10, condition: Condition.NM }),
+        candidate('Premium Card', { price: 1, condition: Condition.HP }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.NM,
+      price: 10,
+    });
+  });
+
   it('can prefer a higher-condition offer when the premium is in the value window', () => {
     const result = optimizeCart({
       wantedCards: [wanted('Expensive Staple', Condition.LP)],
