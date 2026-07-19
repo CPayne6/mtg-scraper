@@ -13,7 +13,7 @@ COMPOSE_FILE="${PROJECT_DIR}/docker-compose.prod.yml"
 BACKUP_DIR="${PROJECT_DIR}/backups"
 STACK_NAME="scoutlgs"
 MAX_WAIT_TIME=120  # seconds
-HEALTH_CHECK_RETRIES=6
+HEALTH_CHECK_RETRIES=18
 HEALTH_CHECK_INTERVAL=10
 
 # Logging functions
@@ -96,6 +96,10 @@ check_service_health() {
     done
 
     log_error "$full_service_name health check failed after $HEALTH_CHECK_RETRIES attempts"
+    log_error "Recent task status:"
+    docker service ps "$full_service_name" --no-trunc 2>&1 || true
+    log_error "Recent service logs:"
+    docker service logs --tail 100 "$full_service_name" 2>&1 || true
     return 1
 }
 
