@@ -12,7 +12,12 @@ import { Store } from './store.entity';
 import { ProductUrl } from './product-url.entity';
 import { CardListing } from './card.entity';
 
-export type ShopifyProductMatchStatus = 'matched' | 'unmatched' | 'token' | 'pending';
+export type ShopifyProductMatchStatus =
+  | 'matched'
+  | 'unmatched'
+  | 'token'
+  | 'excluded'
+  | 'pending';
 
 /**
  * Shopify-specific product lookup table.
