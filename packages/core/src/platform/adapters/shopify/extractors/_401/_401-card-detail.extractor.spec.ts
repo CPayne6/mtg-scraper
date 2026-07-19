@@ -313,20 +313,21 @@ describe('_401CardDetailExtractor', () => {
         expect(result.cardName).toBe('Radha, Heart of Keld');
       });
 
-      it('strips "- Art Series ..." suffix', () => {
+      it('identifies "- Art Series ..." as excluded', () => {
         const result = extractor.parseTitle(
-          'Phelia, Exuberant Shepherd - Art Series (Gold-Stamped Signature) (AMH3)',
+          "Liberator, Urza's Battlethopter - Art Series (Gold-Stamped Signature) (ABRO)",
         );
-        expect(result.cardName).toBe('Phelia, Exuberant Shepherd');
+        expect(result.isArtSeries).toBe(true);
       });
     });
 
     describe('parseSkuInfo art series type A', () => {
-      it('"MTGA-NR_009-AMH3-046" → amh3 #046 non-foil', () => {
+      it('"MTGA-NR_009-AMH3-046" is identified as Art Series', () => {
         const result = extractor.parseSkuInfo('MTGA-NR_009-AMH3-046');
         expect(result.setCode).toBe('amh3');
         expect(result.collectorNumber).toBe('046');
         expect(result.foil).toBe(false);
+        expect(result.isArtSeries).toBe(true);
       });
     });
 

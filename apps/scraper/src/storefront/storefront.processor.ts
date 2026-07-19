@@ -31,6 +31,7 @@ interface ExtractedProduct {
   shopifyProductId: string;
   handle: string;
   updatedAt: Date;
+  isArtSeries?: boolean;
   variants: ExtractedCardVariant[];
 }
 
@@ -495,8 +496,17 @@ export class StorefrontProcessor implements OnModuleInit {
     storeId: number,
     discoveryRunId?: number,
   ): Promise<{ processed: number; cards: number; errors: number }> {
+    const artSeriesProducts = products.filter((product) => product.isArtSeries);
+    const cardProducts = products.filter((product) => !product.isArtSeries);
+
+    await this.excludeArtSeriesProducts(storeId, artSeriesProducts);
+
+    if (cardProducts.length === 0) {
+      return { processed: artSeriesProducts.length, cards: 0, errors: 0 };
+    }
+
     // Step 1: Bulk lookup shopify_products by PK
-    const shopifyIds = products.map((p) => p.shopifyProductId);
+    const shopifyIds = cardProducts.map((p) => p.shopifyProductId);
     const existingRows = await this.shopifyProductRepository.find({
       where: { shopifyProductId: In(shopifyIds) },
       select: ['shopifyProductId', 'productUrlId', 'cardListingId', 'matchStatus'],
@@ -513,7 +523,7 @@ export class StorefrontProcessor implements OnModuleInit {
       productUrlId: number;
     }[] = [];
 
-    for (const product of products) {
+    for (const product of cardProducts) {
       const existing = existingMap.get(product.shopifyProductId);
       if (existing?.productUrlId && existing.matchStatus === 'matched') {
         knownProducts.push({
@@ -643,7 +653,50 @@ export class StorefrontProcessor implements OnModuleInit {
       }
     }
 
-    return { processed, cards, errors };
+    return {
+      processed: processed + artSeriesProducts.length,
+      cards,
+      errors,
+    };
+  }
+
+  /**
+   * Remove Art Series products from search results and remember that the
+   * Shopify product is intentionally excluded. This also clears any listing
+   * created before Art Series filtering was added.
+   */
+  private async excludeArtSeriesProducts(
+    storeId: number,
+    products: ExtractedProduct[],
+  ): Promise<void> {
+    if (products.length === 0) return;
+
+    const productUrlMap = await this.bulkUpsertProductUrls(storeId, products);
+    const productUrlIds = [...productUrlMap.values()];
+
+    if (productUrlIds.length > 0) {
+      await Promise.all([
+        this.cardListingRepository.delete({ productUrlId: In(productUrlIds) }),
+        this.unmatchedCardRepository.delete({ productUrlId: In(productUrlIds) }),
+      ]);
+      await this.bulkUpdateProductUrlStatus(productUrlIds, []);
+    }
+
+    await this.bulkUpsertShopifyProducts(
+      storeId,
+      products.flatMap((product) => {
+        const productUrlId = productUrlMap.get(product.handle);
+        return productUrlId
+          ? [{
+              shopifyProductId: product.shopifyProductId,
+              productUrlId,
+              matchStatus: 'excluded',
+              isToken: false,
+              cardListingId: null,
+            }]
+          : [];
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -709,7 +762,7 @@ export class StorefrontProcessor implements OnModuleInit {
           productUrlId: row.productUrlId,
           cardListingId: row.cardListingId,
           isToken: row.isToken,
-          matchStatus: row.matchStatus as 'pending' | 'matched' | 'unmatched' | 'token',
+          matchStatus: row.matchStatus as 'pending' | 'matched' | 'unmatched' | 'token' | 'excluded',
           updatedAt: now,
         })),
       )

@@ -18,7 +18,7 @@ import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
  *   Trailing (Foil)/(Non-Foil) is stripped before parsing.
  *
  * SKU format: "MTG{TYPE}-{CATEGORY}-{SET}-{NUM}{COND}"
- *   Types: N=non-foil, F=foil, TN=token non-foil, TF=token foil, E=etched, A=art series
+ *   Types: N=non-foil, F=foil, TN=token non-foil, TF=token foil, E=etched, A=art series (excluded)
  *   Non-foil NM:    MTGN-CS_009-8ED-316
  *   Non-foil SP:    MTGN-CS_009-8ED-316SP
  *   Non-foil HP:    MTGN-CS_004-3ED-025HP
@@ -40,6 +40,12 @@ export class _401CardDetailExtractor implements ICardDetailExtractor {
     // Strip trailing "(Foil)" or "(Non-Foil)" marker before parsing
     let cleaned = title.replace(/\s*\((Non-?Foil|Foil)\)\s*$/i, '').trim();
 
+    // Art Series cards use a real card's name in their product title, but are
+    // not playable cards and must never be matched to that card's printing.
+    if (/\s+-\s+Art Series(?:\s|\(|$)/i.test(cleaned)) {
+      return { cardName: '', setName: '', isArtSeries: true };
+    }
+
     // Match last parenthesized group as set code: "Card Name (SET)"
     // 401 uses short set codes like 8ED, 10E, M11, C21, SPM
     const lastParenMatch = cleaned.match(/^(.+?)\s*\(([A-Z0-9]{2,5})\)\s*$/i);
@@ -50,8 +56,7 @@ export class _401CardDetailExtractor implements ICardDetailExtractor {
       //   "Kroxa, Titan of Death's Hunger - Promo Pack" → "Kroxa, Titan of Death's Hunger"
       //   "Traverse the Outlands - C17 Reprint" → "Traverse the Outlands"
       //   "Radha, Heart of Keld - Secret Lair High: ..." → "Radha, Heart of Keld"
-      //   "Phelia, Exuberant Shepherd - Art Series ..." → "Phelia, Exuberant Shepherd"
-      const suffixMatch = cardName.match(/^(.+?)\s+-\s+(?:Promo Pack|.*Reprint|Secret Lair.*|Art Series.*)$/i);
+      const suffixMatch = cardName.match(/^(.+?)\s+-\s+(?:Promo Pack|.*Reprint|Secret Lair.*)$/i);
       if (suffixMatch) {
         cardName = suffixMatch[1].trim();
       }
@@ -75,7 +80,7 @@ export class _401CardDetailExtractor implements ICardDetailExtractor {
       let cardName = anyParenMatch[1].trim();
 
       // Strip metadata suffixes here too
-      const suffixMatch = cardName.match(/^(.+?)\s+-\s+(?:Promo Pack|.*Reprint|Secret Lair.*|Art Series.*)$/i);
+      const suffixMatch = cardName.match(/^(.+?)\s+-\s+(?:Promo Pack|.*Reprint|Secret Lair.*)$/i);
       if (suffixMatch) {
         cardName = suffixMatch[1].trim();
       }
@@ -94,7 +99,7 @@ export class _401CardDetailExtractor implements ICardDetailExtractor {
     if (!sku) return {};
 
     // 401 SKU format: MTG{TYPE}-{CATEGORY}-{SET}-{NUM}{COND}
-    // Types: N=non-foil, F=foil, TN=token non-foil, TF=token foil, E=etched, A=art series
+    // Types: N=non-foil, F=foil, TN=token non-foil, TF=token foil, E=etched, A=art series (excluded)
     // e.g. MTGN-CS_009-8ED-316, MTGF-F108-SPM-242SP, MTGTF-F084-TIKO-011B, MTGA-NR_009-AMH3-046
     const match = sku.match(
       /^MTG(TF|TN|[NFEA])-[A-Z0-9_]+-([A-Z0-9]{2,5})-(\d+[A-Za-z]?)(SP|MP|HP|DMG)?$/i,
@@ -107,6 +112,7 @@ export class _401CardDetailExtractor implements ICardDetailExtractor {
         collectorNumber: match[3],
         foil: type === 'F' || type === 'TF',
         isToken: type === 'TN' || type === 'TF',
+        isArtSeries: type === 'A',
       };
     }
 
