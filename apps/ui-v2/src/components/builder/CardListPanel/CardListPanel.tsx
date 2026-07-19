@@ -61,6 +61,7 @@ export function CardListPanel({
   const [addOpen, setAddOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
+  const [artScrollRoot, setArtScrollRoot] = useState<HTMLDivElement | null>(null);
   const addAnchorRef = useRef<HTMLButtonElement | null>(null);
   const historyAnchorRef = useRef<HTMLButtonElement | null>(null);
 
@@ -203,7 +204,7 @@ export function CardListPanel({
       />
 
       {/* Scrollable list */}
-      <Box sx={listSx} onScroll={handleListScroll}>
+      <Box ref={setArtScrollRoot} sx={listSx} onScroll={handleListScroll}>
         {visibleEntries.length === 0 ? (
           <Box sx={emptyListSx}>No cards match your filters.</Box>
         ) : (
@@ -215,6 +216,7 @@ export function CardListPanel({
                 selected={selectedName === e.name}
                 inCart={inCartByName(e.name)}
                 cartPrice={cartPriceByName(e.name)}
+                artScrollRoot={artScrollRoot}
                 onSelect={() => onSelect(e.name)}
                 onRemove={onRemoveCard}
               />
