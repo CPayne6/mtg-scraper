@@ -221,6 +221,19 @@ function BuilderRoute() {
     [cartCardKeys],
   );
 
+  const cartPriceByName = useCallback(
+    (name: string) => {
+      const normalizedName = name.toLowerCase();
+      const matchingItems = cartItems.filter((item) =>
+        item.title.toLowerCase() === normalizedName ||
+        item.title.replace(/\s*\[[^\]]+\]\s*$/, '').trim().toLowerCase() === normalizedName,
+      );
+      if (matchingItems.length === 0) return undefined;
+      return matchingItems.reduce((sum, item) => sum + (item.price ?? 0), 0);
+    },
+    [cartItems],
+  );
+
   // Editor: add/remove + history.
   const { history, addCard, removeCard, undo } = useListEditor(
     listId,
@@ -662,6 +675,7 @@ function BuilderRoute() {
           onSortByChange={setSortBy}
           results={results}
           inCartByName={inCartByName}
+          cartPriceByName={cartPriceByName}
           history={history}
           existingNames={existingNames}
           onAddCard={handleAddCard}
