@@ -37,9 +37,9 @@ export const selectedHighlightSx: SxProps<Theme> = (theme) => ({
   pointerEvents: 'none',
   borderRadius: 'inherit',
   boxSizing: 'border-box',
-  border: `3px solid ${theme.palette.honey.main}`,
-  background: `linear-gradient(90deg, ${theme.palette.honey.main}66, ${theme.palette.honey.main}24 58%, transparent)`,
-  boxShadow: `inset 0 0 20px ${theme.palette.honey.main}, 0 0 0 1px ${theme.palette.honey.dark}`,
+  border: `2px solid ${theme.palette.honey.main}`,
+  background: `linear-gradient(90deg, ${theme.palette.honey.main}2e, ${theme.palette.honey.main}12 58%, transparent)`,
+  boxShadow: `inset 0 0 12px ${theme.palette.honey.main}88`,
 });
 
 export const innerSx = (inCart: boolean): SxProps<Theme> => ({
