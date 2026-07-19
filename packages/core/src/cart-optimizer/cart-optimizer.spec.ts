@@ -199,6 +199,22 @@ describe('optimizeCart', () => {
     });
   });
 
+  it('keeps the requested condition when a 25 percent downgrade saves less than CA$1', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Moderately Priced Card', Condition.NM)],
+      candidates: [
+        candidate('Moderately Priced Card', { price: 3, condition: Condition.NM }),
+        candidate('Moderately Priced Card', { price: 2.25, condition: Condition.MP }),
+      ],
+      options: { conditionFlexibility: { mode: 'allow-if-cheaper' } },
+    });
+
+    expect(result.selectedOffers[0]).toMatchObject({
+      condition: Condition.NM,
+      price: 3,
+    });
+  });
+
   it('does not automatically downgrade cards below CA$2 even when the saving is large', () => {
     const result = optimizeCart({
       wantedCards: [wanted('Cheap Staple', Condition.NM)],
