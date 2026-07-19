@@ -4,7 +4,7 @@ import TextField from '@mui/material/TextField';
 import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 import { fetchScryfallAutocomplete } from '@/api/cards';
-import { FALLBACK_CARDS } from '@/data/sample';
+import type { ScryfallCardOption } from '@/api/cards';
 import type { SkryfallAutocompleteProps } from './SkryfallAutocomplete.types';
 
 export function SkryfallAutocomplete({
@@ -16,7 +16,7 @@ export function SkryfallAutocomplete({
   onSubmit,
 }: SkryfallAutocompleteProps) {
   const [inputValue, setInputValue] = useState(controlledValue ?? '');
-  const [options, setOptions] = useState<string[]>([]);
+  const [options, setOptions] = useState<ScryfallCardOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -48,20 +48,10 @@ export function SkryfallAutocomplete({
       try {
         const data = await fetchScryfallAutocomplete(q.trim(), controller.signal);
         if (controller.signal.aborted) return;
-        if (data.length > 0) {
-          setOptions(data);
-        } else {
-          const ql = q.toLowerCase();
-          setOptions(
-            FALLBACK_CARDS.filter((c) => c.toLowerCase().includes(ql)).slice(0, 10),
-          );
-        }
+        setOptions(data);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
-        const ql = q.toLowerCase();
-        setOptions(
-          FALLBACK_CARDS.filter((c) => c.toLowerCase().includes(ql)).slice(0, 10),
-        );
+        setOptions([]);
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -69,13 +59,14 @@ export function SkryfallAutocomplete({
   };
 
   return (
-    <Autocomplete
+    <Autocomplete<ScryfallCardOption, false, false, true>
       freeSolo
       open={open && options.length > 0}
       onOpen={() => setOpen(true)}
       onClose={() => setOpen(false)}
       size={size}
       options={options}
+      getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
       filterOptions={(x) => x}
       inputValue={inputValue}
       loading={loading}
@@ -84,8 +75,8 @@ export function SkryfallAutocomplete({
         if (reason === 'input') queryOptions(next);
       }}
       onChange={(_, picked) => {
-        if (typeof picked === 'string' && picked.trim()) {
-          onSelect(picked.trim());
+        if (picked && typeof picked !== 'string') {
+          onSelect(picked);
         }
       }}
       renderInput={(params) => (

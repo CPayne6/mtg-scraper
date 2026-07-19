@@ -3,30 +3,28 @@ import Toolbar from '@mui/material/Toolbar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import { useNavigate, useLocation } from '@tanstack/react-router';
 import { useColorMode } from '@/components/ui/color-mode';
 import { CartIconButton } from '@/components/cart/CartIconButton';
 import { ProfileMenu } from '@/components/layout/ProfileMenu';
 import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
 import { toolbarSx, navBtnSx } from './TopNav.styles';
+import { fetchScryfallCard, type ScryfallCardOption } from '@/api/cards';
 
 export function TopNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { colorMode } = useColorMode();
-  const isCompactBp = useMediaQuery('(max-width: 720px)');
 
   const path = location.pathname;
   const isListsActive = path === '/lists' || path.startsWith('/list/');
-  const isHome = path === '/';
 
   const logoSrc = colorMode === 'dark' ? '/logo-mark-light.png' : '/logo-mark.png';
 
-  const handleSearch = (name: string) => {
-    if (!name.trim()) return;
-    navigate({ to: '/card/$name', params: { name: name.trim() } });
+  const handleSearch = (card: ScryfallCardOption) => {
+    navigate({ to: '/card/$oracleId/$name', params: { oracleId: card.oracleId, name: card.name } });
   };
+  const handleSearchByName = async (name: string) => handleSearch(await fetchScryfallCard(name));
 
   return (
     <AppBar position="sticky" elevation={0}>
@@ -56,16 +54,14 @@ export function TopNav() {
           </Button>
         </Box>
 
-        {!isHome && !isCompactBp && (
-          <Box sx={{ width: 260, flexShrink: 1 }}>
-            <SkryfallAutocomplete
-              size="small"
-              placeholder="Scout a card…"
-              onSelect={handleSearch}
-              onSubmit={handleSearch}
-            />
-          </Box>
-        )}
+        <Box sx={{ width: 260, flexShrink: 1 }}>
+          <SkryfallAutocomplete
+            size="small"
+            placeholder="Scout a card…"
+            onSelect={handleSearch}
+            onSubmit={(name) => void handleSearchByName(name)}
+          />
+        </Box>
 
         <Box sx={{ flex: 1 }} />
 

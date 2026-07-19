@@ -16,6 +16,7 @@ import { useLists } from '@/components/lists/ListsContext';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { parseDeckList } from '@/utils/parseDeckList';
 import { slugifyName } from '@/utils/slugify';
+import { fetchScryfallCard, type ScryfallCardOption } from '@/api/cards';
 
 type HomeSearch = { mode?: 'card' | 'deck' };
 
@@ -37,9 +38,9 @@ function HomeRoute() {
   const [listName, setListName] = useState('');
   const [deckText, setDeckText] = useState('');
 
-  const handleScoutCard = (name: string) => {
-    if (!name.trim()) return;
-    navigate({ to: '/card/$name', params: { name: name.trim() } });
+  const handleScoutCard = async (card: ScryfallCardOption | string) => {
+    const resolved = typeof card === 'string' ? await fetchScryfallCard(card) : card;
+    navigate({ to: '/card/$oracleId/$name', params: { oracleId: resolved.oracleId, name: resolved.name } });
   };
 
   const handleScoutDeck = async () => {
@@ -159,13 +160,13 @@ function HomeRoute() {
             >
               <SkryfallAutocomplete
                 placeholder="e.g., Lightning Bolt, Black Lotus"
-                onSelect={(name) => {
-                  setCardName(name);
-                  handleScoutCard(name);
+                onSelect={(card) => {
+                  setCardName(card.name);
+                  void handleScoutCard(card);
                 }}
                 onSubmit={(name) => {
                   setCardName(name);
-                  handleScoutCard(name);
+                  void handleScoutCard(name);
                 }}
               />
               <Button
@@ -173,7 +174,7 @@ function HomeRoute() {
                 size="large"
                 color="primary"
                 startIcon={<SearchIcon />}
-                onClick={() => handleScoutCard(cardName || 'Atraxa, Grand Unifier')}
+                onClick={() => void handleScoutCard(cardName || 'Atraxa, Grand Unifier')}
               >
                 Scout Prices
               </Button>

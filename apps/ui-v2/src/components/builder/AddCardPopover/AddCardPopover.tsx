@@ -5,7 +5,7 @@ import ClickAwayListener from '@mui/material/ClickAwayListener';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { Add as AddIcon } from '@mui/icons-material';
-import { fetchScryfallAutocomplete } from '@/api/cards';
+import { fetchScryfallAutocomplete, type ScryfallCardOption } from '@/api/cards';
 import type { AddCardPopoverProps } from './AddCardPopover.types';
 import { MAX_RESULTS, artUrl } from './AddCardPopover.utils';
 import {
@@ -29,7 +29,7 @@ export function AddCardPopover({
   existingNames,
 }: AddCardPopoverProps) {
   const [q, setQ] = useState('');
-  const [matches, setMatches] = useState<string[]>([]);
+  const [matches, setMatches] = useState<ScryfallCardOption[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -78,7 +78,7 @@ export function AddCardPopover({
 
   if (!open || !anchorEl) return null;
 
-  const firstAddable = matches.find((m) => !existingSet.has(m.toLowerCase()));
+  const firstAddable = matches.find((card) => !existingSet.has(card.name.toLowerCase()));
 
   return (
     <Popper
@@ -107,7 +107,7 @@ export function AddCardPopover({
                   onClose();
                 } else if (e.key === 'Enter' && firstAddable) {
                   e.preventDefault();
-                  onAdd(firstAddable);
+                  onAdd(firstAddable.name);
                   onClose();
                 }
               }}
@@ -124,7 +124,8 @@ export function AddCardPopover({
                   : 'Start typing to search the Scryfall catalog.'}
               </Box>
             ) : (
-              matches.map((name) => {
+              matches.map((card) => {
+                const { name } = card;
                 const already = existingSet.has(name.toLowerCase());
                 return (
                   <Box

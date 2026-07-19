@@ -28,7 +28,7 @@ import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { slugifyName } from '@/utils/slugify';
 import { useSnackbar } from 'notistack';
 
-export const Route = createFileRoute('/card/$name')({
+export const Route = createFileRoute('/card/$oracleId/$name')({
   component: CardRoute,
 });
 
@@ -42,7 +42,7 @@ function conditionsFromDefault(defaultCondition: string): string[] {
 
 function CardRoute() {
   const navigate = useNavigate();
-  const { name } = useParams({ from: '/card/$name' });
+  const { name, oracleId } = useParams({ from: '/card/$oracleId/$name' });
   const decoded = useMemo(() => {
     try {
       return decodeURIComponent(name);
@@ -86,7 +86,7 @@ function CardRoute() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetchCard(decoded, controller.signal)
+    fetchCard(oracleId, decoded, controller.signal)
       .then((data) => {
         if (controller.signal.aborted) return;
         setResponse(data);
@@ -103,7 +103,7 @@ function CardRoute() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [decoded, reloadKey, pushRecent]);
+  }, [decoded, oracleId, reloadKey, pushRecent]);
 
   const stores: StoreInfo[] = useMemo(() => {
     if (response?.stores?.length) return response.stores;

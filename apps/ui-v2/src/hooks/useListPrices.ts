@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardWithStore } from '@scoutlgs/shared';
-import { fetchCard } from '@/api/cards';
+import { fetchCardByName } from '@/api/cards';
 
 const DEFAULT_PAGED_PRICE_PAGE_SIZE = 20;
 
@@ -30,7 +30,7 @@ export function useListPrices(uniqueNames: string[]): {
     const controller = new AbortController();
     setResults(Object.fromEntries(uniqueNames.map((n) => [n, { state: 'pending' }])));
     for (const name of uniqueNames) {
-      fetchCard(name, controller.signal)
+      fetchCardByName(name, controller.signal)
         .then((resp) => {
           if (controller.signal.aborted) return;
           const offers = [...resp.results].sort((a, b) => a.price - b.price);
@@ -127,7 +127,7 @@ export function usePagedListPrices(
     void Promise.all(
       toFetch.map(async (name) => {
         try {
-          const resp = await fetchCard(name, controller.signal);
+          const resp = await fetchCardByName(name, controller.signal);
           if (controller.signal.aborted) return;
           const offers = [...resp.results].sort((a, b) => a.price - b.price);
           const cheapest = offers.length > 0 ? offers[0] : null;
