@@ -11,6 +11,16 @@ import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
 import { toolbarSx, navBtnSx } from './TopNav.styles';
 import { fetchScryfallCard, type ScryfallCardOption } from '@/api/cards';
 
+function cardNameFromPath(path: string): string | undefined {
+  if (!path.startsWith('/card/')) return undefined;
+  const encodedName = path.split('/').at(-1) ?? '';
+  try {
+    return decodeURIComponent(encodedName);
+  } catch {
+    return encodedName;
+  }
+}
+
 export function TopNav() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -18,6 +28,7 @@ export function TopNav() {
 
   const path = location.pathname;
   const isListsActive = path === '/lists' || path.startsWith('/list/');
+  const currentCardName = cardNameFromPath(path);
 
   const logoSrc = colorMode === 'dark' ? '/logo-mark-light.png' : '/logo-mark.png';
 
@@ -58,6 +69,7 @@ export function TopNav() {
           <SkryfallAutocomplete
             size="small"
             placeholder="Scout a card…"
+            value={currentCardName}
             onSelect={handleSearch}
             onSubmit={(name) => void handleSearchByName(name)}
           />

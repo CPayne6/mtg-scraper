@@ -27,18 +27,13 @@ export async function fetchCardByName(cardName: string, signal?: AbortSignal): P
   return fetchCard(card.oracleId, card.name, signal);
 }
 
-export async function fetchScryfallAutocomplete(query: string, signal?: AbortSignal): Promise<ScryfallCardOption[]> {
+export async function fetchScryfallAutocomplete(query: string, signal?: AbortSignal): Promise<string[]> {
   if (!query.trim()) return [];
-  const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&order=name`;
+  const url = `https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { signal });
   if (!res.ok) return [];
-  const data = (await res.json()) as { data?: Array<{ name?: string; oracle_id?: string }> };
-  const seen = new Set<string>();
-  return (data.data ?? []).flatMap((card) => {
-    if (!card.name || !card.oracle_id || seen.has(card.oracle_id)) return [];
-    seen.add(card.oracle_id);
-    return [{ name: card.name, oracleId: card.oracle_id }];
-  }).slice(0, 10);
+  const data = (await res.json()) as { data?: string[] };
+  return Array.isArray(data.data) ? data.data : [];
 }
 
 export async function fetchScryfallCard(name: string, signal?: AbortSignal): Promise<ScryfallCardOption> {

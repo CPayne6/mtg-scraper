@@ -3,8 +3,7 @@ import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
-import { fetchScryfallAutocomplete } from '@/api/cards';
-import type { ScryfallCardOption } from '@/api/cards';
+import { fetchScryfallAutocomplete, fetchScryfallCard } from '@/api/cards';
 import type { SkryfallAutocompleteProps } from './SkryfallAutocomplete.types';
 
 export function SkryfallAutocomplete({
@@ -16,7 +15,7 @@ export function SkryfallAutocomplete({
   onSubmit,
 }: SkryfallAutocompleteProps) {
   const [inputValue, setInputValue] = useState(controlledValue ?? '');
-  const [options, setOptions] = useState<ScryfallCardOption[]>([]);
+  const [options, setOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -59,14 +58,13 @@ export function SkryfallAutocomplete({
   };
 
   return (
-    <Autocomplete<ScryfallCardOption, false, false, true>
+    <Autocomplete<string, false, false, true>
       freeSolo
       open={open && options.length > 0}
       onOpen={() => setOpen(true)}
       onClose={() => setOpen(false)}
       size={size}
       options={options}
-      getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
       filterOptions={(x) => x}
       inputValue={inputValue}
       loading={loading}
@@ -75,8 +73,8 @@ export function SkryfallAutocomplete({
         if (reason === 'input') queryOptions(next);
       }}
       onChange={(_, picked) => {
-        if (picked && typeof picked !== 'string') {
-          onSelect(picked);
+        if (picked && typeof picked === 'string') {
+          void fetchScryfallCard(picked).then(onSelect).catch(() => undefined);
         }
       }}
       renderInput={(params) => (
@@ -84,6 +82,7 @@ export function SkryfallAutocomplete({
           {...params}
           placeholder={placeholder}
           autoFocus={autoFocus}
+          onFocus={(event) => event.target.select()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && inputValue.trim()) {
               // Allow MUI to handle option selection if one is highlighted;
