@@ -187,6 +187,7 @@ function BuilderRoute() {
   );
   const [isAddingBestCards, setIsAddingBestCards] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliverySession, setDeliverySession] = useState(0);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryOptionsResponse | null>(null);
   const [selectedDeliveryMethods, setSelectedDeliveryMethods] = useState<Record<string, string>>({});
@@ -194,6 +195,7 @@ function BuilderRoute() {
   const [deliveryAddress, setDeliveryAddress] = useState({ address1: '', city: '', province: '', postalCode: '', countryCode: 'CA' as const });
   const [saveDeliveryAddressForLater, setSaveDeliveryAddressForLater] = useState(false);
   const [estimatedShippingByStore, setEstimatedShippingByStore] = useState<Record<string, number>>({});
+  const [pickupByStore, setPickupByStore] = useState<Record<string, boolean>>({});
   const appliedUrlSelectionForListRef = useRef<string | null>(null);
   const syncSelectedCardUrl = useCallback(
     (name: string | null) => {
@@ -478,8 +480,10 @@ function BuilderRoute() {
     }
     setDeliveryQuote(null);
     setEstimatedShippingByStore(Object.fromEntries(selectedStores.map((store) => [store, 3])));
+    setPickupByStore(Object.fromEntries(selectedStores.map((store) => [store, false])));
+    setDeliverySession((session) => session + 1);
     setDeliveryOpen(true);
-  }, [enqueueSnackbar, runOptimization, selectedStores.length]);
+  }, [enqueueSnackbar, selectedStores]);
 
 
   useEffect(() => {
@@ -543,11 +547,17 @@ function BuilderRoute() {
   ]);
 
   const startEstimatedFill = useCallback(() => {
+    const shippingCostByStore = Object.fromEntries(
+      selectedStores.map((store) => [
+        store,
+        pickupByStore[store] ? 0 : estimatedShippingByStore[store] ?? 3,
+      ]),
+    );
     setDeliverySelections(
       Object.fromEntries(
         selectedStores.map((store) => [
           store,
-          estimatedShippingByStore[store] === 0
+          pickupByStore[store]
             ? assumedDeliverySelection('pickup')
             : {
                 label: 'Shipping (estimated)',
@@ -558,8 +568,8 @@ function BuilderRoute() {
       ),
     );
     setDeliveryOpen(false);
-    void runOptimization(undefined, estimatedShippingByStore);
-  }, [estimatedShippingByStore, runOptimization, selectedStores, setDeliverySelections]);
+    void runOptimization(undefined, shippingCostByStore);
+  }, [estimatedShippingByStore, pickupByStore, runOptimization, selectedStores, setDeliverySelections]);
 
   const skipDeliveryQuotes = useCallback(() => {
     setDeliverySelections(
@@ -797,14 +807,15 @@ function BuilderRoute() {
               <Box sx={{ fontWeight: 700, fontSize: 14, textAlign: 'right' }}>Cost ($)</Box>
             </Box>
             {selectedStores.map((store) => {
-              const pickup = estimatedShippingByStore[store] === 0;
+              const pickup = pickupByStore[store] ?? false;
+              const shippingCost = estimatedShippingByStore[store] ?? 3;
               return <Box key={store} sx={{ display: 'grid', gridTemplateColumns: '1fr auto 120px', alignItems: 'center', gap: 1 }}>
               <Box sx={{ fontWeight: 700 }}>{STORE_LABEL_BY_KEY[store] ?? store}</Box>
               <Box sx={{ display: 'inline-flex', border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
-                <Button size="small" variant={pickup ? 'text' : 'contained'} onClick={() => setEstimatedShippingByStore((current) => ({ ...current, [store]: current[store] === 0 ? 3 : current[store] ?? 3 }))} sx={{ minWidth: 52, borderRadius: 0 }}>Ship</Button>
-                <Button size="small" variant={pickup ? 'contained' : 'text'} onClick={() => setEstimatedShippingByStore((current) => ({ ...current, [store]: 0 }))} sx={{ minWidth: 58, borderRadius: 0 }}>Pickup</Button>
+                <Button size="small" variant={pickup ? 'text' : 'contained'} onClick={() => setPickupByStore((current) => ({ ...current, [store]: false }))} sx={{ minWidth: 52, borderRadius: 0 }}>Ship</Button>
+                <Button size="small" variant={pickup ? 'contained' : 'text'} onClick={() => setPickupByStore((current) => ({ ...current, [store]: true }))} sx={{ minWidth: 58, borderRadius: 0 }}>Pickup</Button>
               </Box>
-              <TextField size="small" type="number" disabled={pickup} value={pickup ? '' : (estimatedShippingByStore[store] ?? 3).toFixed(2)} onChange={(event) => setEstimatedShippingByStore((current) => ({ ...current, [store]: Math.max(0, Number(event.target.value) || 0) }))} inputProps={{ min: 0, max: 1000, step: 0.01 }} slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }} sx={{ width: 120, '& input[type=number]': { MozAppearance: 'textfield' }, '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': { WebkitAppearance: 'none', margin: 0 } }} />
+              <TextField key={`${store}:${pickup}:${deliverySession}`} size="small" type="number" disabled={pickup} defaultValue={shippingCost.toFixed(2)} onChange={(event) => { const amount = Number(event.target.value); if (Number.isFinite(amount) && amount >= 0 && amount <= 99.99) setEstimatedShippingByStore((current) => ({ ...current, [store]: amount })); }} onBlur={(event) => { event.currentTarget.value = shippingCost.toFixed(2); }} inputProps={{ min: 0, max: 99.99, step: 0.01 }} slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }} sx={{ width: 120, '& input[type=number]': { MozAppearance: 'textfield' }, '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': { WebkitAppearance: 'none', margin: 0 } }} />
             </Box>;
             })}
           </> : <>
