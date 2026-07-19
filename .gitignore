@@ -34,3 +34,7 @@ lerna-debug.log*
 
 # Playwright
 .playwright-mcp/
+
+# Local QA artifacts
+test-artifacts/
+apps/ui-v2/src/.tanstack/

@@ -1,0 +1,27 @@
+FROM node:20
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/core/package.json ./packages/core/
+COPY apps/auth/package.json ./apps/auth/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.build.json ./packages/shared/
+COPY packages/core/src ./packages/core/src
+COPY packages/core/tsconfig.json packages/core/tsconfig.build.json ./packages/core/
+COPY apps/auth/src ./apps/auth/src
+COPY apps/auth/tsconfig.json apps/auth/nest-cli.json ./apps/auth/
+COPY tsconfig.json nx.json ./
+
+RUN pnpm nx build auth
+
+WORKDIR /app/apps/auth
+
+EXPOSE 5002
+
+CMD ["pnpm", "dev"]

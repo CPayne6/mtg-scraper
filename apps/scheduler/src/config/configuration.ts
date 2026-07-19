@@ -4,6 +4,13 @@ export default () => ({
     host: process.env.REDIS_HOST ?? 'localhost',
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
   },
+  authDatabase: {
+    host: process.env.AUTH_DATABASE_HOST ?? 'localhost',
+    port: parseInt(process.env.AUTH_DATABASE_PORT ?? '5433', 10),
+    username: process.env.AUTH_DATABASE_USER ?? 'postgres',
+    password: process.env.AUTH_DATABASE_PASSWORD ?? 'postgres',
+    name: process.env.AUTH_DATABASE_NAME ?? 'scoutlgs_auth',
+  },
   extraction: {
     // Enable/disable scheduled storefront extraction
     enabled: process.env.EXTRACTION_ENABLED === 'true',
@@ -20,5 +27,13 @@ export default () => ({
   schedule: {
     // Timezone for all cron schedules
     timezone: process.env.SCHEDULE_TIMEZONE ?? 'America/Toronto',
+  },
+  cartCleanup: {
+    enabled: process.env.CART_CLEANUP_ENABLED !== 'false',
+    cronTime: process.env.CART_CLEANUP_CRON_TIME ?? '0 3 * * *',
+    anonymousRetentionDays: parseInt(
+      process.env.CART_ANONYMOUS_RETENTION_DAYS ?? '30',
+      10,
+    ),
   },
 });

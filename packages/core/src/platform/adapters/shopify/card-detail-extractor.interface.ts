@@ -6,6 +6,8 @@ export interface TitleInfo {
   setCode?: string;
   /** Foil flag parsed from title (e.g., trailing "Foil") */
   foil?: boolean;
+  /** Whether this title is an Art Series card rather than a playable card. */
+  isArtSeries?: boolean;
 }
 
 export interface SkuInfo {
@@ -13,6 +15,8 @@ export interface SkuInfo {
   collectorNumber?: string;
   foil?: boolean;
   isToken?: boolean;
+  /** Whether this SKU identifies an Art Series card rather than a playable card. */
+  isArtSeries?: boolean;
 }
 
 export interface TagsInfo {

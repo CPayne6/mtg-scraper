@@ -33,6 +33,7 @@ export interface ListingResult {
   quantity?: number;
   productLink: string;
   imageUrl?: string;
+  variantId: string | null;
 }
 
 export interface StoreCount {
@@ -191,6 +192,7 @@ export class CardsService {
     qb.where('l.card_name_id = :cardNameId', {
       cardNameId: filters.cardNameId,
     });
+    qb.andWhere('v.inStock = :inStock', { inStock: true });
 
     if (filters.setCode) {
       qb.andWhere('ps.code = :setCode', {
@@ -318,6 +320,7 @@ export class CardsService {
     qb.where('l.card_name_id = :cardNameId', {
       cardNameId: filters.cardNameId,
     });
+    qb.andWhere('v.inStock = :inStock', { inStock: true });
 
     if (filters.setCode) {
       qb.andWhere('ps.code = :setCode', {
@@ -373,6 +376,7 @@ export class CardsService {
         quantity: variant.quantity,
         productLink,
         imageUrl: listing.imageUrl,
+        variantId: variant.platformVariantId ?? null,
       };
     });
   }

@@ -112,6 +112,48 @@ mtg-scraper/
 
 ### Quick Start with Docker Compose
 
+#### Codex development container
+
+Run Codex in a lightweight, disposable container with access to this repository
+and the Docker Desktop daemon:
+
+```bash
+pnpm codex
+```
+
+`pnpm codex:dev` remains available as an equivalent alias.
+
+The first run builds the image and asks you to authenticate with Codex. Codex is
+started with approvals and its internal sandbox disabled because the container is
+the intended boundary. Its authentication and configuration persist in the
+Compose-managed `codex-home` volume; the rest of the container is disposable.
+
+Useful commands:
+
+```bash
+pnpm codex:build  # Rebuild the Codex image
+pnpm codex:shell  # Open a shell without starting Codex
+```
+
+From Codex or the container shell, sibling services can be managed normally:
+
+```bash
+pnpm dev             # Build and start every service
+pnpm dev api ui      # Build and start only API and UI (plus dependencies)
+pnpm dev:ps          # Show service status
+pnpm dev:logs api    # Follow logs for one service
+pnpm dev:down        # Stop and remove the development services
+```
+
+The container configuration mounts only this repository, the Docker socket, and
+the explicit Codex configuration volume. The host's `~/.ssh/id_ed25519` and
+`known_hosts` files are also mounted read-only, then copied into the disposable
+container filesystem with restrictive permissions so Git can authenticate to
+GitHub. Docker-socket access is nevertheless
+equivalent to control of Docker Desktop: a process with that access can ask the
+daemon to mount other Docker-accessible host paths or alter unrelated containers
+and volumes. Do not expose sensitive host directories to Docker Desktop.
+
 #### Development Mode (with hot reload)
 
 1. **Clone the repository**

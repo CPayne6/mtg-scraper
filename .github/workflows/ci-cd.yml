@@ -125,9 +125,11 @@ jobs:
         with:
           path: |
             apps/api/dist
-            apps/ui/dist
+            apps/auth/dist
+            apps/ui-v2/dist
             apps/scraper/dist
             apps/scheduler/dist
+            apps/optimizer/dist
             packages/core/dist
             packages/shared/dist
           key: ${{ runner.os }}-build-${{ github.sha }}
@@ -139,9 +141,11 @@ jobs:
           name: build-artifacts
           path: |
             apps/api/dist
-            apps/ui/dist
+            apps/auth/dist
+            apps/ui-v2/dist
             apps/scraper/dist
             apps/scheduler/dist
+            apps/optimizer/dist
             packages/core/dist
             packages/shared/dist
           retention-days: 7
@@ -162,12 +166,16 @@ jobs:
         service:
           - name: api
             dockerfile: apps/api/Dockerfile
+          - name: auth
+            dockerfile: apps/auth/Dockerfile
           - name: ui
-            dockerfile: apps/ui/Dockerfile
+            dockerfile: apps/ui-v2/Dockerfile
           - name: scraper
             dockerfile: apps/scraper/Dockerfile
           - name: scheduler
             dockerfile: apps/scheduler/Dockerfile
+          - name: optimizer
+            dockerfile: apps/optimizer/Dockerfile
 
     steps:
       - name: Checkout code
@@ -208,7 +216,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
           platforms: linux/amd64
           build-args: |
-            VITE_API_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca/api' || '' }}
+            VITE_API_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca' || '' }}
+            VITE_AUTH_URL=${{ matrix.service.name == 'ui' && 'https://scoutlgs.ca' || '' }}
             VITE_ADSENSE_CLIENT_ID=${{ matrix.service.name == 'ui' && vars.VITE_ADSENSE_CLIENT_ID || '' }}
             VITE_AD_SLOT_BANNER=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_BANNER || '' }}
             VITE_AD_SLOT_LEFT=${{ matrix.service.name == 'ui' && vars.VITE_AD_SLOT_LEFT || '' }}

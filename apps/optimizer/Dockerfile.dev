@@ -1,0 +1,21 @@
+FROM node:20
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/core/package.json ./packages/core/
+COPY apps/optimizer/package.json ./apps/optimizer/
+RUN pnpm install --frozen-lockfile
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsconfig.build.json ./packages/shared/
+COPY packages/core/src ./packages/core/src
+COPY packages/core/tsconfig.json packages/core/tsconfig.build.json ./packages/core/
+COPY apps/optimizer/src ./apps/optimizer/src
+COPY apps/optimizer/tsconfig.json apps/optimizer/nest-cli.json ./apps/optimizer/
+COPY tsconfig.json nx.json ./
+RUN pnpm nx build optimizer
+# The production build creates an incremental state file. Remove it so Nest's
+# development watcher performs a fresh emit into apps/optimizer/dist.
+RUN rm -f apps/optimizer/tsconfig.tsbuildinfo packages/core/tsconfig.tsbuildinfo packages/shared/tsconfig.tsbuildinfo
+WORKDIR /app/apps/optimizer
+CMD ["pnpm", "dev"]

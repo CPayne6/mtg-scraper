@@ -28,6 +28,7 @@ export interface VariantRow {
   conditionCode: string;
   foil: boolean;
   price: number;
+  inStock: boolean;
   quantity: number | null;
   platformVariantId: string | null;
   sku: string | null;
@@ -184,6 +185,7 @@ export class ListingUpsertService implements OnModuleInit {
     const variantConditionIds: number[] = [];
     const variantFoils: boolean[] = [];
     const variantPrices: number[] = [];
+    const variantInStocks: boolean[] = [];
     const variantQuantities: (number | null)[] = [];
     const variantPlatformIds: (string | null)[] = [];
     const variantSkus: (string | null)[] = [];
@@ -202,6 +204,7 @@ export class ListingUpsertService implements OnModuleInit {
           // Keep the later variant (overwrite)
           const offset = existingIdx;
           variantPrices[offset] = variant.price;
+          variantInStocks[offset] = variant.inStock;
           variantQuantities[offset] = variant.quantity;
           variantPlatformIds[offset] = variant.platformVariantId;
           variantSkus[offset] = variant.sku;
@@ -212,6 +215,7 @@ export class ListingUpsertService implements OnModuleInit {
         variantConditionIds.push(conditionId);
         variantFoils.push(variant.foil);
         variantPrices.push(variant.price);
+        variantInStocks.push(variant.inStock);
         variantQuantities.push(variant.quantity);
         variantPlatformIds.push(variant.platformVariantId);
         variantSkus.push(variant.sku);
@@ -223,7 +227,7 @@ export class ListingUpsertService implements OnModuleInit {
       const variantResult = await this.dataSource.query(
         `
         INSERT INTO card_variants (
-          card_listing_id, condition_id, foil, price, quantity,
+          card_listing_id, condition_id, foil, price, in_stock, quantity,
           platform_variant_id, sku, price_updated_at
         )
         SELECT
@@ -231,12 +235,14 @@ export class ListingUpsertService implements OnModuleInit {
           unnest($2::smallint[]),
           unnest($3::boolean[]),
           unnest($4::numeric[]),
-          unnest($5::int[]),
-          unnest($6::varchar[]),
+          unnest($5::boolean[]),
+          unnest($6::int[]),
           unnest($7::varchar[]),
+          unnest($8::varchar[]),
           NOW()
         ON CONFLICT (card_listing_id, condition_id, foil) DO UPDATE SET
           price = EXCLUDED.price,
+          in_stock = EXCLUDED.in_stock,
           quantity = EXCLUDED.quantity,
           platform_variant_id = EXCLUDED.platform_variant_id,
           sku = EXCLUDED.sku,
@@ -247,6 +253,7 @@ export class ListingUpsertService implements OnModuleInit {
           variantConditionIds,
           variantFoils,
           variantPrices,
+          variantInStocks,
           variantQuantities,
           variantPlatformIds,
           variantSkus,
@@ -280,21 +287,28 @@ export class ListingUpsertService implements OnModuleInit {
     let result: any;
 
     if (inStockVariantIds.length === 0) {
-      // Delete all variants for listings belonging to this product URL
+      // No in-stock platform IDs were reported; mark stock false for rows we
+      // can match by platform id, while preserving rows without a platform id.
       result = await this.dataSource.query(
-        `DELETE FROM card_variants WHERE card_listing_id IN (
+        `UPDATE card_variants
+         SET in_stock = false, price_updated_at = NOW()
+         WHERE card_listing_id IN (
           SELECT id FROM card_listings WHERE product_url_id = $1
-        )`,
+         )
+         AND platform_variant_id IS NOT NULL`,
         [productUrlId],
       );
     } else {
-      // Delete variants whose platform_variant_id is not in the in-stock set
+      // Mark stale variants as out of stock instead of deleting them, so API
+      // reads can consistently filter on card_variants.in_stock.
       result = await this.dataSource.query(
-        `DELETE FROM card_variants
+        `UPDATE card_variants
+         SET in_stock = false, price_updated_at = NOW()
          WHERE card_listing_id IN (
            SELECT id FROM card_listings WHERE product_url_id = $1
          )
-         AND (platform_variant_id IS NULL OR platform_variant_id NOT IN (${inStockVariantIds.map((_, i) => `$${i + 2}`).join(', ')}))`,
+         AND platform_variant_id IS NOT NULL
+         AND platform_variant_id NOT IN (${inStockVariantIds.map((_, i) => `$${i + 2}`).join(', ')})`,
         [productUrlId, ...inStockVariantIds],
       );
     }

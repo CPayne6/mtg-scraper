@@ -24,4 +24,7 @@ export { ExtractionRun } from './extraction-run.entity';
 export type { ExtractionRunStatus, ExtractionRunTrigger } from './extraction-run.entity';
 
 export { CardList } from './card-list.entity';
+export type { CardListVisibility } from './card-list.entity';
 export { CardListEntry } from './card-list-entry.entity';
+export { CardCart } from './card-cart.entity';
+export { freshOfferCutoff } from './offer-freshness';

@@ -4,8 +4,6 @@ import { Queue } from 'bullmq';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
-  StorefrontExtractionJobData,
-  StorefrontBootstrapJobData,
   StorefrontPlanJobData,
   ReextractUnmatchedJobData,
 } from '@scoutlgs/shared';
@@ -20,14 +18,15 @@ export class QueueService {
   constructor(
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
     private readonly storefrontExtractionQueue: Queue<
-      | StorefrontExtractionJobData
-      | StorefrontBootstrapJobData
       | StorefrontPlanJobData
       | ReextractUnmatchedJobData
     >,
+    @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
+    private readonly cardOptimizationQueue: Queue,
   ) {
     this.queues = new Map<string, Queue>([
       [QUEUE_NAMES.STOREFRONT_EXTRACTION, this.storefrontExtractionQueue],
+      [QUEUE_NAMES.CARD_OPTIMIZATION, this.cardOptimizationQueue],
     ]);
   }
 
@@ -52,98 +51,11 @@ export class QueueService {
   }
 
   /**
-   * Enqueue a Storefront API collection extraction job for a store.
-   * Storefront jobs perform collection discovery and product extraction in one pass.
-   */
-  async enqueueStorefrontExtractionJob(
-    storeId: number,
-    priority: number = 1,
-    discoveryRunId?: number,
-    updatedSince?: string,
-  ): Promise<void> {
-    try {
-      await this.storefrontExtractionQueue.add(
-        JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
-        {
-          storeId,
-          priority,
-          discoveryRunId,
-          updatedSince,
-        } satisfies StorefrontExtractionJobData,
-        {
-          priority,
-          removeOnComplete: 50,
-          removeOnFail: 100,
-          attempts: 2,
-          backoff: {
-            type: 'exponential',
-            delay: 5000,
-          },
-        },
-      );
-
-      this.logger.log(
-        `Enqueued Storefront extraction job for store ID: ${storeId} (Priority: ${priority})`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to enqueue Storefront extraction job for store ID ${storeId}:`,
-        error,
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Enqueue a bootstrap job that discovers a store's min/max product IDs
-   * and fans out `splitRanges` range-bounded extraction jobs.
-   *
-   * Use this when you want single-store parallelism instead of the default
-   * sequential pagination.
-   */
-  async enqueueStorefrontBootstrapJob(
-    storeId: number,
-    splitRanges: number,
-    options: { discoveryRunId?: number; scope?: string; updatedSince?: string } = {},
-  ): Promise<void> {
-    try {
-      await this.storefrontExtractionQueue.add(
-        JOB_NAMES.BOOTSTRAP_STOREFRONT_EXTRACTION,
-        {
-          storeId,
-          splitRanges,
-          ...options,
-        } satisfies StorefrontBootstrapJobData,
-        {
-          priority: 1,
-          removeOnComplete: 50,
-          removeOnFail: 100,
-          attempts: 2,
-          backoff: { type: 'exponential', delay: 5000 },
-        },
-      );
-
-      this.logger.log(
-        `Enqueued Storefront bootstrap for store ${storeId} (splitRanges=${splitRanges})`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to enqueue Storefront bootstrap for store ${storeId}:`,
-        error,
-      );
-      throw error;
-    }
-  }
-
-  /**
    * Enqueue a per-store plan job. The plan probes the store's `created_at`
    * range and fans out one bucket job per year. Each bucket job
    * cursor-paginates within its date range and recursively splits if it
    * hits Shopify's 25K depth limit.
    *
-   * This is the replacement for `enqueueStorefrontExtractionJob` —
-   * id-based chained pagination silently dropped products because Shopify
-   * doesn't actually support `id:>X` as a filter on the Storefront API.
    */
   async enqueueStorefrontPlanJob(
     storeId: number,
@@ -265,7 +177,7 @@ export class QueueService {
           ...data,
           cursor: null,
           sweeperAttempts: sweeperAttempts + 1,
-        } as unknown as StorefrontExtractionJobData,
+        } as unknown as StorefrontPlanJobData,
         {
           priority: 1,
           removeOnComplete: 100,

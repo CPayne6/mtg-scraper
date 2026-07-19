@@ -17,5 +17,5 @@ export {
   getStorefrontApiVersion,
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
-  PRODUCTS_QUERY,
+  PRODUCTS_BY_QUERY,
 } from './storefront.queries';

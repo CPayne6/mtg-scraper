@@ -1,4 +1,4 @@
-import { InjectQueue, OnQueueFailed, Process, Processor } from '@nestjs/bull';
+import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
@@ -6,9 +6,6 @@ import { Job, Queue } from 'bullmq';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
-  StorefrontExtractionJobData,
-  StorefrontExtractionJobResult,
-  StorefrontBootstrapJobData,
   StorefrontPlanJobData,
   StorefrontBucketJobData,
   StorefrontBucketJobResult,
@@ -33,7 +30,9 @@ import { PrintingMatcherService } from '../extraction/printing-matcher.service';
 interface ExtractedProduct {
   shopifyProductId: string;
   handle: string;
+  rawProductTitle: string;
   updatedAt: Date;
+  isArtSeries?: boolean;
   variants: ExtractedCardVariant[];
 }
 
@@ -96,190 +95,6 @@ export class StorefrontProcessor implements OnModuleInit {
   async onModuleInit() {
     this.printingMatcher.subscribeToCardDataChanges();
     await this.printingMatcher.warmCaches();
-  }
-
-  /**
-   * Process one page of products from a store.
-   * Fetches 250 products starting from lastId, processes them,
-   * then enqueues the next page if there are more products.
-   */
-  @Process({
-    name: JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
-    concurrency: 5,
-  })
-  async process(
-    job: Job<StorefrontExtractionJobData>,
-  ): Promise<StorefrontExtractionJobResult> {
-    const { storeId, lastId, maxId, discoveryRunId, updatedSince } = job.data;
-
-    const store = await this.storeRepository.findOne({
-      where: { id: storeId },
-    });
-    if (!store) {
-      throw new Error(`Store ${storeId} not found`);
-    }
-
-    // Resolve scope from job data or store config
-    const scope =
-      job.data.scope ??
-      store.scraperConfig?.storefrontScope;
-    if (!scope) {
-      throw new Error(
-        `Store ${store.name} (${storeId}) is missing storefrontScope`,
-      );
-    }
-
-    const adapter = this.platformAdapterFactory.getExtractionAdapter(
-      store.platformType!,
-    ) as StorefrontExtractionAdapter;
-
-    // Fetch one page (with optional upper bound for range-split jobs).
-    // Wrapped to translate Shopify throttle errors into a delayed re-enqueue
-    // rather than letting BullMQ run its fixed exponential backoff.
-    let products: ExtractedProduct[];
-    let nextLastId: string | null;
-    try {
-      const result = await adapter.fetchPage(store, scope, lastId, maxId, updatedSince);
-      products = result.products;
-      nextLastId = result.nextLastId;
-    } catch (error) {
-      if (await this.rescheduleIfThrottled(job, error)) {
-        return {
-          storeId,
-          productsProcessed: 0,
-          cardsAdded: 0,
-          errors: 0,
-          isLastPage: false,
-          success: true,
-        };
-      }
-      throw error;
-    }
-
-    if (products.length === 0) {
-      const rangeNote = maxId ? ` [range ≤${maxId}]` : '';
-      this.logger.warn(`${store.name}${rangeNote}: no more products (done)`);
-      return {
-        storeId,
-        productsProcessed: 0,
-        cardsAdded: 0,
-        errors: 0,
-        isLastPage: true,
-        success: true,
-      };
-    }
-
-    // Process the page
-    const pageResult = await this.processPage(
-      products,
-      store.id,
-      discoveryRunId,
-    );
-
-    // A "last page" within a range means: hit the end of the scope OR
-    // crossed the upper bound. fetchPage signals this with nextLastId === null.
-    const isLastPage = nextLastId === null;
-    const rangeNote = maxId ? ` [≤${maxId}]` : '';
-
-    this.logger.warn(
-      `${store.name}${rangeNote}: ${products.length} products, ${pageResult.cards} cards, ${pageResult.errors} errors` +
-        (isLastPage ? ' (range complete)' : ` (next: id:>${nextLastId})`),
-    );
-
-    // Enqueue next page if there are more products in this range
-    if (!isLastPage) {
-      await this.storefrontQueue.add(
-        JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
-        {
-          storeId,
-          lastId: nextLastId,
-          maxId,
-          scope,
-          updatedSince,
-          discoveryRunId,
-        } as StorefrontExtractionJobData,
-        STOREFRONT_JOB_OPTS,
-      );
-    }
-
-    return {
-      storeId,
-      productsProcessed: pageResult.processed,
-      cardsAdded: pageResult.cards,
-      errors: pageResult.errors,
-      isLastPage,
-      success: true,
-    };
-  }
-
-  /**
-   * Bootstrap job: discover min/max product IDs for a store, then enqueue
-   * N parallel range-bounded extraction jobs.
-   *
-   * Lets a single store's pages be processed in parallel instead of being
-   * chained sequentially by `lastId`. Throughput becomes constrained by
-   * worker concurrency, not per-store sequentiality.
-   */
-  @Process({
-    name: JOB_NAMES.BOOTSTRAP_STOREFRONT_EXTRACTION,
-    concurrency: 5,
-  })
-  async bootstrap(
-    job: Job<StorefrontBootstrapJobData>,
-  ): Promise<{ storeId: number; rangesEnqueued: number; success: boolean }> {
-    const { storeId, splitRanges, discoveryRunId, updatedSince } = job.data;
-
-    const store = await this.storeRepository.findOne({ where: { id: storeId } });
-    if (!store) throw new Error(`Store ${storeId} not found`);
-
-    const scope = job.data.scope ?? store.scraperConfig?.storefrontScope;
-    if (!scope) {
-      throw new Error(
-        `Store ${store.name} (${storeId}) is missing storefrontScope`,
-      );
-    }
-
-    const adapter = this.platformAdapterFactory.getExtractionAdapter(
-      store.platformType!,
-    ) as StorefrontExtractionAdapter;
-
-    let minId: string | null;
-    let maxId: string | null;
-    try {
-      ({ minId, maxId } = await adapter.fetchIdRange(store, scope, updatedSince));
-    } catch (error) {
-      if (await this.rescheduleIfThrottled(job, error)) {
-        return { storeId, rangesEnqueued: 0, success: true };
-      }
-      throw error;
-    }
-
-    if (!minId || !maxId) {
-      this.logger.warn(`${store.name}: bootstrap found no products`);
-      return { storeId, rangesEnqueued: 0, success: true };
-    }
-
-    const ranges = splitIdRange(minId, maxId, splitRanges);
-    this.logger.warn(
-      `${store.name}: bootstrap [${minId}..${maxId}] → ${ranges.length} ranges`,
-    );
-
-    for (const { lastId, maxId: rangeMax } of ranges) {
-      await this.storefrontQueue.add(
-        JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION,
-        {
-          storeId,
-          lastId,
-          maxId: rangeMax,
-          scope,
-          updatedSince,
-          discoveryRunId,
-        } as StorefrontExtractionJobData,
-        STOREFRONT_JOB_OPTS,
-      );
-    }
-
-    return { storeId, rangesEnqueued: ranges.length, success: true };
   }
 
   /**
@@ -614,7 +429,7 @@ export class StorefrontProcessor implements OnModuleInit {
 
       try {
         // 1. Fetch first — pre-commit to nothing if Shopify fails
-        const { products } = await adapter.fetchPage(store, idQuery);
+        const { products } = await adapter.fetchProductsByQuery(store, idQuery);
         refetched += products.length;
 
         if (products.length === 0) continue;
@@ -682,8 +497,17 @@ export class StorefrontProcessor implements OnModuleInit {
     storeId: number,
     discoveryRunId?: number,
   ): Promise<{ processed: number; cards: number; errors: number }> {
+    const artSeriesProducts = products.filter((product) => product.isArtSeries);
+    const cardProducts = products.filter((product) => !product.isArtSeries);
+
+    await this.excludeArtSeriesProducts(storeId, artSeriesProducts);
+
+    if (cardProducts.length === 0) {
+      return { processed: artSeriesProducts.length, cards: 0, errors: 0 };
+    }
+
     // Step 1: Bulk lookup shopify_products by PK
-    const shopifyIds = products.map((p) => p.shopifyProductId);
+    const shopifyIds = cardProducts.map((p) => p.shopifyProductId);
     const existingRows = await this.shopifyProductRepository.find({
       where: { shopifyProductId: In(shopifyIds) },
       select: ['shopifyProductId', 'productUrlId', 'cardListingId', 'matchStatus'],
@@ -700,7 +524,7 @@ export class StorefrontProcessor implements OnModuleInit {
       productUrlId: number;
     }[] = [];
 
-    for (const product of products) {
+    for (const product of cardProducts) {
       const existing = existingMap.get(product.shopifyProductId);
       if (existing?.productUrlId && existing.matchStatus === 'matched') {
         knownProducts.push({
@@ -737,6 +561,11 @@ export class StorefrontProcessor implements OnModuleInit {
       }
     }
 
+    await this.bulkUpdateShopifyProductTitles(
+      storeId,
+      knownProducts.map(({ product }) => product),
+    );
+
     // Step 4: New products — full pipeline
     if (newProducts.length > 0) {
       const productUrlMap = await this.bulkUpsertProductUrls(
@@ -752,6 +581,7 @@ export class StorefrontProcessor implements OnModuleInit {
         matchStatus: string;
         isToken: boolean;
         cardListingId: number | null;
+        rawProductTitle: string;
       }[] = [];
 
       for (const product of newProducts) {
@@ -799,6 +629,7 @@ export class StorefrontProcessor implements OnModuleInit {
               matchStatus,
               isToken,
               cardListingId,
+              rawProductTitle: product.rawProductTitle,
             });
           } else {
             errors++;
@@ -812,6 +643,7 @@ export class StorefrontProcessor implements OnModuleInit {
               matchStatus: 'unmatched',
               isToken: false,
               cardListingId: null,
+              rawProductTitle: product.rawProductTitle,
             });
           }
         } catch (error) {
@@ -830,7 +662,51 @@ export class StorefrontProcessor implements OnModuleInit {
       }
     }
 
-    return { processed, cards, errors };
+    return {
+      processed: processed + artSeriesProducts.length,
+      cards,
+      errors,
+    };
+  }
+
+  /**
+   * Remove Art Series products from search results and remember that the
+   * Shopify product is intentionally excluded. This also clears any listing
+   * created before Art Series filtering was added.
+   */
+  private async excludeArtSeriesProducts(
+    storeId: number,
+    products: ExtractedProduct[],
+  ): Promise<void> {
+    if (products.length === 0) return;
+
+    const productUrlMap = await this.bulkUpsertProductUrls(storeId, products);
+    const productUrlIds = [...productUrlMap.values()];
+
+    if (productUrlIds.length > 0) {
+      await Promise.all([
+        this.cardListingRepository.delete({ productUrlId: In(productUrlIds) }),
+        this.unmatchedCardRepository.delete({ productUrlId: In(productUrlIds) }),
+      ]);
+      await this.bulkUpdateProductUrlStatus(productUrlIds, []);
+    }
+
+    await this.bulkUpsertShopifyProducts(
+      storeId,
+      products.flatMap((product) => {
+        const productUrlId = productUrlMap.get(product.handle);
+        return productUrlId
+          ? [{
+              shopifyProductId: product.shopifyProductId,
+              productUrlId,
+              matchStatus: 'excluded',
+              isToken: false,
+              cardListingId: null,
+              rawProductTitle: product.rawProductTitle,
+            }]
+          : [];
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -881,6 +757,7 @@ export class StorefrontProcessor implements OnModuleInit {
       matchStatus: string;
       isToken: boolean;
       cardListingId: number | null;
+      rawProductTitle: string;
     }[],
   ): Promise<void> {
     if (inserts.length === 0) return;
@@ -893,17 +770,39 @@ export class StorefrontProcessor implements OnModuleInit {
         inserts.map((row) => ({
           shopifyProductId: row.shopifyProductId,
           storeId,
+          rawProductTitle: row.rawProductTitle,
           productUrlId: row.productUrlId,
           cardListingId: row.cardListingId,
           isToken: row.isToken,
-          matchStatus: row.matchStatus as 'pending' | 'matched' | 'unmatched' | 'token',
+          matchStatus: row.matchStatus as 'pending' | 'matched' | 'unmatched' | 'token' | 'excluded',
           updatedAt: now,
         })),
       )
       .orUpdate(
-        ['card_listing_id', 'match_status', 'is_token', 'updated_at'],
+        ['raw_product_title', 'card_listing_id', 'match_status', 'is_token', 'updated_at'],
         ['shopify_product_id'],
       )
+      .execute();
+  }
+
+  private async bulkUpdateShopifyProductTitles(
+    storeId: number,
+    products: ExtractedProduct[],
+  ): Promise<void> {
+    if (products.length === 0) return;
+
+    await this.shopifyProductRepository
+      .createQueryBuilder()
+      .insert()
+      .values(
+        products.map((product) => ({
+          shopifyProductId: product.shopifyProductId,
+          storeId,
+          rawProductTitle: product.rawProductTitle,
+          updatedAt: new Date(),
+        })),
+      )
+      .orUpdate(['raw_product_title', 'updated_at'], ['shopify_product_id'])
       .execute();
   }
 
@@ -930,106 +829,6 @@ export class StorefrontProcessor implements OnModuleInit {
           lastExtractedAt: new Date(),
           extractionError: error,
         },
-      );
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Failure recovery
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Fires once a pagination job has exhausted its BullMQ retry budget.
-   *
-   * Without this handler, a single permanently-failed page terminates the
-   * chain for that store — every product with an id greater than the failed
-   * `lastId` is silently abandoned until the next scheduled run. That's what
-   * caused General Ferrous Rokiric (and many others) to be missing from prod.
-   *
-   * Recovery: probe for the very next product after the failed `lastId` via
-   * a one-row `id:>lastId` query, then enqueue a fresh pagination job
-   * starting from that id. `recoveryDepth` caps the loop so a genuinely
-   * broken store can't spin forever.
-   */
-  @OnQueueFailed()
-  async onPaginationFailed(job: Job, err: Error): Promise<void> {
-    if (job.name !== JOB_NAMES.EXTRACT_STOREFRONT_COLLECTION) return;
-    if (job.attemptsMade < (job.opts.attempts ?? 1)) return; // not the final try
-
-    const data = job.data as StorefrontExtractionJobData;
-    const depth = data.recoveryDepth ?? 0;
-    const MAX_DEPTH = 5;
-
-    if (depth >= MAX_DEPTH) {
-      this.logger.error(
-        `storefront chain permanently abandoned: storeId=${data.storeId} lastId=${data.lastId} (recoveryDepth=${depth}): ${err.message}`,
-      );
-      return;
-    }
-
-    const store = await this.storeRepository.findOne({
-      where: { id: data.storeId },
-    });
-    if (!store) return;
-    const scope = data.scope ?? store.scraperConfig?.storefrontScope;
-    if (!scope || !data.lastId) {
-      // No anchor to probe from — fall back to delayed retry of the same job.
-      await this.storefrontQueue.add(
-        job.name,
-        { ...data, recoveryDepth: depth + 1 } satisfies StorefrontExtractionJobData,
-        { ...STOREFRONT_JOB_OPTS, delay: 60_000 },
-      );
-      return;
-    }
-
-    const adapter = this.platformAdapterFactory.getExtractionAdapter(
-      store.platformType!,
-    ) as StorefrontExtractionAdapter;
-
-    try {
-      const nextId = await adapter.findNextProductId(
-        store,
-        scope,
-        data.lastId,
-        data.updatedSince ?? null,
-      );
-
-      if (!nextId) {
-        this.logger.warn(
-          `storefront skip-ahead: storeId=${data.storeId} reached end of catalog past lastId=${data.lastId}`,
-        );
-        return;
-      }
-
-      // Resume from one id below the discovered next product so that product
-      // is included in the next fetch (the next-page query uses `id:>lastId`).
-      // Shopify ids are sparse 64-bit ints; subtracting 1 lands on an invalid
-      // id which the filter simply doesn't match.
-      const resumeFrom = (BigInt(nextId) - 1n).toString();
-
-      this.logger.warn(
-        `storefront skip-ahead: storeId=${data.storeId} jumping from lastId=${data.lastId} to lastId=${resumeFrom} (next valid id=${nextId}, depth=${depth})`,
-      );
-
-      await this.storefrontQueue.add(
-        job.name,
-        {
-          ...data,
-          lastId: resumeFrom,
-          recoveryDepth: depth + 1,
-        } satisfies StorefrontExtractionJobData,
-        { ...STOREFRONT_JOB_OPTS, delay: 30_000 },
-      );
-    } catch (probeErr) {
-      this.logger.error(
-        `storefront skip-ahead probe failed for storeId=${data.storeId} at lastId=${data.lastId}: ${(probeErr as Error).message}`,
-      );
-      // Probe itself failed — fall back to a plain delayed retry of the
-      // original job so we don't drop the chain entirely.
-      await this.storefrontQueue.add(
-        job.name,
-        { ...data, recoveryDepth: depth + 1 } satisfies StorefrontExtractionJobData,
-        { ...STOREFRONT_JOB_OPTS, delay: 120_000 },
       );
     }
   }
@@ -1072,45 +871,6 @@ export class StorefrontProcessor implements OnModuleInit {
     });
     return true;
   }
-}
-
-/**
- * Split an ID range [minId, maxId] into `count` chunks of roughly equal ID-space.
- *
- * Returns chunks as `{ lastId, maxId }` pairs suitable for extraction jobs:
- *   - `lastId` is exclusive (the chunk fetches `id:>lastId`).
- *   - `maxId` is inclusive (the chunk fetches `id:<=maxId`).
- *
- * Chunk N covers `(boundary[N], boundary[N+1]]`. The first chunk uses
- * `minId - 1` as its exclusive lower bound so the actual minimum is included.
- *
- * Note: ID-space chunking gives roughly equal physical ranges, not equal
- * product counts. Stores with bursty imports will see uneven chunk durations.
- */
-export function splitIdRange(
-  minId: string,
-  maxId: string,
-  count: number,
-): { lastId: string; maxId: string }[] {
-  const min = BigInt(minId);
-  const max = BigInt(maxId);
-  if (count <= 1 || max <= min) {
-    return [{ lastId: (min - 1n).toString(), maxId: max.toString() }];
-  }
-
-  const total = max - min + 1n;
-  const chunkSize = total / BigInt(count);
-  const remainder = total % BigInt(count);
-
-  const ranges: { lastId: string; maxId: string }[] = [];
-  let cursor = min - 1n;
-  for (let i = 0; i < count; i++) {
-    const size = chunkSize + (BigInt(i) < remainder ? 1n : 0n);
-    const upper = cursor + size;
-    ranges.push({ lastId: cursor.toString(), maxId: upper.toString() });
-    cursor = upper;
-  }
-  return ranges;
 }
 
 /**

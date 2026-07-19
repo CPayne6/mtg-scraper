@@ -1,4 +1,6 @@
-
+// Card condition slugs match the values emitted by the scrapers and stored on
+// the listing variants. `dmg` and `unknown` are distinct — `unknown` means we
+// couldn't determine the condition, not that the card is damaged.
 export enum Condition {
   NM = 'nm',
   LP = 'lp',
@@ -9,6 +11,9 @@ export enum Condition {
 }
 
 export interface Card {
+  // Internal CardVariant.id from the ScoutLGS database. This is the stable ID
+  // used for persisted carts.
+  id?: number;
   price: number;
   condition: Condition;
   foil?: boolean;
@@ -19,9 +24,15 @@ export interface Card {
   set: string;
   card_number: string;
   scryfall_id?: string;
+  // Numeric Shopify variant ID. Drives per-store cart permalinks
+  // (`https://{shop}/cart/{variant_id}:{qty}`) on POST /api/v1/checkout/build.
+  variant_id?: string;
 }
 
-export type CardWithStore = Card & { store: string };
+// `store` is the store's displayName (human-readable, e.g. "Face to Face Games").
+// `store_key` is the store's stable slug from the DB (e.g. "face-to-face-games")
+// and must be used anywhere an offer is grouped, filtered, deduped, or compared.
+export type CardWithStore = Card & { store: string; store_key: string };
 
 export interface StoreInfo {
   id: number;

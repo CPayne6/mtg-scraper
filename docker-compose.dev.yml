@@ -19,6 +19,26 @@ services:
       timeout: 3s
       retries: 5
 
+  # PostgreSQL - Identity/auth database
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: scoutlgs-auth-postgres-dev
+    environment:
+      - POSTGRES_DB=scoutlgs_auth
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - scoutlgs-auth-postgres-data-dev:/var/lib/postgresql/data
+    networks:
+      - scoutlgs-network-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
@@ -51,13 +71,15 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
+      - FRONTEND_URL=http://localhost:${UI_PORT:-3000}
+      - ENABLE_DELIVERY_ADDRESS_QUOTES=false
+      - AUTH_JWKS_URL=http://auth:5002/auth/internal/.well-known/jwks.json
+      - SCHEDULER_INTERNAL_URL=http://scheduler:5001
     volumes:
       # Mount source code for hot reload
       - ./apps/api/src:/app/apps/api/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/api/tsconfig.json:/app/apps/api/tsconfig.json:ro
       - ./apps/api/nest-cli.json:/app/apps/api/nest-cli.json:ro
@@ -67,33 +89,79 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      auth:
+        condition: service_started
     networks:
       - scoutlgs-network-dev
     command: pnpm dev
+
+  # Auth Service (Development mode with hot reload)
+  auth:
+    build:
+      context: .
+      dockerfile: apps/auth/Dockerfile.dev
+    container_name: scoutlgs-auth-dev
+    ports:
+      - "5002:5002"
+    env_file:
+      - apps/auth/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=5002
+      - FRONTEND_URL=http://localhost:${UI_PORT:-3000}
+      - COOKIE_SECURE=false
+      - DATABASE_HOST=auth-postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs_auth
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+    volumes:
+      - ./apps/auth/src:/app/apps/auth/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+      - ./apps/auth/tsconfig.json:/app/apps/auth/tsconfig.json:ro
+      - ./apps/auth/nest-cli.json:/app/apps/auth/nest-cli.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm start:prod
 
   # UI Service (Development mode with Vite hot reload)
   ui:
     build:
       context: .
-      dockerfile: apps/ui/Dockerfile.dev
+      dockerfile: apps/ui-v2/Dockerfile.dev
     container_name: scoutlgs-ui-dev
     ports:
-      - "3000:3000"
+      - "${UI_PORT:-3000}:3000"
     env_file:
-      - apps/ui/.env
+      - apps/ui-v2/.env
     environment:
       - NODE_ENV=development
+      # Route browser API/auth traffic through Vite so cookies are scoped to
+      # the host used to open the UI (localhost or a LAN hostname).
+      - VITE_API_URL=
+      - VITE_AUTH_URL=
+      - VITE_ENABLE_DELIVERY_ADDRESS_QUOTES=false
+      - API_PROXY_TARGET=http://api:5000
+      - AUTH_PROXY_TARGET=http://auth:5002
+      # The route tree is generated in the bind-mounted src directory. Keep
+      # TanStack's temporary file there too so its atomic rename is not across
+      # Docker filesystems (which fails with EXDEV on Docker Desktop).
+      - TSR_TMP_DIR=/app/apps/ui-v2/src/.tanstack/tmp
     volumes:
       # Mount source code for hot reload
-      - ./apps/ui/src:/app/apps/ui/src:delegated
-      - ./apps/ui/public:/app/apps/ui/public:delegated
+      - ./apps/ui-v2/src:/app/apps/ui-v2/src:delegated
+      - ./apps/ui-v2/public:/app/apps/ui-v2/public:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       # Mount config files
-      - ./apps/ui/vite.config.ts:/app/apps/ui/vite.config.ts:ro
-      - ./apps/ui/tsconfig.json:/app/apps/ui/tsconfig.json:ro
-      - ./apps/ui/tsconfig.app.json:/app/apps/ui/tsconfig.app.json:ro
-      - ./apps/ui/index.html:/app/apps/ui/index.html:ro
+      - ./apps/ui-v2/vite.config.ts:/app/apps/ui-v2/vite.config.ts:ro
+      - ./apps/ui-v2/tsconfig.json:/app/apps/ui-v2/tsconfig.json:ro
+      - ./apps/ui-v2/tsconfig.app.json:/app/apps/ui-v2/tsconfig.app.json:ro
+      - ./apps/ui-v2/index.html:/app/apps/ui-v2/index.html:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
     depends_on:
       - api
@@ -116,19 +184,26 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
+      - AUTH_DATABASE_HOST=auth-postgres
+      - AUTH_DATABASE_PORT=5432
+      - AUTH_DATABASE_NAME=scoutlgs_auth
+      - AUTH_DATABASE_USER=postgres
+      - AUTH_DATABASE_PASSWORD=postgres
     volumes:
       # Mount source code for hot reload
       - ./apps/scheduler/src:/app/apps/scheduler/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/scheduler/tsconfig.json:/app/apps/scheduler/tsconfig.json:ro
       - ./apps/scheduler/nest-cli.json:/app/apps/scheduler/nest-cli.json:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      auth-postgres:
         condition: service_healthy
     networks:
       - scoutlgs-network-dev
@@ -151,9 +226,7 @@ services:
       # Mount source code for hot reload
       - ./apps/scraper/src:/app/apps/scraper/src:delegated
       - ./packages/shared/src:/app/packages/shared/src:delegated
-      - ./packages/shared/dist:/app/packages/shared/dist:delegated
       - ./packages/core/src:/app/packages/core/src:delegated
-      - ./packages/core/dist:/app/packages/core/dist:delegated
       # Mount config files
       - ./apps/scraper/tsconfig.json:/app/apps/scraper/tsconfig.json:ro
       - ./apps/scraper/nest-cli.json:/app/apps/scraper/nest-cli.json:ro
@@ -165,7 +238,7 @@ services:
         condition: service_healthy
     networks:
       - scoutlgs-network-dev
-    command: pnpm dev
+    command: pnpm start:prod
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
@@ -175,6 +248,33 @@ services:
     deploy:
       replicas: 3
 
+  optimizer:
+    build:
+      context: .
+      dockerfile: apps/optimizer/Dockerfile.dev
+    container_name: scoutlgs-optimizer-dev
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=scoutlgs
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+    volumes:
+      - ./apps/optimizer/src:/app/apps/optimizer/src:delegated
+      - ./packages/shared/src:/app/packages/shared/src:delegated
+      - ./packages/core/src:/app/packages/core/src:delegated
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - scoutlgs-network-dev
+    command: pnpm dev
+
 networks:
   scoutlgs-network-dev:
     driver: bridge
@@ -183,4 +283,6 @@ volumes:
   scoutlgs-redis-data-dev:
     driver: local
   scoutlgs-postgres-data-dev:
+    driver: local
+  scoutlgs-auth-postgres-data-dev:
     driver: local

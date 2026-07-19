@@ -345,6 +345,41 @@ The scheduler service exposes HTTP endpoints on port 5001 for manually triggerin
 | `PUT` | `/manual/trigger?limit=N` | Trigger a manual scrape of popular cards (default: 1000 cards) |
 | `GET` | `/manual/status` | Check current scrape job status |
 
+### Shopify Storefront catalog extraction
+
+Storefront catalog crawls use the same modern flow whether they are scheduled
+or started manually:
+
+1. `PUT /manual/storefront/trigger?storeId=<id>` enqueues a per-store plan job.
+2. The planner discovers the catalog's documented `created_at` bounds and
+   creates independent yearly time buckets.
+3. Workers fetch each bucket with `sortKey: CREATED_AT` and Shopify's opaque
+   GraphQL cursor (`after`). A following page is a new job, so the queue can
+   keep all scraper workers busy across stores and buckets.
+4. If a bucket reaches Shopify's 25,000-product pagination limit, it is split
+   into two smaller time ranges and retried from the beginning of each range.
+
+#### Dense timestamp edge case
+
+Time-range splitting cannot divide more than 25,000 products that share the
+same Shopify `created_at` timestamp. If this occurs, the planner should first
+try supported `updated_at` ranges, then stable store facets such as `vendor`,
+`product_type`, or tags when those values provide a complete partition. Do not
+use product ID as a query boundary: it is not a supported Storefront product
+filter. If no supported predicate can split the cluster, surface it as an
+explicit unsplittable-query error rather than silently omitting products.
+
+```bash
+# One store
+docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/storefront/trigger?storeId=1', {method: 'PUT'}).then(r => r.json()).then(console.log)"
+
+# All active Shopify Storefront stores
+docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/storefront/trigger-all', {method: 'PUT'}).then(r => r.json()).then(console.log)"
+
+# Per-store product/listing counts after a run
+docker exec $SCHEDULER node -e "fetch('http://localhost:5001/manual/storefront/status').then(r => r.json()).then(console.log)"
+```
+
 ### Triggering a Manual Scrape in Production
 
 The scheduler container uses Alpine Linux and doesn't have curl, so use Node.js fetch from inside the container.

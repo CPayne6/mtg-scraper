@@ -52,6 +52,16 @@ export class StorefrontClient {
       );
       proxyDispatcher = this.proxyService.getProxyAgentForNumber(proxyNumber);
     }
+    // Keep regular and deferred Storefront operations on the same per-store,
+    // per-proxy limiter. This is deliberately after proxy selection.
+    const permit = await this.rateLimiter.acquirePermit(
+      store.name,
+      proxyNumber,
+      store.rateLimitPerSecond || 15,
+    );
+    if (!permit.allowed) {
+      await new Promise((resolve) => setTimeout(resolve, permit.retryAfterMs));
+    }
 
     // Build headers
     const headers: Record<string, string> = {
@@ -179,6 +189,90 @@ export class StorefrontClient {
     }
 
     return body.data as T;
+  }
+
+  /**
+   * Execute a Shopify @defer query. Carrier rates are delivered as a
+   * multipart/mixed stream, so a successful HTTP response is not complete
+   * until its terminal `hasNext: false` part has arrived.
+   */
+  async queryDeferred<T>(store: Store, gql: string, variables: Record<string, unknown>): Promise<T> {
+    const url = this.getEndpointUrl(store);
+    let proxyNumber = 0;
+    let dispatcher: Dispatcher | undefined;
+    if (this.proxyService.isEnabled()) {
+      proxyNumber = await this.cacheService.getNextProxyNumber('storefront', this.proxyService.getIpCount());
+      dispatcher = this.proxyService.getProxyAgentForNumber(proxyNumber);
+    }
+    const permit = await this.rateLimiter.acquirePermit(store.name, proxyNumber, store.rateLimitPerSecond || 15);
+    if (!permit.allowed) await new Promise((resolve) => setTimeout(resolve, permit.retryAfterMs));
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'multipart/mixed; deferSpec=20220824, application/json',
+      'User-Agent': 'Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)',
+    };
+    if (this.webBotAuth.isEnabled()) Object.assign(headers, await this.webBotAuth.signRequest(proxyNumber, 'POST', url) ?? {});
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ query: gql, variables }), ...(dispatcher ? { dispatcher } : {}), signal: AbortSignal.timeout(15000) });
+    } catch (error) {
+      throw new Error(`Deferred fetch failed for ${store.name}: ${(error as Error).message}`);
+    }
+    if (!response.ok) throw new Error(`Deferred HTTP ${response.status} from ${store.name}`);
+    const raw = await response.text();
+    const parts = this.parseDeferredParts(raw, response.headers.get('content-type') ?? '');
+    if (!parts.length) throw new Error(`Malformed deferred response from ${store.name}`);
+    let result: unknown = {};
+    let complete = false;
+    for (const part of parts) {
+      if (part.errors?.length) throw new Error(`Deferred GraphQL errors from ${store.name}: ${part.errors.map((e: { message?: string }) => e.message ?? 'unknown').join('; ')}`);
+      if (part.data) result = this.mergeDeferred(result, part.data);
+      for (const incremental of part.incremental ?? []) result = this.applyDeferredIncremental(result, incremental);
+      if (part.hasNext === false) complete = true;
+    }
+    if (!complete) throw new Error(`Incomplete deferred response from ${store.name}`);
+    return result as T;
+  }
+
+  private parseDeferredParts(raw: string, contentType: string): Array<Record<string, any>> {
+    const boundary = /boundary\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1];
+    const candidates = contentType.includes('multipart/mixed') && boundary
+      ? raw.split(`--${boundary}`)
+      : [raw];
+    const parts: Array<Record<string, any>> = [];
+    for (const candidate of candidates) {
+      const body = candidate.trim().replace(/^Content-[^\n]*\r?\n(?:[^\n]*\r?\n)*\r?\n/i, '').trim();
+      // The closing multipart boundary can remain as a fragment after split
+      // (for example `--graphql--`). It is not a JSON response part.
+      if (!body || body === '--' || body.startsWith('--')) continue;
+      try { parts.push(JSON.parse(body)); } catch { throw new Error('Malformed multipart JSON'); }
+    }
+    return parts;
+  }
+
+  private mergeDeferred(base: any, addition: any): any {
+    if (Array.isArray(base) || Array.isArray(addition)) return addition;
+    if (!base || !addition || typeof base !== 'object' || typeof addition !== 'object') return addition;
+    const merged = { ...base };
+    for (const [key, value] of Object.entries(addition)) merged[key] = key in merged ? this.mergeDeferred(merged[key], value) : value;
+    return merged;
+  }
+
+  private applyDeferredIncremental(root: any, incremental: { path?: Array<string | number>; data?: unknown; items?: unknown }): any {
+    if (!incremental.path) return this.mergeDeferred(root, incremental.data ?? incremental.items ?? {});
+    const clone = structuredClone(root);
+    let target = clone;
+    const path = incremental.path;
+    for (let index = 0; index < path.length - 1; index++) {
+      const key = path[index];
+      const next = path[index + 1];
+      target[key] ??= typeof next === 'number' ? [] : {};
+      target = target[key];
+    }
+    const leaf = path[path.length - 1];
+    const value = incremental.data ?? incremental.items;
+    target[leaf] = Array.isArray(target[leaf]) && Array.isArray(value) ? [...target[leaf], ...value] : this.mergeDeferred(target[leaf], value);
+    return clone;
   }
 
   /**

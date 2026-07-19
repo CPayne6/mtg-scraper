@@ -92,7 +92,7 @@ describe('CardNameResolverService', () => {
       expect(result.unresolved).toHaveLength(0);
     });
 
-    it('should deduplicate input names', async () => {
+    it('should preserve duplicate input names while batching exact lookup', async () => {
       const cardName = {
         id: 1,
         name: 'Lightning Bolt',
@@ -107,8 +107,37 @@ describe('CardNameResolverService', () => {
         'LIGHTNING BOLT',
       ]);
 
-      expect(result.resolved).toHaveLength(1);
+      expect(result.resolved).toHaveLength(3);
+      expect(result.resolved.map((r) => r.input)).toEqual([
+        'Lightning Bolt',
+        'lightning bolt',
+        'LIGHTNING BOLT',
+      ]);
+      expect(result.resolved.map((r) => r.cardNameId)).toEqual([1, 1, 1]);
       expect(mockCardNameRepo.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('should preserve duplicate fuzzy matches without repeating fuzzy queries', async () => {
+      mockCardNameRepo.find.mockResolvedValue([]);
+
+      const fuzzyQb = {
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        getMany: vi.fn().mockResolvedValue([
+          { id: 2, name: 'Lightning Bolt', normalizedName: 'lightning bolt' },
+        ]),
+      };
+      mockCardNameRepo.createQueryBuilder.mockReturnValue(fuzzyQb);
+
+      const result = await service.resolveCardNames([
+        'Ligthning Bolt',
+        'Ligthning Bolt',
+      ]);
+
+      expect(result.resolved).toHaveLength(2);
+      expect(result.resolved.map((r) => r.cardNameId)).toEqual([2, 2]);
+      expect(mockCardNameRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
     });
 
     it('should fuzzy match when exact match fails', async () => {

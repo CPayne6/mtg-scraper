@@ -8,20 +8,27 @@ import {
   ScryfallSet,
   Store,
   StoreModule,
+  PlatformModule,
+  QueueModule,
   TokenName,
   TokenPrinting,
   TokenListing,
   TokenVariant,
+  CardCart,
   CardList,
   CardListEntry,
 } from '@scoutlgs/core';
+import { AuthModule } from '../auth/auth.module';
 import { CardsController } from './cards/cards.controller';
 import { CardsService } from './cards/cards.service';
+import { CartModule } from './cart/cart.module';
+import { CheckoutModule } from './checkout/checkout.module';
 import { TokensController } from './tokens/tokens.controller';
 import { TokensService } from './tokens/tokens.service';
 import { ListsController } from './lists/lists.controller';
 import { ListsService } from './lists/lists.service';
 import { CardNameResolverService } from './shared/card-name-resolver.service';
+import { DeliveryQuoteService } from './lists/delivery-quote.service';
 
 @Module({
   imports: [
@@ -29,11 +36,16 @@ import { CardNameResolverService } from './shared/card-name-resolver.service';
       CardName, CardPrinting, CardListing, CardVariant,
       ScryfallSet, Store,
       TokenName, TokenPrinting, TokenListing, TokenVariant,
-      CardList, CardListEntry,
+      CardCart, CardList, CardListEntry,
     ]),
     StoreModule,
+    PlatformModule,
+    QueueModule,
+    AuthModule,
+    CartModule,
+    CheckoutModule,
   ],
   controllers: [CardsController, TokensController, ListsController],
-  providers: [CardsService, TokensService, ListsService, CardNameResolverService],
+  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService],
 })
 export class V1Module {}

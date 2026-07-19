@@ -12,7 +12,12 @@ import { Store } from './store.entity';
 import { ProductUrl } from './product-url.entity';
 import { CardListing } from './card.entity';
 
-export type ShopifyProductMatchStatus = 'matched' | 'unmatched' | 'token' | 'pending';
+export type ShopifyProductMatchStatus =
+  | 'matched'
+  | 'unmatched'
+  | 'token'
+  | 'excluded'
+  | 'pending';
 
 /**
  * Shopify-specific product lookup table.
@@ -39,6 +44,10 @@ export class ShopifyProduct {
 
   @Column({ name: 'store_id' })
   storeId: number;
+
+  /** Exact title returned by Shopify, retained for auditing and future re-matching. */
+  @Column({ name: 'raw_product_title', length: 500, nullable: true })
+  rawProductTitle: string | null;
 
   @ManyToOne(() => ProductUrl, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'product_url_id' })
