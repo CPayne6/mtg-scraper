@@ -80,7 +80,7 @@ function HomeRoute() {
             lineHeight: 1.05,
           }}
         >
-          Find the cheapest copy at your LGS.
+          Find Magic cards you need
         </Typography>
         <Typography
           sx={{
@@ -92,7 +92,7 @@ function HomeRoute() {
             lineHeight: 1.5,
           }}
         >
-          Paste a card or a card list to compare available offers in seconds.
+          Source cards from local Toronto stores, more locations coming soon
         </Typography>
       </Box>
 
@@ -143,7 +143,7 @@ function HomeRoute() {
               },
             })}
           >
-            Card list
+            Build list
           </Button>
         </Stack>
 
