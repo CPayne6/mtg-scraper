@@ -292,8 +292,8 @@ import type {
 } from '@mtg-scraper/shared';
 
 // Fetch card data
-const searchCard = async (name: string): Promise<CardSearchResponse> => {
-  const response = await fetch(`/api/card/${name}`);
+const searchCard = async (oracleId: string, name: string): Promise<CardSearchResponse> => {
+  const response = await fetch(`/api/card/${oracleId}/${encodeURIComponent(name)}`);
   return response.json();
 };
 

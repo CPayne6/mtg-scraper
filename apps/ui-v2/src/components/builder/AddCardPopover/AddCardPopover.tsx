@@ -78,7 +78,7 @@ export function AddCardPopover({
 
   if (!open || !anchorEl) return null;
 
-  const firstAddable = matches.find((m) => !existingSet.has(m.toLowerCase()));
+  const firstAddable = matches.find((name) => !existingSet.has(name.toLowerCase()));
 
   return (
     <Popper

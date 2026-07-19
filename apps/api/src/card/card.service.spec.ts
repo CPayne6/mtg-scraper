@@ -9,15 +9,18 @@ describe('CardService', () => {
   let cacheService: any;
   let storeService: any;
   let configService: any;
+  let listingsQuery: any;
 
   beforeEach(() => {
+    listingsQuery = {
+      leftJoinAndSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      getMany: vi.fn().mockResolvedValue([]),
+    };
     cardRepository = {
-      createQueryBuilder: vi.fn().mockReturnValue({
-        leftJoinAndSelect: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        orderBy: vi.fn().mockReturnThis(),
-        getMany: vi.fn().mockResolvedValue([]),
-      }),
+      createQueryBuilder: vi.fn().mockReturnValue(listingsQuery),
     };
 
     cardNameRepository = {
@@ -50,11 +53,11 @@ describe('CardService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('getCardByName', () => {
+  describe('getCardByOracleId', () => {
     it('should return empty response when card name not found', async () => {
       cardNameRepository.findOne.mockResolvedValue(null);
 
-      const result = await service.getCardByName('Nonexistent Card');
+      const result = await service.getCardByOracleId('11111111-1111-4111-8111-111111111111', 'Nonexistent Card');
 
       expect(result.cardName).toBe('Nonexistent Card');
       expect(result.results).toEqual([]);
@@ -68,10 +71,14 @@ describe('CardService', () => {
         normalizedName: 'lightning bolt',
       });
 
-      const result = await service.getCardByName('Lightning Bolt');
+      const result = await service.getCardByOracleId('11111111-1111-4111-8111-111111111111', 'Lightning Bolt');
 
       expect(result.cardName).toBe('Lightning Bolt');
       expect(cardNameRepository.findOne).toHaveBeenCalled();
+      expect(listingsQuery.andWhere).toHaveBeenCalledWith(
+        'variant.price_updated_at > :offerCutoff',
+        expect.objectContaining({ offerCutoff: expect.any(Date) }),
+      );
     });
   });
 });

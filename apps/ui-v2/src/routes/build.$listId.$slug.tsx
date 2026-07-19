@@ -16,7 +16,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import CloseIcon from '@mui/icons-material/Close';
-import { fetchCard } from '@/api/cards';
+import { fetchCardByName } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
@@ -350,7 +350,7 @@ function BuilderRoute() {
       [selectedName]: { state: 'pending' },
     }));
 
-    fetchCard(selectedName, controller.signal)
+    fetchCardByName(selectedName, controller.signal)
       .then((response) => {
         if (controller.signal.aborted) return;
         setDetailedResults((prev) => ({

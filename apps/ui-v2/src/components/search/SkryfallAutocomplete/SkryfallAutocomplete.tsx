@@ -3,8 +3,7 @@ import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
-import { fetchScryfallAutocomplete } from '@/api/cards';
-import { FALLBACK_CARDS } from '@/data/sample';
+import { fetchScryfallAutocomplete, fetchScryfallCard } from '@/api/cards';
 import type { SkryfallAutocompleteProps } from './SkryfallAutocomplete.types';
 
 export function SkryfallAutocomplete({
@@ -48,20 +47,10 @@ export function SkryfallAutocomplete({
       try {
         const data = await fetchScryfallAutocomplete(q.trim(), controller.signal);
         if (controller.signal.aborted) return;
-        if (data.length > 0) {
-          setOptions(data);
-        } else {
-          const ql = q.toLowerCase();
-          setOptions(
-            FALLBACK_CARDS.filter((c) => c.toLowerCase().includes(ql)).slice(0, 10),
-          );
-        }
+        setOptions(data);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
-        const ql = q.toLowerCase();
-        setOptions(
-          FALLBACK_CARDS.filter((c) => c.toLowerCase().includes(ql)).slice(0, 10),
-        );
+        setOptions([]);
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -69,7 +58,7 @@ export function SkryfallAutocomplete({
   };
 
   return (
-    <Autocomplete
+    <Autocomplete<string, false, false, true>
       freeSolo
       open={open && options.length > 0}
       onOpen={() => setOpen(true)}
@@ -84,8 +73,8 @@ export function SkryfallAutocomplete({
         if (reason === 'input') queryOptions(next);
       }}
       onChange={(_, picked) => {
-        if (typeof picked === 'string' && picked.trim()) {
-          onSelect(picked.trim());
+        if (picked && typeof picked === 'string') {
+          void fetchScryfallCard(picked).then(onSelect).catch(() => undefined);
         }
       }}
       renderInput={(params) => (
@@ -93,6 +82,7 @@ export function SkryfallAutocomplete({
           {...params}
           placeholder={placeholder}
           autoFocus={autoFocus}
+          onFocus={(event) => event.target.select()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && inputValue.trim()) {
               // Allow MUI to handle option selection if one is highlighted;

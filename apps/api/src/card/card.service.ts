@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { CacheService, CardWithStore, StoreService, Card, CardName, Store } from '@scoutlgs/core';
+import { CacheService, CardWithStore, StoreService, Card, CardName, Store, freshOfferCutoff } from '@scoutlgs/core';
 import { CardSearchResponse, StoreInfo, PriceStats, Condition } from '@scoutlgs/shared';
 
 @Injectable()
@@ -21,28 +21,25 @@ export class CardService {
     private readonly configService: ConfigService,
   ) {}
 
-  async getCardByName(cardName: string): Promise<CardSearchResponse> {
-    return this.getCardFromDatabase(cardName);
+  async getCardByOracleId(oracleId: string, requestedName: string): Promise<CardSearchResponse> {
+    return this.getCardFromDatabase(oracleId, requestedName);
   }
 
   /**
    * Database-first approach - query cards table directly.
    * Results are pre-scraped via storefront extraction pipeline.
    */
-  private async getCardFromDatabase(cardName: string): Promise<CardSearchResponse> {
-    this.logger.debug(`Querying database for: ${cardName}`);
-
-    // Normalize card name for lookup
-    const normalizedName = this.normalizeCardName(cardName);
+  private async getCardFromDatabase(oracleId: string, requestedName: string): Promise<CardSearchResponse> {
+    this.logger.debug(`Querying database for oracle ID: ${oracleId}`);
 
     // Find card name record
     const cardNameRecord = await this.cardNameRepository.findOne({
-      where: { normalizedName },
+      where: { oracleId },
     });
 
     if (!cardNameRecord) {
-      this.logger.debug(`Card name not found: ${cardName}`);
-      return this.buildEmptyResponse(cardName);
+      this.logger.debug(`Card oracle ID not found: ${oracleId}`);
+      return this.buildEmptyResponse(requestedName);
     }
 
     // Query all listings for this card name, join with store, product_url, variants, printing
@@ -56,10 +53,11 @@ export class CardService {
       .leftJoinAndSelect('printing.set', 'printingSet')
       .where('listing.card_name_id = :cardNameId', { cardNameId: cardNameRecord.id })
       .andWhere('variant.inStock = :inStock', { inStock: true })
+      .andWhere('variant.price_updated_at > :offerCutoff', { offerCutoff: freshOfferCutoff() })
       .orderBy('variant.price', 'ASC')
       .getMany();
 
-    this.logger.log(`Found ${listings.length} listings for: ${cardName}`);
+    this.logger.log(`Found ${listings.length} listings for: ${cardNameRecord.name}`);
 
     // Convert to CardWithStore format — one entry per variant
     const cardResults: CardWithStore[] = [];
@@ -98,19 +96,7 @@ export class CardService {
     const allStores = await this.storeService.findAllActive();
     const storesInfo = allStores.filter((s) => storesWithCards.has(s.id));
 
-    return this.buildResponse(cardName, cardResults, [], storesInfo);
-  }
-
-  /**
-   * Normalize card name for consistent database lookups.
-   */
-  private normalizeCardName(name: string): string {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/['']/g, "'")
-      .replace(/[""]/g, '"');
+    return this.buildResponse(cardNameRecord.name, cardResults, [], storesInfo);
   }
 
   /**

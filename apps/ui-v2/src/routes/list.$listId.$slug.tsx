@@ -31,7 +31,7 @@ import { DecklistRow } from '@/components/results/DecklistRow';
 import { getListColorIdentity } from '@/components/lists/colorIdentity';
 import { ListRenameDialog } from '@/components/lists/ListRenameDialog';
 import { groupByName } from '@/utils/parseDeckList';
-import { fetchCard } from '@/api/cards';
+import { fetchCardByName } from '@/api/cards';
 
 export const Route = createFileRoute('/list/$listId/$slug')({
   component: ListDetailRoute,
@@ -92,7 +92,7 @@ function ListDetailRoute() {
       }
     };
     for (const entry of entries) {
-      fetchCard(entry.name, controller.signal)
+      fetchCardByName(entry.name, controller.signal)
         .then((resp) => {
           if (controller.signal.aborted) return;
           const cheapest =

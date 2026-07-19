@@ -6,6 +6,7 @@ import {
   CardPrinting,
   CardListing,
   CardVariant,
+  freshOfferCutoff,
   ScryfallSet,
   Store,
   StoreService,
@@ -193,6 +194,7 @@ export class CardsService {
       cardNameId: filters.cardNameId,
     });
     qb.andWhere('v.inStock = :inStock', { inStock: true });
+    qb.andWhere('v.price_updated_at > :offerCutoff', { offerCutoff: freshOfferCutoff() });
 
     if (filters.setCode) {
       qb.andWhere('ps.code = :setCode', {
@@ -321,6 +323,7 @@ export class CardsService {
       cardNameId: filters.cardNameId,
     });
     qb.andWhere('v.inStock = :inStock', { inStock: true });
+    qb.andWhere('v.price_updated_at > :offerCutoff', { offerCutoff: freshOfferCutoff() });
 
     if (filters.setCode) {
       qb.andWhere('ps.code = :setCode', {
