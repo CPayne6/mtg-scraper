@@ -26,6 +26,7 @@ import {
   type CartItem,
   useCart,
 } from '@/components/cart/CartContext';
+import { formatCurrency } from '@/utils/formatCurrency';
 import { cartVariantIds } from '@/components/cart/CartContext/CartContext.utils';
 import { CardPreview, CartThumbnail } from '@/components/cart/ItemThumbnail';
 import { BuyMeAPackButton } from '@/components/BuyMeAPackButton';
@@ -341,7 +342,7 @@ function CheckoutRoute() {
                   <Typography variant="caption" color="text.secondary">
                     {group.items.length} {group.items.length === 1 ? 'card' : 'cards'}
                     {group.delivery
-                      ? ` · ${group.delivery.label} — ${group.delivery.currency === 'CAD' ? 'CA$' : `${group.delivery.currency} `}${group.delivery.price.toFixed(2)}`
+                      ? ` · ${group.delivery.label} — ${formatCurrency(group.delivery.price, group.delivery.currency)}`
                       : ''}
                   </Typography>
                 </Box>
@@ -448,8 +449,7 @@ function CheckoutRoute() {
                     {group.delivery.label}
                   </Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700, flexShrink: 0 }}>
-                    {group.delivery.currency === 'CAD' ? 'CA$' : `${group.delivery.currency} `}
-                    {group.delivery.price.toFixed(2)}
+                    {formatCurrency(group.delivery.price, group.delivery.currency)}
                   </Typography>
                 </Box>
               )}

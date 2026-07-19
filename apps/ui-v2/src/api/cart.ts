@@ -1,4 +1,5 @@
 import type { CardWithStore } from '@scoutlgs/shared';
+import { getSession } from '@/api/auth';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
@@ -73,11 +74,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  let response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
     credentials: 'include',
   });
+
+  // The access token is short-lived, but anonymous sessions can refresh it.
+  // Retry once so a user who has kept the app open can still persist a cart.
+  if (response.status === 401) {
+    await getSession().catch(() => undefined);
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    });
+  }
 
   if (!response.ok) {
     throw new CartApiError(await readError(response), response.status);
@@ -115,7 +127,7 @@ export function clearCart(signal?: AbortSignal): Promise<CartResponse> {
 export async function buildCheckout(
   signal?: AbortSignal,
 ): Promise<BuildCheckoutResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/checkout/build`, {
+  const init: RequestInit = {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -123,7 +135,13 @@ export async function buildCheckout(
       'X-Requested-With': 'XMLHttpRequest',
     },
     signal,
-  });
+  };
+  let res = await fetch(`${API_BASE}/api/v1/checkout/build`, init);
+
+  if (res.status === 401) {
+    await getSession().catch(() => undefined);
+    res = await fetch(`${API_BASE}/api/v1/checkout/build`, init);
+  }
 
   if (res.ok) {
     return (await res.json()) as BuildCheckoutResponse;
