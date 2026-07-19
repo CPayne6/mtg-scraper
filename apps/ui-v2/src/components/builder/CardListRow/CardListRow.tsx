@@ -11,6 +11,7 @@ import {
   selectedHighlightSx,
   innerSx,
   nameSx,
+  cartPriceSx,
   inCartBadgeSx,
   removeBtnSx,
 } from './CardListRow.styles';
@@ -19,6 +20,7 @@ export function CardListRow({
   name,
   selected,
   inCart,
+  cartPrice,
   onSelect,
   onRemove,
 }: CardListRowProps) {
@@ -53,12 +55,17 @@ export function CardListRow({
       {/* This sits above the card art, so selection remains visible on bright artwork. */}
       {selected && <Box aria-hidden="true" sx={selectedHighlightSx} />}
       {/* Inner */}
-      <Box sx={innerSx}>
+      <Box sx={innerSx(inCart)}>
         <Box component="span" sx={nameSx}>
           {name}
         </Box>
       </Box>
       {/* Right-edge status / remove slot */}
+      {inCart && cartPrice !== undefined && (
+        <Box component="span" sx={cartPriceSx}>
+          CA${cartPrice.toFixed(2)}
+        </Box>
+      )}
       {inCart ? (
         <Tooltip
           title="In cart — remove from cart first to delete from list"

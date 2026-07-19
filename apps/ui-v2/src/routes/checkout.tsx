@@ -22,6 +22,7 @@ import {
 import {
   cartItemId,
   formatCartItemName,
+  type CartDeliverySelection,
   type CartItem,
   useCart,
 } from '@/components/cart/CartContext';
@@ -38,6 +39,7 @@ type StoreGroup = {
   storeDisplayName: string;
   items: CartItem[];
   subtotal: number;
+  delivery: CartDeliverySelection | null;
   lines: Map<string, number>;
 };
 
@@ -81,7 +83,7 @@ function buildErrorState(err: unknown): StoreCheckoutState {
 
 function CheckoutRoute() {
   const navigate = useNavigate();
-  const { items, remove } = useCart();
+  const { items, remove, deliveryByStore } = useCart();
   const { enqueueSnackbar } = useSnackbar();
 
   const [storeStates, setStoreStates] = useState<Record<string, StoreCheckoutState>>({});
@@ -133,6 +135,7 @@ function CheckoutRoute() {
           storeDisplayName: item.store,
           items: [],
           subtotal: 0,
+          delivery: deliveryByStore[item.store_key] ?? null,
           lines: new Map(),
         };
         map.set(item.store_key, group);
@@ -145,7 +148,7 @@ function CheckoutRoute() {
       );
     }
     return Array.from(map.values());
-  }, [items]);
+  }, [deliveryByStore, items]);
 
   const droppedNoVariant = items.length - groups.reduce((sum, g) => sum + g.items.length, 0);
 
@@ -244,7 +247,13 @@ function CheckoutRoute() {
 
   if (groups.length === 0) return null;
 
-  const total = groups.reduce((sum, g) => sum + g.subtotal, 0);
+  const subtotal = groups.reduce((sum, group) => sum + group.subtotal, 0);
+  const shippingTotal = groups.reduce(
+    (sum, group) =>
+      sum + (group.delivery?.currency === 'CAD' ? group.delivery.price : 0),
+    0,
+  );
+  const total = subtotal + shippingTotal;
 
   return (
     <Container maxWidth="md" sx={{ pb: 6 }}>
@@ -331,6 +340,9 @@ function CheckoutRoute() {
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {group.items.length} {group.items.length === 1 ? 'card' : 'cards'}
+                    {group.delivery
+                      ? ` · ${group.delivery.label} — ${group.delivery.currency === 'CAD' ? 'CA$' : `${group.delivery.currency} `}${group.delivery.price.toFixed(2)}`
+                      : ''}
                   </Typography>
                 </Box>
                 <Typography sx={{ fontWeight: 700, color: 'primary.main', flexShrink: 0, ml: 'auto' }}>
@@ -419,6 +431,28 @@ function CheckoutRoute() {
                   </Box>
                 ))}
               </Stack>
+
+              {group.delivery && (
+                <Box
+                  sx={(theme) => ({
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 2,
+                    py: 1,
+                    mb: 1.5,
+                    borderTop: `1px solid ${theme.palette.divider}`,
+                    borderBottom: `1px solid ${theme.palette.divider}`,
+                  })}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    {group.delivery.label}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700, flexShrink: 0 }}>
+                    {group.delivery.currency === 'CAD' ? 'CA$' : `${group.delivery.currency} `}
+                    {group.delivery.price.toFixed(2)}
+                  </Typography>
+                </Box>
+              )}
 
               {isError && (
                 <Alert severity="error" sx={{ mb: 1.5 }}>

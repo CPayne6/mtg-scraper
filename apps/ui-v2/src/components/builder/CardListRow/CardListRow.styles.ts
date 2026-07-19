@@ -42,13 +42,26 @@ export const selectedHighlightSx: SxProps<Theme> = (theme) => ({
   boxShadow: `inset 0 0 12px ${theme.palette.honey.main}88`,
 });
 
-export const innerSx: SxProps<Theme> = {
+export const innerSx = (inCart: boolean): SxProps<Theme> => ({
   position: 'relative',
   height: '100%',
   display: 'flex',
   alignItems: 'center',
-  padding: '0 42px 0 14px',
+  padding: inCart ? '0 96px 0 14px' : '0 42px 0 14px',
   zIndex: 2,
+});
+
+export const cartPriceSx: SxProps<Theme> = {
+  position: 'absolute',
+  top: '50%',
+  right: 42,
+  transform: 'translateY(-50%)',
+  zIndex: 3,
+  color: '#fff',
+  fontSize: '12px',
+  fontWeight: 700,
+  fontVariantNumeric: 'tabular-nums',
+  textShadow: '0 1px 3px rgba(0, 0, 0, 0.7)',
 };
 
 export const nameSx: SxProps<Theme> = {
