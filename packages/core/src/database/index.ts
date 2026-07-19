@@ -27,4 +27,4 @@ export { CardList } from './card-list.entity';
 export type { CardListVisibility } from './card-list.entity';
 export { CardListEntry } from './card-list-entry.entity';
 export { CardCart } from './card-cart.entity';
-export { FRESH_OFFER_MAX_AGE_MS, freshOfferCutoff } from './offer-freshness';
+export { freshOfferCutoff } from './offer-freshness';
