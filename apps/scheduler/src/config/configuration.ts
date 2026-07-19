@@ -1,3 +1,11 @@
+import { existsSync, readFileSync } from 'fs';
+
+const authDatabasePasswordFile = process.env.AUTH_DATABASE_PASSWORD_FILE;
+const authDatabasePassword =
+  authDatabasePasswordFile && existsSync(authDatabasePasswordFile)
+    ? readFileSync(authDatabasePasswordFile, 'utf8').trim()
+    : process.env.AUTH_DATABASE_PASSWORD ?? 'postgres';
+
 export default () => ({
   port: parseInt(process.env.PORT ?? '5001', 10),
   redis: {
@@ -8,7 +16,7 @@ export default () => ({
     host: process.env.AUTH_DATABASE_HOST ?? 'localhost',
     port: parseInt(process.env.AUTH_DATABASE_PORT ?? '5433', 10),
     username: process.env.AUTH_DATABASE_USER ?? 'postgres',
-    password: process.env.AUTH_DATABASE_PASSWORD ?? 'postgres',
+    password: authDatabasePassword,
     name: process.env.AUTH_DATABASE_NAME ?? 'scoutlgs_auth',
   },
   extraction: {
