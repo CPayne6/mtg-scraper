@@ -2,6 +2,12 @@ import type { CardWithStore } from '@scoutlgs/shared';
 
 export type CartItem = CardWithStore & { id: number; addedAt: number };
 
+export type CartDeliverySelection = {
+  label: string;
+  price: number;
+  currency: string;
+};
+
 export type AddManyResult = {
   added: number;
   skippedDuplicate: number;
@@ -22,4 +28,8 @@ export type CartContextValue = {
   clear: () => void;
   has: (id: string) => boolean;
   sync: () => Promise<void>;
+  deliveryByStore: Record<string, CartDeliverySelection>;
+  setDeliverySelections: (
+    selections: Record<string, CartDeliverySelection>,
+  ) => void;
 };
