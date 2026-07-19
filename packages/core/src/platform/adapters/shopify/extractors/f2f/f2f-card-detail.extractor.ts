@@ -7,6 +7,7 @@ import type {
   ImageInfo,
 } from '../../card-detail-extractor.interface';
 import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
+import { isArtSeriesTitle } from '../art-series';
 
 /**
  * Card detail extractor for Face to Face Games (F2F).
@@ -26,6 +27,10 @@ import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
 @Injectable()
 export class F2fCardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {
+    if (isArtSeriesTitle(title)) {
+      return { cardName: '', setName: '', isArtSeries: true };
+    }
+
     const bracketGroups: string[] = [];
     const bracketRe = /\[([^\]]+)\]/g;
     let match: RegExpExecArray | null;

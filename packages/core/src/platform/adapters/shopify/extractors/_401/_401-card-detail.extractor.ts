@@ -8,6 +8,7 @@ import type {
   ProductMetaInfo,
 } from '../../card-detail-extractor.interface';
 import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
+import { isArtSeriesTitle } from '../art-series';
 
 /**
  * Card detail extractor for 401 Games.
@@ -42,7 +43,7 @@ export class _401CardDetailExtractor implements ICardDetailExtractor {
 
     // Art Series cards use a real card's name in their product title, but are
     // not playable cards and must never be matched to that card's printing.
-    if (/\s+-\s+Art Series(?:\s|\(|$)/i.test(cleaned)) {
+    if (isArtSeriesTitle(cleaned)) {
       return { cardName: '', setName: '', isArtSeries: true };
     }
 
