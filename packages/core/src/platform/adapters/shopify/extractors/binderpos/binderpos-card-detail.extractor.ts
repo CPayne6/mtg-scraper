@@ -7,6 +7,7 @@ import type {
   ImageInfo,
 } from '../../card-detail-extractor.interface';
 import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
+import { isArtSeriesTitle } from '../art-series';
 
 /**
  * Card detail extractor for Binderpos stores (GameKnight, House of Cards, etc.).
@@ -43,6 +44,10 @@ export class BinderposCardDetailExtractor implements ICardDetailExtractor {
   ]);
 
   parseTitle(title: string): TitleInfo {
+    if (isArtSeriesTitle(title)) {
+      return { cardName: '', setName: '', isArtSeries: true };
+    }
+
     const bracketGroups: string[] = [];
     const bracketRe = /\[([^\]]+)\]/g;
     let match: RegExpExecArray | null;

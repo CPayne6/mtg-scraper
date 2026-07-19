@@ -139,7 +139,9 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     products: Array<{
       shopifyProductId: string;
       handle: string;
+      rawProductTitle: string;
       updatedAt: Date;
+      isArtSeries: boolean;
       variants: ExtractedCardVariant[];
     }>;
   }> {
@@ -153,7 +155,9 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     return { products: edges.map(({ node: product }) => ({
       shopifyProductId: product.id.split('/').pop()!,
       handle: product.handle,
+      rawProductTitle: product.title,
       updatedAt: new Date(product.updatedAt),
+      isArtSeries: this.isArtSeriesProduct(store, product),
       variants: this.extractVariantsFromProduct(store, product),
     })) };
   }
@@ -187,7 +191,9 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     products: Array<{
       shopifyProductId: string;
       handle: string;
+      rawProductTitle: string;
       updatedAt: Date;
+      isArtSeries: boolean;
       variants: ExtractedCardVariant[];
     }>;
     nextCursor: string | null;
@@ -215,7 +221,9 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const products = edges.map(({ node: product }) => ({
       shopifyProductId: product.id.split('/').pop()!,
       handle: product.handle,
+      rawProductTitle: product.title,
       updatedAt: new Date(product.updatedAt),
+      isArtSeries: this.isArtSeriesProduct(store, product),
       variants: this.extractVariantsFromProduct(store, product),
     }));
 
@@ -349,5 +357,25 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     }
 
     return variants;
+  }
+
+  /**
+   * Art Series products share a playable card's name, so they must be
+   * identified before their title can enter the printing-matching pipeline.
+   * 401 Games identifies these both in the title and with MTGA SKUs.
+   */
+  private isArtSeriesProduct(
+    store: Store,
+    product: StorefrontProduct,
+  ): boolean {
+    const extractor = this.extractorRegistry.get(store.scraperType);
+    if (extractor.parseTitle(product.title).isArtSeries) {
+      return true;
+    }
+
+    const variants = product.variants.edges;
+    return variants.length > 0 && variants.every(({ node: variant }) =>
+      extractor.parseSkuInfo(variant.sku ?? undefined).isArtSeries,
+    );
   }
 }

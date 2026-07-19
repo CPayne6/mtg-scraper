@@ -6,6 +6,7 @@ import type {
   TagsInfo,
   ImageInfo,
 } from '../../card-detail-extractor.interface';
+import { isArtSeriesTitle } from '../art-series';
 
 /**
  * Generic fallback card detail extractor.
@@ -16,6 +17,10 @@ import type {
 @Injectable()
 export class DefaultCardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {
+    if (isArtSeriesTitle(title)) {
+      return { cardName: '', setName: '', isArtSeries: true };
+    }
+
     // Try bracket format
     const bracketGroups: string[] = [];
     const bracketRe = /\[([^\]]+)\]/g;

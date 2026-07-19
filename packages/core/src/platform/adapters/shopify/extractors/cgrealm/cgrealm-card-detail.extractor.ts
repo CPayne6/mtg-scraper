@@ -8,6 +8,7 @@ import type {
   ProductMetaInfo,
 } from '../../card-detail-extractor.interface';
 import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
+import { isArtSeriesTitle } from '../art-series';
 
 /**
  * Card detail extractor for The CG Realm.
@@ -35,6 +36,10 @@ import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
 @Injectable()
 export class CgRealmCardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {
+    if (isArtSeriesTitle(title)) {
+      return { cardName: '', setName: '', isArtSeries: true };
+    }
+
     let foil = false;
     let working = title;
 

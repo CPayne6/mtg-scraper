@@ -245,6 +245,33 @@ describe('StorefrontExtractionAdapter', () => {
       expect(mockDefaultExtractor.parseTitle).not.toHaveBeenCalled();
     });
 
+    it('marks an Art Series title for exclusion before matching', async () => {
+      const product = createMockProduct({
+        title: "Liberator, Urza's Battlethopter - Art Series (Gold-Stamped Signature) (ABRO)",
+      });
+      mockExtractor.parseTitle.mockReturnValue({
+        cardName: '',
+        setName: '',
+        isArtSeries: true,
+      });
+      mockClient.query.mockResolvedValue({
+        products: {
+          edges: [{ node: product }],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      } as ProductsQueryData);
+
+      const result = await adapter.fetchPageByCursor(
+        createMockStore(),
+        'scope',
+        '2025-01-01T00:00:00Z',
+        '2025-04-01T00:00:00Z',
+        null,
+      );
+
+      expect(result.products[0].isArtSeries).toBe(true);
+    });
+
     it('falls back to default extractor for unknown scraperType', async () => {
       const product = createMockProduct();
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
@@ -349,6 +376,7 @@ describe('StorefrontExtractionAdapter', () => {
 
       expect(result.products).toHaveLength(1);
       expect(result.products[0].handle).toBe(product.handle);
+      expect(result.products[0].rawProductTitle).toBe(product.title);
       expect(result.nextCursor).toBe('next-cursor');
     });
 
