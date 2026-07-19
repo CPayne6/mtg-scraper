@@ -8,6 +8,7 @@ import { artUrl } from './CardListRow.utils';
 import {
   containerSx,
   gradientOverlaySx,
+  selectedHighlightSx,
   innerSx,
   nameSx,
   cartPriceSx,
@@ -35,7 +36,7 @@ export function CardListRow({
         }
       }}
       title={name + (inCart ? ' — in cart' : ' — not yet in cart')}
-      sx={containerSx(selected)}
+      sx={containerSx}
     >
       {/* Art bg */}
       <Box
@@ -51,6 +52,8 @@ export function CardListRow({
       />
       {/* Gradient overlay */}
       <Box aria-hidden="true" sx={gradientOverlaySx} />
+      {/* This sits above the card art, so selection remains visible on bright artwork. */}
+      {selected && <Box aria-hidden="true" sx={selectedHighlightSx} />}
       {/* Inner */}
       <Box sx={innerSx(inCart)}>
         <Box component="span" sx={nameSx}>
