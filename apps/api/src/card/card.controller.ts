@@ -3,7 +3,7 @@ import { CardService } from './card.service';
 import { CardSearchResponse } from '@scoutlgs/shared';
 import { GetCardDto } from './dto/get-card.dto';
 
-// Legacy endpoint — kept VERSION_NEUTRAL so /api/card/:name stays where it is.
+// Kept VERSION_NEUTRAL so card lookups stay under /api/card.
 // The deck-list UI still reads from this; new clients should use /api/v1/cards.
 @Controller({ path: 'card', version: VERSION_NEUTRAL })
 export class CardController {
@@ -11,10 +11,10 @@ export class CardController {
 
   constructor(private readonly cardService: CardService) {}
 
-  @Get(':cardName')
+  @Get(':oracleId/:cardName')
   async getCard(@Param() params: GetCardDto): Promise<CardSearchResponse> {
-    this.logger.log(`Fetching card: ${params.cardName}`);
-    const response = await this.cardService.getCardByName(params.cardName);
+    this.logger.log(`Fetching card: ${params.cardName} (${params.oracleId})`);
+    const response = await this.cardService.getCardByOracleId(params.oracleId, params.cardName);
     this.logger.log(`Found ${response.results.length} results for: ${params.cardName}`);
     return response;
   }

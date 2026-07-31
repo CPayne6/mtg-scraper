@@ -8,23 +8,6 @@ export const headerCardSx: SxProps<Theme> = (theme) => ({
   position: { xs: 'static', lg: 'sticky' },
   top: { lg: 148 },
   zIndex: 5,
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '16px',
-});
-
-export const previewThumbSx = (previewImage: string): SxProps<Theme> => (theme) => ({
-  width: 124,
-  aspectRatio: '5 / 7',
-  backgroundImage: previewImage ? `url("${previewImage}")` : 'none',
-  backgroundColor: theme.palette.background.default,
-  backgroundSize: 'cover',
-  backgroundPosition: 'center',
-  backgroundRepeat: 'no-repeat',
-  borderRadius: '9px',
-  flexShrink: 0,
-  transition: 'background-image 120ms ease-in-out',
-  boxShadow: theme.palette.imageShadow,
 });
 
 export const cartStatusBadgeSx = (anyOfferInCart: boolean): SxProps<Theme> => (theme) => ({

@@ -13,6 +13,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import type { CardWithStore } from '@scoutlgs/shared';
 import type {
   AddManyResult,
+  AddResult,
   CartContextValue,
   CartDeliverySelection,
   CartItem,
@@ -61,10 +62,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     async (nextItems: CartItem[]) => {
       const version = ++syncVersionRef.current;
       const response = await replaceCart(cartVariantIds(nextItems));
-      if (syncVersionRef.current !== version) return;
+      if (syncVersionRef.current !== version) return response;
       const mergedItems = mergeServerItems(response.items, itemsRef.current);
       itemsRef.current = mergedItems;
       setItems(mergedItems);
+      return response;
     },
     [setItems],
   );
@@ -124,24 +126,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [principalId, setItems, status]);
 
   const add = useCallback(
-    (card: CardWithStore) => {
-      if (!isPersistableCard(card)) return false;
+    async (card: CardWithStore): Promise<AddResult> => {
+      if (!isPersistableCard(card)) return { outcome: 'invalid' };
       const id = cartItemId(card);
       const currentItems = itemsRef.current;
-      if (currentItems.some((c) => cartItemId(c) === id)) return false;
-      if (cartVariantIds(currentItems).length >= MAX_CART_ITEMS) return false;
+      if (currentItems.some((c) => cartItemId(c) === id)) return { outcome: 'duplicate' };
+      if (cartVariantIds(currentItems).length >= MAX_CART_ITEMS) return { outcome: 'capacity' };
 
       const nextItems = [...currentItems, { ...card, id: card.id, addedAt: Date.now() }];
       itemsRef.current = nextItems;
       setItems(nextItems);
-      void persist(nextItems).catch((err) => console.warn('Failed to persist cart', err));
-      return true;
+      try {
+        const response = await persist(nextItems);
+        if (response && !response.variantIds.includes(card.id)) return { outcome: 'soldOut' };
+      } catch (err) {
+        console.warn('Failed to persist cart', err);
+      }
+      return { outcome: 'added' };
     },
     [persist, setItems],
   );
 
   const addMany = useCallback(
-    (cards: CardWithStore[]): AddManyResult => {
+    async (cards: CardWithStore[]): Promise<AddManyResult> => {
       const currentItems = itemsRef.current;
       const existingItemIds = new Set(currentItems.map((item) => cartItemId(item)));
       const existingVariantIds = new Set(cartVariantIds(currentItems));
@@ -152,7 +159,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         skippedDuplicate: 0,
         skippedInvalid: 0,
         skippedCapacity: 0,
+        skippedSoldOut: 0,
       };
+      const requestedAddedIds = new Set<number>();
 
       for (const card of cards) {
         if (!isPersistableCard(card)) {
@@ -173,6 +182,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         existingItemIds.add(itemId);
         existingVariantIds.add(card.id);
+        requestedAddedIds.add(card.id);
         nextItems.push({ ...card, id: card.id, addedAt });
         result.added += 1;
       }
@@ -180,7 +190,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (result.added > 0) {
         itemsRef.current = nextItems;
         setItems(nextItems);
-        void persist(nextItems).catch((err) => console.warn('Failed to persist cart', err));
+        try {
+          const response = await persist(nextItems);
+          if (response) {
+            const returnedIds = new Set(response.variantIds);
+            result.skippedSoldOut = [...requestedAddedIds].filter((id) => !returnedIds.has(id)).length;
+            result.added -= result.skippedSoldOut;
+          }
+        } catch (err) {
+          console.warn('Failed to persist cart', err);
+        }
       }
 
       return result;
@@ -225,7 +244,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const has = useCallback((id: string) => items.some((c) => cartItemId(c) === id), [items]);
 
-  const total = useMemo(() => items.reduce((sum, c) => sum + (c.price ?? 0), 0), [items]);
+  const total = useMemo(() => {
+    const subtotal = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
+    const storeKeys = new Set(items.map((item) => item.store_key));
+    const shipping = [...storeKeys].reduce(
+      (sum, storeKey) => sum + (deliveryByStore[storeKey]?.currency === 'CAD'
+        ? deliveryByStore[storeKey].price
+        : 0),
+      0,
+    );
+    return subtotal + shipping;
+  }, [deliveryByStore, items]);
 
   const value = useMemo<CartContextValue>(
     () => ({
