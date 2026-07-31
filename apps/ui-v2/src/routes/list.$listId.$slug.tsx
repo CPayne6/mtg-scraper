@@ -208,7 +208,7 @@ function ListDetailRoute() {
     );
   }
 
-  const identity = getListColorIdentity(list?.cards ?? []);
+  const identity = getListColorIdentity(list?.cardRecords ?? []);
   const handleAddRowToCart = async (cardName: string) => {
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
