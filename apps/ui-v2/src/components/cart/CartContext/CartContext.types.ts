@@ -13,7 +13,12 @@ export type AddManyResult = {
   skippedDuplicate: number;
   skippedInvalid: number;
   skippedCapacity: number;
+  skippedSoldOut: number;
 };
+
+export type CartAddOutcome = 'added' | 'duplicate' | 'capacity' | 'invalid' | 'soldOut';
+
+export type AddResult = { outcome: CartAddOutcome };
 
 export type CartContextValue = {
   items: CartItem[];
@@ -22,8 +27,8 @@ export type CartContextValue = {
   isOpen: boolean;
   open: () => void;
   close: () => void;
-  add: (card: CardWithStore) => boolean;
-  addMany: (cards: CardWithStore[]) => AddManyResult;
+  add: (card: CardWithStore) => Promise<AddResult>;
+  addMany: (cards: CardWithStore[]) => Promise<AddManyResult>;
   remove: (id: string) => void;
   clear: () => void;
   has: (id: string) => boolean;
