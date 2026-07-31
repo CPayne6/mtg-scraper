@@ -208,17 +208,19 @@ function ListDetailRoute() {
     );
   }
 
-  const identity = getListColorIdentity(list?.cardRecords ?? []);
-  const handleAddRowToCart = (cardName: string) => {
+  const identity = getListColorIdentity(list?.cards ?? []);
+  const handleAddRowToCart = async (cardName: string) => {
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
       enqueueSnackbar(`No price yet for "${cardName}"`, { variant: 'warning' });
       return;
     }
-    const added = addToCart(r.cheapest);
+    const result = await addToCart(r.cheapest);
+    const added = result.outcome === 'added';
+    const soldOut = result.outcome === 'soldOut';
     enqueueSnackbar(
-      added ? `Added "${cardName}" to cart` : `"${cardName}" is already in your cart`,
-      { variant: added ? 'success' : 'default' },
+      added ? `Added "${cardName}" to cart` : soldOut ? `"${cardName}" is sold out and could not be added` : `"${cardName}" is already in your cart`,
+      { variant: added ? 'success' : soldOut ? 'warning' : 'default' },
     );
   };
 
