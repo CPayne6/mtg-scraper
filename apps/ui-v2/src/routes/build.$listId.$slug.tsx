@@ -16,7 +16,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import CloseIcon from '@mui/icons-material/Close';
-import { fetchCard } from '@/api/cards';
+import { fetchCardByName } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
@@ -132,6 +132,7 @@ function BuilderRoute() {
     add: addToCart,
     addMany: addManyToCart,
     items: cartItems,
+    remove: removeFromCart,
     open: openCart,
     setDeliverySelections,
   } = useCart();
@@ -320,20 +321,30 @@ function BuilderRoute() {
   );
 
   const handleAddOffer = useCallback(
-    (offer: CardWithStore) => {
-      const added = addToCart(offer);
-      if (added) {
+    async (offer: CardWithStore) => {
+      if (inCartByOffer(offer)) {
+        removeFromCart(cartItemId(offer));
+        enqueueSnackbar(`Removed "${offer.title}" from cart`, { variant: 'default' });
+        return;
+      }
+
+      const result = await addToCart(offer);
+      if (result.outcome === 'added') {
         enqueueSnackbar(
           `Added "${offer.title}" from ${offer.store} to cart`,
           { variant: 'success' },
         );
-      } else {
+      } else if (result.outcome === 'soldOut') {
+        enqueueSnackbar(`"${offer.title}" from ${offer.store} is sold out and could not be added`, {
+          variant: 'warning',
+        });
+      } else if (result.outcome === 'duplicate') {
         enqueueSnackbar(`"${offer.title}" from ${offer.store} is already in your cart`, {
           variant: 'default',
         });
       }
     },
-    [addToCart, enqueueSnackbar],
+    [addToCart, enqueueSnackbar, inCartByOffer, removeFromCart],
   );
 
   const optimizationMinimumCondition = useMemo(
@@ -350,7 +361,7 @@ function BuilderRoute() {
       [selectedName]: { state: 'pending' },
     }));
 
-    fetchCard(selectedName, controller.signal)
+    fetchCardByName(selectedName, controller.signal)
       .then((response) => {
         if (controller.signal.aborted) return;
         setDetailedResults((prev) => ({
@@ -429,16 +440,18 @@ function BuilderRoute() {
         return;
       }
 
-      const result = addManyToCart(
+      const result = await addManyToCart(
         bestOption.selectedOffers.map((selectedOffer) => selectedOffer.offer),
       );
       const skipped =
         result.skippedDuplicate + result.skippedInvalid + result.skippedCapacity;
+      const soldOut = result.skippedSoldOut;
       const details = [
         bestOption.missingCards.length > 0
           ? `${bestOption.missingCards.length} missing`
           : null,
         skipped > 0 ? `${skipped} skipped` : null,
+        soldOut > 0 ? `${soldOut} sold out` : null,
       ].filter(Boolean);
 
       if (result.added > 0) {
@@ -453,10 +466,10 @@ function BuilderRoute() {
       }
 
       enqueueSnackbar(
-        skipped > 0
+        skipped > 0 || soldOut > 0
           ? `No new cards added (${details.join(', ')})`
           : 'No new cards were added',
-        { variant: 'default' },
+        { variant: soldOut > 0 ? 'warning' : 'default' },
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to optimize list';
@@ -502,7 +515,7 @@ function BuilderRoute() {
     finally { setDeliveryLoading(false); }
   }, [deliveryAddress, runOptimization, saveDeliveryAddressForLater, session?.user]);
 
-  const startQuotedFill = useCallback(() => {
+  const startQuotedFill = useCallback(async () => {
     if (!deliveryQuote || !pendingOptimization) return;
     const selections: Record<string, CartDeliverySelection> = {};
     for (const store of deliveryQuote.stores) {
@@ -533,8 +546,13 @@ function BuilderRoute() {
     }
     setDeliverySelections(selections);
     setDeliveryOpen(false);
-    const result = addManyToCart(pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer));
-    if (result.added) { openCart(); enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart`, { variant: 'success' }); }
+    const result = await addManyToCart(pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer));
+    if (result.added) {
+      openCart();
+      enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${result.skippedSoldOut ? ` (${result.skippedSoldOut} sold out)` : ''}`, { variant: 'success' });
+    } else if (result.skippedSoldOut) {
+      enqueueSnackbar(`${result.skippedSoldOut} selected ${result.skippedSoldOut === 1 ? 'card was' : 'cards were'} sold out and could not be added`, { variant: 'warning' });
+    }
     setPendingOptimization(null);
   }, [
     addManyToCart,

@@ -3,6 +3,7 @@ export type CardListRowProps = {
   selected: boolean;
   inCart: boolean;
   cartPrice?: number;
+  artScrollRoot: Element | null;
   onSelect: () => void;
   onRemove?: (cardName: string) => void;
 };

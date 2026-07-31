@@ -52,7 +52,7 @@ mtg-scraper/
 - Batch checks Redis cache, enqueues scraping jobs for missing stores, returns aggregated results
 - **Results sorted by price** (lowest first) in `CardSearchResponse.results`
 - **Key Endpoints**:
-  - `GET /api/card/:cardName` - Search for MTG card (returns `CardSearchResponse`)
+  - `GET /api/card/:oracleId/:cardName` - Search for an MTG card by Scryfall oracle ID (returns `CardSearchResponse`)
   - `GET /api/health` - Health check
 
 ### Scheduler (`apps/scheduler`)

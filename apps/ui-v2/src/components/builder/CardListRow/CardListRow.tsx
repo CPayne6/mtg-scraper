@@ -4,7 +4,7 @@ import Tooltip from '@mui/material/Tooltip';
 import { Check } from '@mui/icons-material';
 import { Close } from '@mui/icons-material';
 import type { CardListRowProps } from './CardListRow.types';
-import { artUrl } from './CardListRow.utils';
+import { ScryfallArtImage } from './ScryfallArtImage';
 import {
   containerSx,
   gradientOverlaySx,
@@ -21,6 +21,7 @@ export function CardListRow({
   selected,
   inCart,
   cartPrice,
+  artScrollRoot,
   onSelect,
   onRemove,
 }: CardListRowProps) {
@@ -38,18 +39,7 @@ export function CardListRow({
       title={name + (inCart ? ' — in cart' : ' — not yet in cart')}
       sx={containerSx}
     >
-      {/* Art bg */}
-      <Box
-        aria-hidden="true"
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: `url("${artUrl(name)}")`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 35%',
-          backgroundRepeat: 'no-repeat',
-        }}
-      />
+      <ScryfallArtImage name={name} scrollRoot={artScrollRoot} />
       {/* Gradient overlay */}
       <Box aria-hidden="true" sx={gradientOverlaySx} />
       {/* This sits above the card art, so selection remains visible on bright artwork. */}

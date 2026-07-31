@@ -90,6 +90,11 @@ describe('CartService', () => {
     expect(result.variantIds).toEqual([1, 2]);
     expect(result.items.map((item) => item.id)).toEqual([1, 2]);
     expect(result.updatedAt).toEqual(new Date('2026-01-02T00:00:00.000Z'));
+    expect(cardVariantRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ inStock: true }),
+      }),
+    );
   });
 
   it('hydrates an existing cart without mutating identity state', async () => {

@@ -14,6 +14,7 @@ import { useSnackbar } from 'notistack';
 import { useNavigate } from '@tanstack/react-router';
 import { cartItemId, formatCartItemName, type CartItem, useCart } from '@/components/cart/CartContext';
 import { CartThumbnail } from '@/components/cart/ItemThumbnail';
+import { formatCurrency } from '@/utils/formatCurrency';
 import {
   footerSx,
   headerSx,
@@ -24,7 +25,7 @@ import {
 } from './CartDrawer.styles';
 
 export function CartDrawer() {
-  const { items, isOpen, close, remove, clear } = useCart();
+  const { items, isOpen, close, remove, clear, total, deliveryByStore } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -41,7 +42,6 @@ export function CartDrawer() {
   }, [items]);
 
   const storeKeys = Object.keys(byStore);
-  const total = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
   const hasAnyVariant = items.some((item) => item.variant_id);
 
   const goToCheckout = () => {
@@ -96,23 +96,29 @@ export function CartDrawer() {
           storeKeys.map((store) => {
             const list = byStore[store] ?? [];
             const subtotal = list.reduce((sum, item) => sum + (item.price ?? 0), 0);
+            const delivery = list[0] ? deliveryByStore[list[0].store_key] : null;
 
             return (
               <Box key={store}>
                 <Box sx={storeHeaderSx}>
-                  <Typography
-                    sx={{
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                      color: 'primary.main',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      minWidth: 0,
-                    }}
-                  >
-                    {store}
-                  </Typography>
+                  <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
+                    <Typography
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        color: 'primary.main',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        minWidth: 0,
+                      }}
+                    >
+                      {store}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      · Shipping est. {delivery ? formatCurrency(delivery.price, delivery.currency) : '—'}
+                    </Typography>
+                  </Box>
                   <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 }}>
                     CA${subtotal.toFixed(2)}
                   </Typography>
@@ -186,7 +192,7 @@ export function CartDrawer() {
       {items.length > 0 && (
         <Box sx={footerSx}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
-            <Typography sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>Total</Typography>
+            <Typography sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>Total (includes shipping est.)</Typography>
             <Typography sx={{ fontSize: '1.25rem', fontWeight: 700, color: 'primary.main' }}>
               CA${total.toFixed(2)}
             </Typography>

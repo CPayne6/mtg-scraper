@@ -1,6 +1,9 @@
-import { IsString, IsNotEmpty, MaxLength, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, Matches, IsUUID } from 'class-validator';
 
 export class GetCardDto {
+  @IsUUID()
+  oracleId: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)

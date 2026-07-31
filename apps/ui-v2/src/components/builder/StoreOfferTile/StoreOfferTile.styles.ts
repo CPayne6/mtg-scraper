@@ -7,11 +7,10 @@ export const OVERLAY_GRADIENT =
   'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.88) 70%, rgba(0,0,0,0.98) 88%, rgba(0,0,0,1) 100%)';
 export const ACTIVE_OVERLAY_GRADIENT =
   'linear-gradient(to bottom, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.2) 18%, rgba(0,0,0,0.5) 42%, rgba(0,0,0,0.82) 63%, rgba(0,0,0,0.97) 83%, rgba(0,0,0,1) 100%)';
+export const REVEAL_OVERLAY_GRADIENT =
+  'rgba(0,0,0,0.16)';
 
-export const tileContainerSx = (
-  isCheapest: boolean,
-  placeholderGradient: string,
-): SxProps<Theme> => (theme) => ({
+export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => (theme) => ({
   position: 'relative',
   width: '100%',
   maxWidth: '100%',
@@ -25,23 +24,21 @@ export const tileContainerSx = (
   display: 'grid',
   gridTemplateRows: 'minmax(0, 1fr) auto',
   border: 0,
-  boxShadow: isCheapest
-    ? `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
-      ? '0 6px 18px rgba(0, 0, 0, 0.55)'
-      : '0 6px 16px rgba(15, 23, 42, 0.22)'}`
-    : theme.palette.mode === 'dark'
-      ? '0 6px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08)'
-      : '0 6px 16px rgba(15, 23, 42, 0.22), 0 1px 0 rgba(255, 255, 255, 0.45)',
+  boxShadow: theme.palette.mode === 'dark'
+    ? '0 6px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08)'
+    : '0 6px 16px rgba(15, 23, 42, 0.22), 0 1px 0 rgba(255, 255, 255, 0.45)',
   transition:
     'box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '&:hover': {
     boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
       ? '0 10px 24px rgba(0, 0, 0, 0.65)'
       : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
-    transform: 'translateY(-2px)',
   },
   '& .cart-action:hover ~ .cart-gradient, & .cart-action:focus-visible ~ .cart-gradient': {
-    background: ACTIVE_OVERLAY_GRADIENT,
+    background: REVEAL_OVERLAY_GRADIENT,
+  },
+  '& .cart-action:hover ~ .offer-details, & .cart-action:focus-visible ~ .offer-details': {
+    opacity: 0,
   },
   '&:focus-within': {
     boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
@@ -66,7 +63,7 @@ export const gradientOverlaySx = (active: boolean): SxProps<Theme> => ({
   position: 'absolute',
   inset: 0,
   background: active ? ACTIVE_OVERLAY_GRADIENT : OVERLAY_GRADIENT,
-  transition: 'background 180ms ease',
+  transition: 'background 1s ease',
   zIndex: 1,
   pointerEvents: 'none',
 });
@@ -97,6 +94,7 @@ export const contentOverlaySx: SxProps<Theme> = {
   flexDirection: 'column',
   gap: '4px',
   color: '#fff',
+  transition: 'opacity 160ms ease',
 };
 
 export const storeNameSx: SxProps<Theme> = {

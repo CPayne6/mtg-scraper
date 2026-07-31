@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -12,7 +12,6 @@ import type { SelectedCardPanelProps } from './SelectedCardPanel.types';
 import {
   CONDITION_TO_LABEL,
   offerKey,
-  scryfallPreviewUrl,
 } from './SelectedCardPanel.utils';
 import {
   cardNameSx,
@@ -26,7 +25,6 @@ import {
   headerCardSx,
   metaRowSx,
   offerGridSx,
-  previewThumbSx,
   sectionHeaderSx,
   sectionTitleSx,
 } from './SelectedCardPanel.styles';
@@ -44,8 +42,6 @@ export function SelectedCardPanel({
   onSelectPrevious,
   onSelectNext,
 }: SelectedCardPanelProps) {
-  const [hoveredOfferKey, setHoveredOfferKey] = useState<string | null>(null);
-
   const filteredOffers = useMemo(() => {
     if (!lookup || lookup.state !== 'success') return [] as CardWithStore[];
     const storeSet = new Set(selectedStores);
@@ -60,22 +56,10 @@ export function SelectedCardPanel({
       .sort((a, b) => a.price - b.price);
   }, [lookup, selectedStores, conditions]);
 
-  const anyOfferInCart = useMemo(
-    () => filteredOffers.some((o) => inCartByOffer(o)),
+  const offersInCartCount = useMemo(
+    () => filteredOffers.filter((offer) => inCartByOffer(offer)).length,
     [filteredOffers, inCartByOffer],
   );
-
-  // Cheapest offer is the default preview source; hovered offer overrides it.
-  // Falls back to the Scryfall named-image lookup when no offers are loaded.
-  const cheapestOffer = filteredOffers[0];
-  const hoveredOffer = hoveredOfferKey
-    ? filteredOffers.find((o) => offerKey(o) === hoveredOfferKey) ?? null
-    : null;
-  const previewOffer = hoveredOffer ?? cheapestOffer ?? null;
-  const previewImage =
-    previewOffer?.image ||
-    (card && scryfallPreviewUrl(card.name)) ||
-    '';
 
   if (!card) {
     return (
@@ -93,13 +77,11 @@ export function SelectedCardPanel({
     <>
       {/* Sticky header card */}
       <Box sx={headerCardSx}>
-        <Box aria-hidden="true" sx={previewThumbSx(previewImage)} />
-
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ mb: '6px' }}>
-            <Box component="span" sx={cartStatusBadgeSx(anyOfferInCart)}>
-              <Box component="span" aria-hidden="true" sx={cartStatusDotSx(anyOfferInCart)} />
-              {anyOfferInCart ? 'In your cart' : 'Not yet in cart'}
+            <Box component="span" sx={cartStatusBadgeSx(offersInCartCount > 0)}>
+              <Box component="span" aria-hidden="true" sx={cartStatusDotSx(offersInCartCount > 0)} />
+              {offersInCartCount} {offersInCartCount === 1 ? 'copy' : 'copies'} in cart
             </Box>
           </Box>
 
@@ -199,10 +181,6 @@ export function SelectedCardPanel({
                   isCheapest={idx === 0}
                   inCart={inCartByOffer(offer)}
                   onAdd={() => onAddOffer(offer)}
-                  onHoverStart={() => setHoveredOfferKey(k)}
-                  onHoverEnd={() =>
-                    setHoveredOfferKey((curr) => (curr === k ? null : curr))
-                  }
                 />
               );
             })}
