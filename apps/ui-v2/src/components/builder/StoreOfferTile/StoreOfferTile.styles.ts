@@ -29,22 +29,21 @@ export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => 
     : '0 6px 16px rgba(15, 23, 42, 0.22), 0 1px 0 rgba(255, 255, 255, 0.45)',
   transition:
     'box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-  '&:hover': {
-    boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
-      ? '0 10px 24px rgba(0, 0, 0, 0.65)'
-      : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
-  },
-  '& .cart-action:hover ~ .cart-gradient, & .cart-action:focus-visible ~ .cart-gradient': {
-    background: REVEAL_OVERLAY_GRADIENT,
-  },
-  '& .cart-action:hover ~ .offer-details, & .cart-action:focus-visible ~ .offer-details': {
-    opacity: 0,
+  '@media (hover: hover) and (pointer: fine)': {
+    '&:hover': {
+      boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
+        ? '0 10px 24px rgba(0, 0, 0, 0.65)'
+        : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
+    },
+    '& .cart-action:hover ~ .cart-gradient, & .cart-action:focus-visible ~ .cart-gradient': { background: REVEAL_OVERLAY_GRADIENT },
+    '& .cart-action:hover ~ .offer-details, & .cart-action:focus-visible ~ .offer-details': { opacity: 0 },
   },
   '&:focus-within': {
     boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
       ? '0 10px 24px rgba(0, 0, 0, 0.65)'
       : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
   },
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
 });
 
 export const imgSx = (imageLoaded: boolean): SxProps<Theme> => ({
@@ -57,6 +56,7 @@ export const imgSx = (imageLoaded: boolean): SxProps<Theme> => ({
   zIndex: 0,
   opacity: imageLoaded ? 1 : 0,
   transition: 'opacity 180ms ease-in-out',
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
 });
 
 export const gradientOverlaySx = (active: boolean): SxProps<Theme> => ({
@@ -64,6 +64,7 @@ export const gradientOverlaySx = (active: boolean): SxProps<Theme> => ({
   inset: 0,
   background: active ? ACTIVE_OVERLAY_GRADIENT : OVERLAY_GRADIENT,
   transition: 'background 1s ease',
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
   zIndex: 1,
   pointerEvents: 'none',
 });

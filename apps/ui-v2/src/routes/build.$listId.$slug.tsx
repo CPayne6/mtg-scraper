@@ -16,6 +16,9 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import CloseIcon from '@mui/icons-material/Close';
+import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { fetchCardByName } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
@@ -132,6 +135,8 @@ function BuilderRoute() {
     add: addToCart,
     addMany: addManyToCart,
     items: cartItems,
+    count: cartCount,
+    total: cartTotal,
     remove: removeFromCart,
     open: openCart,
     setDeliverySelections,
@@ -197,6 +202,8 @@ function BuilderRoute() {
   const [saveDeliveryAddressForLater, setSaveDeliveryAddressForLater] = useState(false);
   const [estimatedShippingByStore, setEstimatedShippingByStore] = useState<Record<string, number>>({});
   const [pickupByStore, setPickupByStore] = useState<Record<string, boolean>>({});
+  const [filterBarHeight, setFilterBarHeight] = useState(0);
+  const [previewOffer, setPreviewOffer] = useState<CardWithStore | null>(null);
   const appliedUrlSelectionForListRef = useRef<string | null>(null);
   const syncSelectedCardUrl = useCallback(
     (name: string | null) => {
@@ -713,6 +720,8 @@ function BuilderRoute() {
   const selectedCard = selectedName
     ? {
         name: selectedName,
+        imageUri: entries.find((entry) => entry.cardName === selectedName)?.imageUri,
+        artCropUri: entries.find((entry) => entry.cardName === selectedName)?.artCropUri,
         set:
           results[selectedName]?.state === 'success'
             ? results[selectedName].cheapest?.set
@@ -740,7 +749,30 @@ function BuilderRoute() {
         onToggleAll={handleToggleAll}
         conditions={conditions}
         onToggleCondition={handleToggleCondition}
+        onHeightChange={setFilterBarHeight}
       />
+
+      {selectedName && (
+        <Box
+          sx={(theme) => ({
+            display: { xs: 'flex', sm: 'none' }, position: 'sticky', top: `calc(64px + ${filterBarHeight}px)`,
+            zIndex: 35, minHeight: 52, alignItems: 'center', gap: 1, px: 2,
+            bgcolor: 'background.paper', borderBottom: `1px solid ${theme.palette.divider}`,
+            boxShadow: theme.shadows[1],
+          })}
+        >
+          <IconButton aria-label="Previous card" onClick={handleSelectPrevious} disabled={selectedIndex <= 0} sx={{ minWidth: 44, minHeight: 44 }}>
+            <KeyboardArrowLeftIcon />
+          </IconButton>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Box sx={{ fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedName}</Box>
+            <Box sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>{cartItems.filter((item) => item.title === selectedName).length} copies in cart</Box>
+          </Box>
+          <IconButton aria-label="Next card" onClick={handleSelectNext} disabled={selectedIndex < 0 || selectedIndex >= sortedNames.length - 1} sx={{ minWidth: 44, minHeight: 44 }}>
+            <KeyboardArrowRightIcon />
+          </IconButton>
+        </Box>
+      )}
 
       <Box
         sx={{
@@ -748,6 +780,7 @@ function BuilderRoute() {
           gridTemplateColumns: { xs: '1fr', lg: '1fr 380px' },
           gap: '20px',
           padding: '20px',
+          pb: { xs: 'calc(116px + env(safe-area-inset-bottom))', sm: '20px' },
           maxWidth: 1600,
           mx: 'auto',
           width: '100%',
@@ -770,6 +803,7 @@ function BuilderRoute() {
             conditions={conditions}
             inCartByOffer={inCartByOffer}
             onAddOffer={handleAddOffer}
+            onPreviewOffer={setPreviewOffer}
             positionLabel={selectedPosition}
             canSelectPrevious={selectedIndex > 0}
             canSelectNext={selectedIndex >= 0 && selectedIndex < sortedNames.length - 1}
@@ -801,6 +835,33 @@ function BuilderRoute() {
           onLoadMorePrices={() => undefined}
         />
       </Box>
+      {cartCount > 0 && (
+        <Box
+          sx={(theme) => ({
+            display: { xs: 'flex', sm: 'none' }, position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50,
+            alignItems: 'center', gap: 1, px: 2, py: 1.25, pb: 'calc(10px + env(safe-area-inset-bottom))',
+            bgcolor: 'background.paper', borderTop: `1px solid ${theme.palette.divider}`, boxShadow: theme.shadows[8],
+          })}
+        >
+          <ShoppingCartIcon color="primary" />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Box sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{cartCount} {cartCount === 1 ? 'item' : 'items'} · {formatCurrency(cartTotal, 'CAD')}</Box>
+            <Box sx={{ fontSize: '0.68rem', color: 'text.secondary' }}>includes shipping est.</Box>
+          </Box>
+          <Button variant="contained" onClick={openCart} sx={{ minHeight: 44, whiteSpace: 'nowrap' }}>View cart</Button>
+        </Box>
+      )}
+      <Dialog open={Boolean(previewOffer)} onClose={() => setPreviewOffer(null)} fullScreen aria-labelledby="card-art-preview-title">
+        <Box sx={{ minHeight: '100%', bgcolor: '#111', color: '#fff', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1 }}>
+            <Box id="card-art-preview-title" sx={{ minWidth: 0, fontSize: '1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewOffer?.title}</Box>
+            <IconButton aria-label="Close artwork preview" onClick={() => setPreviewOffer(null)} sx={{ color: '#fff', minWidth: 44, minHeight: 44 }}><CloseIcon /></IconButton>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', p: 2 }}>
+            {previewOffer?.image ? <Box component="img" src={previewOffer.image} alt={`${previewOffer.title} card artwork`} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 1 }} /> : <Box>No card artwork is available for this offer.</Box>}
+          </Box>
+        </Box>
+      </Dialog>
       <Dialog open={deliveryOpen} onClose={() => !deliveryLoading && setDeliveryOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>Set up delivery for this fill<IconButton aria-label="Close delivery setup" onClick={() => setDeliveryOpen(false)} disabled={deliveryLoading}><CloseIcon /></IconButton></DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 1.5, pt: '12px !important', maxHeight: '65vh', overflowY: 'auto' }}>

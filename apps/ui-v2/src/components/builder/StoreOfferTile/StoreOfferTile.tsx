@@ -24,6 +24,7 @@ export function StoreOfferTile({
   isCheapest = false,
   inCart,
   onAdd,
+  onPreview,
   onHoverStart,
   onHoverEnd,
 }: StoreOfferTileProps) {
@@ -68,6 +69,22 @@ export function StoreOfferTile({
         </Box>
       )}
 
+      {onPreview && (
+        <Box
+          component="button"
+          type="button"
+          aria-label={`Preview artwork for ${offer.title}`}
+          onClick={onPreview}
+          sx={{
+            display: 'none', position: 'absolute', inset: 0,
+            bottom: '42%', zIndex: 3, border: 0, background: 'transparent', cursor: 'zoom-in',
+            '@media (hover: none), (pointer: coarse)': { display: 'block' },
+            '&:focus-visible': { outline: '3px solid #fff', outlineOffset: -3 },
+            '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+          }}
+        />
+      )}
+
       <Box
         component="button"
         className="cart-action"
@@ -78,7 +95,7 @@ export function StoreOfferTile({
         onMouseLeave={() => setIsCartActionHovered(false)}
         onFocus={() => setIsCartActionHovered(true)}
         onBlur={() => setIsCartActionHovered(false)}
-        sx={{ position: 'relative', gridRow: 1, justifySelf: 'stretch', width: '100%', minWidth: 0, boxSizing: 'border-box', zIndex: 4, border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: inCart ? 1 : 0, transition: 'opacity 160ms ease', '&:hover, &:focus-visible': { opacity: 1, outline: 'none' }, '&:focus-visible': { boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.8)' } }}
+        sx={{ position: 'relative', gridRow: 1, justifySelf: 'stretch', width: '100%', minWidth: 0, boxSizing: 'border-box', zIndex: 4, border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: inCart ? 1 : 0, transition: 'opacity 160ms ease', '@media (hover: none), (pointer: coarse)': { display: 'none' }, '@media (hover: hover) and (pointer: fine)': { '&:hover, &:focus-visible': { opacity: 1, outline: 'none' } }, '&:focus-visible': { opacity: 1, boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.8)' }, '@media (prefers-reduced-motion: reduce)': { transition: 'none' } }}
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, px: 1.5, py: 1 }}>
           {inCart ? (
@@ -119,7 +136,24 @@ export function StoreOfferTile({
           >
             View <OpenInNew sx={{ fontSize: 12 }} />
           </Box>
-
+          <Box
+            component="button"
+            type="button"
+            aria-label={inCart ? `Remove ${offer.title} from cart` : `Add ${offer.title} to cart`}
+            onClick={onAdd}
+            sx={(theme) => ({
+              display: 'none', minHeight: 44, alignItems: 'center', gap: 0.5,
+              '@media (hover: none), (pointer: coarse)': { display: 'inline-flex' },
+              px: 1, border: 0, borderRadius: 1, bgcolor: inCart ? 'rgba(0,0,0,0.38)' : theme.palette.primary.main,
+              color: '#fff', font: 'inherit', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+              '&:active': { transform: 'scale(0.96)', filter: 'brightness(0.9)' },
+              '&:focus-visible': { outline: '2px solid #fff', outlineOffset: 2 },
+              '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+            })}
+          >
+            {inCart ? <Close sx={{ fontSize: 18 }} /> : <AddShoppingCart sx={{ fontSize: 17 }} />}
+            {inCart ? 'Remove' : 'Add to cart'}
+          </Box>
         </Box>
       </Box>
     </Box>
