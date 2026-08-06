@@ -57,7 +57,7 @@ export function HistoryPopover({
                       }}
                     >
                       <Box component="strong" sx={{ fontWeight: 600 }}>
-                        {entry.type === 'fill' ? 'Filled' : entry.type === 'add' ? 'Added' : 'Removed'}
+                        {entry.type === 'add' ? 'Added' : 'Removed'}
                       </Box>{' '}
                       {entry.cardName}
                     </Box>

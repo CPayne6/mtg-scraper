@@ -16,10 +16,13 @@ import type {
   AddResult,
   CartContextValue,
   CartDeliverySelection,
+  CartHistoryEntry,
+  CartHistoryUndoResult,
   CartItem,
 } from './CartContext.types';
 import {
   CART_DELIVERY_KEY,
+  CART_HISTORY_KEY,
   CART_KEY,
   MAX_CART_ITEMS,
   cartItemId,
@@ -40,15 +43,23 @@ function mergeServerItems(serverItems: CartItem[], currentItems: CartItem[]): Ca
   }));
 }
 
+function makeHistoryId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useLocalStorage<CartItem[]>(CART_KEY, []);
   const [deliveryByStore, setDeliveryByStore] = useLocalStorage<
     Record<string, CartDeliverySelection>
   >(CART_DELIVERY_KEY, {});
+  const [history, setHistory] = useLocalStorage<CartHistoryEntry[]>(CART_HISTORY_KEY, []);
   const [isOpen, setIsOpen] = useState(false);
   const [isMutationLocked, setIsMutationLockedState] = useState(false);
   const { status, principalId } = useAuth();
   const itemsRef = useRef(items);
+  const historyRef = useRef(history);
   const mutationLockedRef = useRef(false);
   const syncVersionRef = useRef(0);
   const hydratedPrincipalRef = useRef<string | null>(null);
@@ -57,12 +68,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     itemsRef.current = items;
   }, [items]);
 
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
   const setMutationLocked = useCallback((locked: boolean) => {
     mutationLockedRef.current = locked;
     setIsMutationLockedState(locked);
   }, []);
+  const recordHistory = useCallback((
+    type: CartHistoryEntry['type'],
+    historyItems: CartItem[],
+    historyDeliveryByStore?: Record<string, CartDeliverySelection>,
+  ) => {
+    if (historyItems.length === 0) return;
+    const entry: CartHistoryEntry = {
+      id: makeHistoryId(),
+      type,
+      items: historyItems,
+      at: Date.now(),
+      deliveryByStore: historyDeliveryByStore,
+    };
+    setHistory((current) => [entry, ...current].slice(0, 30));
+  }, [setHistory]);
 
   const persist = useCallback(
     async (nextItems: CartItem[]) => {
@@ -149,13 +179,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.warn('Failed to persist cart', err);
       }
+      recordHistory('add', itemsRef.current.filter((item) => cartItemId(item) === id));
       return { outcome: 'added' };
     },
-    [persist, setItems],
+    [persist, recordHistory, setItems],
   );
 
   const addMany = useCallback(
-    async (cards: CardWithStore[], options: { allowWhileLocked?: boolean } = {}): Promise<AddManyResult> => {
+    async (cards: CardWithStore[], options: {
+      allowWhileLocked?: boolean;
+      historyType?: 'add' | 'fill';
+    } = {}): Promise<AddManyResult> => {
       if (mutationLockedRef.current && !options.allowWhileLocked) {
         return { added: 0, skippedDuplicate: 0, skippedInvalid: 0, skippedCapacity: 0, skippedSoldOut: 0, addedCards: [] };
       }
@@ -217,11 +251,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           console.warn('Failed to persist cart', err);
           result.addedCards = requestedCards;
         }
+        const addedIds = new Set(result.addedCards.map((card) => cartItemId(card)));
+        recordHistory(
+          options.historyType ?? 'add',
+          itemsRef.current.filter((item) => addedIds.has(cartItemId(item))),
+        );
       }
 
       return result;
     },
-    [persist, setItems],
+    [persist, recordHistory, setItems],
   );
 
   const remove = useCallback(
@@ -231,15 +270,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const nextItems = currentItems.filter((c) => cartItemId(c) !== id);
       if (nextItems.length === currentItems.length) return;
 
+      recordHistory('remove', currentItems.filter((item) => cartItemId(item) === id));
       itemsRef.current = nextItems;
       setItems(nextItems);
       void persist(nextItems).catch((err) => console.warn('Failed to persist cart', err));
     },
-    [persist, setItems],
+    [persist, recordHistory, setItems],
   );
 
   const clear = useCallback(() => {
     if (mutationLockedRef.current) return;
+    const currentItems = itemsRef.current;
+    recordHistory('clear', currentItems, deliveryByStore);
     itemsRef.current = [];
     setItems([]);
     setDeliveryByStore({});
@@ -252,7 +294,46 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch((err) => console.warn('Failed to clear cart', err));
-  }, [setDeliveryByStore, setItems]);
+  }, [deliveryByStore, recordHistory, setDeliveryByStore, setItems]);
+
+  const undoHistory = useCallback(async (entryId: string): Promise<CartHistoryUndoResult> => {
+    if (mutationLockedRef.current) return 'locked';
+    const entry = historyRef.current.find((item) => item.id === entryId);
+    if (!entry) return 'noop';
+
+    const currentItems = itemsRef.current;
+    const entryIds = new Set(entry.items.map((item) => cartItemId(item)));
+    let nextItems: CartItem[];
+    let expectedIds: Set<string>;
+
+    if (entry.type === 'add' || entry.type === 'fill') {
+      nextItems = currentItems.filter((item) => !entryIds.has(cartItemId(item)));
+      expectedIds = new Set(nextItems.map((item) => cartItemId(item)));
+    } else {
+      const existingIds = new Set(currentItems.map((item) => cartItemId(item)));
+      const restored = entry.items.filter((item) =>
+        !existingIds.has(cartItemId(item)) && existingIds.size < MAX_CART_ITEMS && existingIds.add(cartItemId(item)),
+      );
+      nextItems = [...currentItems, ...restored];
+      expectedIds = new Set(restored.map((item) => cartItemId(item)));
+    }
+
+    itemsRef.current = nextItems;
+    setItems(nextItems);
+    try {
+      const response = await persist(nextItems);
+      if (entry.type === 'clear' && entry.deliveryByStore) {
+        setDeliveryByStore((current) => ({ ...current, ...entry.deliveryByStore }));
+      }
+      setHistory((current) => current.filter((item) => item.id !== entryId));
+      if (entry.type === 'add' || entry.type === 'fill') return 'undone';
+      const returnedIds = new Set(response.items.map((item) => cartItemId(item)));
+      return [...expectedIds].every((id) => returnedIds.has(id)) ? 'undone' : 'partial';
+    } catch (err) {
+      console.warn('Failed to undo cart history', err);
+      return 'partial';
+    }
+  }, [persist, setDeliveryByStore, setHistory, setItems]);
 
   const setDeliverySelections = useCallback(
     (selections: Record<string, CartDeliverySelection>) => {
@@ -283,6 +364,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       total,
       isOpen,
       isMutationLocked,
+      history,
       open,
       close,
       add,
@@ -294,12 +376,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       deliveryByStore,
       setDeliverySelections,
       setMutationLocked,
+      undoHistory,
     }),
     [
       items,
       total,
       isOpen,
       isMutationLocked,
+      history,
       open,
       close,
       add,
@@ -311,6 +395,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       deliveryByStore,
       setDeliverySelections,
       setMutationLocked,
+      undoHistory,
     ],
   );
 

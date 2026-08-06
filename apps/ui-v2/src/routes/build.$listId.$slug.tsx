@@ -267,7 +267,7 @@ function BuilderRoute() {
   );
 
   // Editor: add/remove + history.
-  const { history, addCard, removeCard, recordCartFill, undo } = useListEditor(
+  const { history, addCard, removeCard, undo } = useListEditor(
     listId,
     inCartByName,
   );
@@ -486,9 +486,8 @@ function BuilderRoute() {
 
       const result = await addManyToCart(
         bestOption.selectedOffers.map((selectedOffer) => selectedOffer.offer),
-        { allowWhileLocked: true },
+        { allowWhileLocked: true, historyType: 'fill' },
       );
-      recordCartFill(result.addedCards);
       const skipped =
         result.skippedDuplicate + result.skippedInvalid + result.skippedCapacity;
       const soldOut = result.skippedSoldOut;
@@ -534,7 +533,6 @@ function BuilderRoute() {
     openCart,
     optimizationMinimumCondition,
     selectedStores,
-    recordCartFill,
     setMutationLocked,
   ]);
 
@@ -603,9 +601,8 @@ function BuilderRoute() {
     try {
       const result = await addManyToCart(
         pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer),
-        { allowWhileLocked: true },
+        { allowWhileLocked: true, historyType: 'fill' },
       );
-      recordCartFill(result.addedCards);
       if (result.added) {
         openCart();
         enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${result.skippedSoldOut ? ` (${result.skippedSoldOut} sold out)` : ''}`, { variant: 'success' });
@@ -625,7 +622,6 @@ function BuilderRoute() {
     pendingOptimization,
     selectedDeliveryMethods,
     setDeliverySelections,
-    recordCartFill,
     setMutationLocked,
   ]);
 

@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLists } from '@/components/lists/ListsContext';
-import { useCart } from '@/components/cart/CartContext';
-import { cartItemId } from '@/components/cart/CartContext/CartContext.utils';
-import type { CardWithStore } from '@scoutlgs/shared';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 export type ListHistoryEntry = {
   id: string;
-  type: 'add' | 'remove' | 'fill';
+  type: 'add' | 'remove';
   cardName: string;
   at: number;
-  cartItemIds?: string[];
 };
 
 const MAX_HISTORY = 30;
@@ -37,11 +33,9 @@ export function useListEditor(
   history: ListHistoryEntry[];
   addCard: (cardName: string) => Promise<string | null>;
   removeCard: (cardName: string) => string | null;
-  recordCartFill: (cards: CardWithStore[]) => string | null;
   undo: (entryId?: string) => UndoResult;
 } {
   const { addCardToList, removeCardFromList, getList } = useLists();
-  const { remove: removeCartItem } = useCart();
   const [history, setHistory] = useLocalStorage<ListHistoryEntry[]>(
     `scoutlgs:list-history:${listId}`,
     [],
@@ -89,16 +83,6 @@ export function useListEditor(
     [getList, removeCardFromList, listId, pushEntry],
   );
 
-  const recordCartFill = useCallback((cards: CardWithStore[]): string | null => {
-    if (cards.length === 0) return null;
-    const entry: ListHistoryEntry = {
-      id: makeId(), type: 'fill', cardName: `${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`,
-      at: Date.now(), cartItemIds: cards.map((card) => cartItemId(card)),
-    };
-    setHistory((current) => [entry, ...current].slice(0, MAX_HISTORY));
-    return entry.id;
-  }, [setHistory]);
-
   // Keep a ref to the latest history so undo can read it without making the
   // setHistory updater impure (StrictMode double-invokes updaters in dev,
   // which would otherwise apply the inverse mutation twice).
@@ -116,9 +100,7 @@ export function useListEditor(
         : current[0];
       if (!target) return 'noop';
 
-      if (target.type === 'fill') {
-        for (const cartItemIdValue of target.cartItemIds ?? []) removeCartItem(cartItemIdValue);
-      } else if (target.type === 'add') {
+      if (target.type === 'add') {
         if (inCartByName(target.cardName)) return 'blocked';
         void removeCardFromList(listId, target.cardName);
       } else {
@@ -127,8 +109,8 @@ export function useListEditor(
       setHistory((h) => h.filter((e) => e.id !== target.id));
       return 'undone';
     },
-    [addCardToList, inCartByName, listId, removeCartItem, removeCardFromList, setHistory],
+    [addCardToList, inCartByName, listId, removeCardFromList, setHistory],
   );
 
-  return { history, addCard, removeCard, recordCartFill, undo };
+  return { history, addCard, removeCard, undo };
 }
