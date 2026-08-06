@@ -101,7 +101,7 @@ export function StoreOfferTile({
         onClick={() => setIsPreviewPinned((value) => !value)}
         sx={previewActionSx}
       >
-        <VisibilityOutlined sx={{ fontSize: 19 }} />
+        <VisibilityOutlined sx={{ fontSize: 16 }} />
       </Box>
 
       <Box
