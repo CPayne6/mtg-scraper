@@ -20,6 +20,6 @@ export type ListsContextValue = {
   save: (name: string, cards: string[]) => Promise<string | null>;
   rename: (id: string, newName: string) => Promise<string | null>;
   remove: (id: string) => Promise<void>;
-  addCardToList: (id: string, cardName: string) => Promise<void>;
+  addCardToList: (id: string, cardName: string) => Promise<boolean>;
   removeCardFromList: (id: string, cardName: string) => Promise<void>;
 };

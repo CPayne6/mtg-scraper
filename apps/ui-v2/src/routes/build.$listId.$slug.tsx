@@ -19,7 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import { fetchCardById, fetchCardByName } from '@/api/cards';
+import { fetchCardById } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
@@ -183,6 +183,7 @@ function BuilderRoute() {
     () => entries.find((entry) => entry.cardName === selectedName),
     [entries, selectedName],
   );
+  const hasPendingListEntry = entries.some((entry) => entry.cardNameId <= 0);
   // Stored values are store slugs (e.g. "face-to-face-games"), matching the
   // `store_key` field on offers from the API. Bumped to v3 after migrating from
   // displayName to slug — older v1/v2 values would silently filter out every
@@ -378,9 +379,11 @@ function BuilderRoute() {
       [selectedName]: { state: 'pending' },
     }));
 
-    const lookup = selectedEntry && selectedEntry.cardNameId > 0
-      ? fetchCardById(selectedEntry.cardNameId, selectedName, controller.signal)
-      : fetchCardByName(selectedName, controller.signal);
+    // Optimistic list entries have no local card ID yet. Wait for the list
+    // refresh rather than falling back to a name lookup for a different card.
+    if (!selectedEntry || selectedEntry.cardNameId <= 0) return () => controller.abort();
+
+    const lookup = fetchCardById(selectedEntry.cardNameId, selectedName, controller.signal);
 
     lookup
       .then((response) => {
@@ -404,7 +407,7 @@ function BuilderRoute() {
   }, [selectedEntry, selectedName]);
 
   const canAddBestCards =
-    entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
+    entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards && !hasPendingListEntry;
 
   const runOptimization = useCallback(async (quoteAddress?: typeof deliveryAddress, shippingCostByStoreKey?: Record<string, number>) => {
     if (selectedStores.length === 0) {
@@ -691,8 +694,9 @@ function BuilderRoute() {
   );
 
   const handleAddCard = useCallback(
-    (cardName: string) => {
-      const entryId = addCard(cardName);
+    async (cardName: string) => {
+      const entryId = await addCard(cardName);
+      if (!entryId) return;
       const key = enqueueSnackbar(`Added "${cardName}" to list`, {
         autoHideDuration: 6000,
         action: (snackKey) => (

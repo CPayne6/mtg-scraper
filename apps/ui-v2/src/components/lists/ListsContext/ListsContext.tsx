@@ -208,12 +208,13 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const replaceCardsForList = useCallback(
-    async (id: string, prevCards: ServerList['cards'], nextCards: string[]) => {
+    async (id: string, prevCards: ServerList['cards'], nextCards: string[]): Promise<ServerList['cards'] | null> => {
       try {
         const response = await replaceListCards(id, nextCards);
         const full = await fetchList(id);
         setLists((current) => current.map((l) => l.id === id ? { ...l, cards: full.cards } : l));
         if (response.warnings.length) enqueueSnackbar(response.warnings.join(' · '), { variant: 'info' });
+        return full.cards;
       } catch (err) {
         // Roll back to the pre-mutation cards.
         setLists((current) =>
@@ -221,15 +222,16 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
         );
         const msg = err instanceof Error ? err.message : 'Failed to update list';
         enqueueSnackbar(msg, { variant: 'error' });
+        return null;
       }
     },
     [enqueueSnackbar],
   );
 
   const addCardToList = useCallback(
-    async (id: string, cardName: string): Promise<void> => {
+    async (id: string, cardName: string): Promise<boolean> => {
       const current = lists.find((l) => l.id === id);
-      if (!current) return;
+      if (!current) return false;
       const nextCards = [...current.cards.map((card) => card.cardName), cardName];
       const nextRecords: ListCardEntry[] = [...current.cards, {
         name: cardName, position: current.cards.length + 1, cardNameId: 0, cardName,
@@ -242,9 +244,14 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       setLists((all) =>
         all.map((l) => (l.id === id ? { ...l, cards: nextRecords } : l)),
       );
-      await replaceCardsForList(id, current.cards, nextCards);
+      const persistedCards = await replaceCardsForList(id, current.cards, nextCards);
+      const added = persistedCards !== null && persistedCards.length > current.cards.length;
+      if (!added && persistedCards !== null) {
+        enqueueSnackbar(`Couldn't add "${cardName}" to the list`, { variant: 'warning' });
+      }
+      return added;
     },
-    [lists, replaceCardsForList],
+    [enqueueSnackbar, lists, replaceCardsForList],
   );
 
   const removeCardFromList = useCallback(
