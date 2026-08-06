@@ -16,7 +16,10 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { useSnackbar } from 'notistack';
 import { Condition, type CardWithStore } from '@scoutlgs/shared';
 import CloseIcon from '@mui/icons-material/Close';
-import { fetchCardByName } from '@/api/cards';
+import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import { fetchCardById } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
@@ -28,7 +31,6 @@ import {
 import { useAuth } from '@/components/auth/AuthContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { groupByName } from '@/utils/parseDeckList';
 import { formatCurrency } from '@/utils/formatCurrency';
 import type { PriceLookupState } from '@/hooks/useListPrices';
 import { useListEditor } from '@/hooks/useListEditor';
@@ -126,22 +128,25 @@ function BuilderRoute() {
   const { listId, slug } = useParams({ from: '/build/$listId/$slug' });
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const { get, getList, loading } = useLists();
+  const { getList, loading } = useLists();
   const { session } = useAuth();
   const {
     add: addToCart,
     addMany: addManyToCart,
     items: cartItems,
+    count: cartCount,
+    total: cartTotal,
     remove: removeFromCart,
     open: openCart,
     setDeliverySelections,
+    isMutationLocked,
+    setMutationLocked,
   } = useCart();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
-  const cards = get(listId);
   const list = getList(listId);
-  const entries = useMemo(() => groupByName(cards), [cards]);
-  const uniqueNames = useMemo(() => entries.map((e) => e.name), [entries]);
+  const entries = useMemo(() => list?.cards ?? [], [list]);
+  const uniqueNames = useMemo(() => entries.map((e) => e.cardName), [entries]);
   const existingNames = useMemo(
     () => uniqueNames.map((n) => n.toLowerCase()),
     [uniqueNames],
@@ -165,7 +170,7 @@ function BuilderRoute() {
     [entries, sortBy, results],
   );
   const sortedNames = useMemo(
-    () => sortedEntries.map((entry) => entry.name),
+    () => sortedEntries.map((entry) => entry.cardName),
     [sortedEntries],
   );
 
@@ -174,6 +179,11 @@ function BuilderRoute() {
     `scoutlgs:builder:selected:${listId}`,
     null,
   );
+  const selectedEntry = useMemo(
+    () => entries.find((entry) => entry.cardName === selectedName),
+    [entries, selectedName],
+  );
+  const hasPendingListEntry = entries.some((entry) => entry.cardNameId <= 0);
   // Stored values are store slugs (e.g. "face-to-face-games"), matching the
   // `store_key` field on offers from the API. Bumped to v3 after migrating from
   // displayName to slug — older v1/v2 values would silently filter out every
@@ -197,6 +207,8 @@ function BuilderRoute() {
   const [saveDeliveryAddressForLater, setSaveDeliveryAddressForLater] = useState(false);
   const [estimatedShippingByStore, setEstimatedShippingByStore] = useState<Record<string, number>>({});
   const [pickupByStore, setPickupByStore] = useState<Record<string, boolean>>({});
+  const [filterBarHeight, setFilterBarHeight] = useState(0);
+  const [previewOffer, setPreviewOffer] = useState<CardWithStore | null>(null);
   const appliedUrlSelectionForListRef = useRef<string | null>(null);
   const syncSelectedCardUrl = useCallback(
     (name: string | null) => {
@@ -270,8 +282,8 @@ function BuilderRoute() {
       return;
     }
 
-    const entryNames = new Set(entries.map((entry) => entry.name));
-    const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const entryNames = new Set(entries.map((entry) => entry.cardName));
+    const sorted = entries.slice().sort((a, b) => a.cardName.localeCompare(b.cardName));
     const urlName = search.card && entryNames.has(search.card) ? search.card : null;
     const selectedStillValid =
       selectedName && entryNames.has(selectedName) ? selectedName : null;
@@ -280,7 +292,7 @@ function BuilderRoute() {
     const nextName =
       shouldApplyUrlSelection && urlName
         ? urlName
-        : selectedStillValid ?? urlName ?? sorted[0].name;
+          : selectedStillValid ?? urlName ?? sorted[0].cardName;
 
     appliedUrlSelectionForListRef.current = listId;
     if (selectedName !== nextName) {
@@ -322,6 +334,12 @@ function BuilderRoute() {
 
   const handleAddOffer = useCallback(
     async (offer: CardWithStore) => {
+      if (isMutationLocked) {
+        enqueueSnackbar('Cart updates are paused while Fill Best Cards is running', {
+          variant: 'info',
+        });
+        return;
+      }
       if (inCartByOffer(offer)) {
         removeFromCart(cartItemId(offer));
         enqueueSnackbar(`Removed "${offer.title}" from cart`, { variant: 'default' });
@@ -344,7 +362,7 @@ function BuilderRoute() {
         });
       }
     },
-    [addToCart, enqueueSnackbar, inCartByOffer, removeFromCart],
+    [addToCart, enqueueSnackbar, inCartByOffer, isMutationLocked, removeFromCart],
   );
 
   const optimizationMinimumCondition = useMemo(
@@ -361,7 +379,13 @@ function BuilderRoute() {
       [selectedName]: { state: 'pending' },
     }));
 
-    fetchCardByName(selectedName, controller.signal)
+    // Optimistic list entries have no local card ID yet. Wait for the list
+    // refresh rather than falling back to a name lookup for a different card.
+    if (!selectedEntry || selectedEntry.cardNameId <= 0) return () => controller.abort();
+
+    const lookup = fetchCardById(selectedEntry.cardNameId, selectedName, controller.signal);
+
+    lookup
       .then((response) => {
         if (controller.signal.aborted) return;
         setDetailedResults((prev) => ({
@@ -380,10 +404,10 @@ function BuilderRoute() {
       });
 
     return () => controller.abort();
-  }, [selectedName]);
+  }, [selectedEntry, selectedName]);
 
   const canAddBestCards =
-    entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
+    entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards && !hasPendingListEntry;
 
   const runOptimization = useCallback(async (quoteAddress?: typeof deliveryAddress, shippingCostByStoreKey?: Record<string, number>) => {
     if (selectedStores.length === 0) {
@@ -394,6 +418,25 @@ function BuilderRoute() {
     }
 
     setIsAddingBestCards(true);
+    setMutationLocked(true);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10_000);
+    const waitForPoll = () => new Promise<void>((resolve, reject) => {
+      let pollTimeout: number | undefined;
+      const onAbort = () => {
+        window.clearTimeout(pollTimeout);
+        reject(new DOMException('Optimization timed out', 'AbortError'));
+      };
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      pollTimeout = window.setTimeout(() => {
+        controller.signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, 500);
+    });
     try {
       const created = await createListOptimization(listId, {
         stores: selectedStores,
@@ -401,12 +444,11 @@ function BuilderRoute() {
         conditionFlexibility: 'allow-if-cheaper',
         maxDowngradeSteps: 2,
         shippingCostByStoreKey,
-      });
-      const deadline = Date.now() + 60_000;
+      }, controller.signal);
       let completed: Awaited<ReturnType<typeof fetchListOptimizationStatus>> | undefined;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const status = await fetchListOptimizationStatus(listId, created.jobId);
+      while (!controller.signal.aborted) {
+        await waitForPoll();
+        const status = await fetchListOptimizationStatus(listId, created.jobId, controller.signal);
         if (status.status === 'queued' || status.status === 'running') continue;
         completed = status;
         break;
@@ -417,7 +459,9 @@ function BuilderRoute() {
       if (completed.status !== 'completed') throw new Error('Optimization did not complete. Please retry.');
       const bestOption = completed.result.result;
       if (!bestOption || bestOption.selectedOffers.length === 0) {
-        enqueueSnackbar('No purchasable cards were found for this list', {
+        enqueueSnackbar(bestOption?.status === 'empty' && bestOption.missingCards.length === 0
+          ? 'All cards from this list are already in your cart'
+          : 'No purchasable cards were found for this list', {
           variant: 'warning',
         });
         return;
@@ -425,7 +469,7 @@ function BuilderRoute() {
 
       if (quoteAddress) {
         setPendingOptimization(bestOption);
-        const quote = await fetchDeliveryOptions(listId, created.jobId, quoteAddress);
+        const quote = await fetchDeliveryOptions(listId, created.jobId, quoteAddress, controller.signal);
         setDeliveryQuote(quote);
         const defaults: Record<string, string> = {};
         for (const store of quote.stores) {
@@ -442,6 +486,7 @@ function BuilderRoute() {
 
       const result = await addManyToCart(
         bestOption.selectedOffers.map((selectedOffer) => selectedOffer.offer),
+        { allowWhileLocked: true, historyType: 'fill' },
       );
       const skipped =
         result.skippedDuplicate + result.skippedInvalid + result.skippedCapacity;
@@ -472,10 +517,14 @@ function BuilderRoute() {
         { variant: soldOut > 0 ? 'warning' : 'default' },
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to optimize list';
+      const message = timedOut || (err instanceof Error && err.name === 'AbortError')
+        ? 'Optimization took too long. Please retry.'
+        : err instanceof Error ? err.message : 'Failed to optimize list';
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
+      window.clearTimeout(timeout);
       setIsAddingBestCards(false);
+      setMutationLocked(false);
     }
   }, [
     addManyToCart,
@@ -484,6 +533,7 @@ function BuilderRoute() {
     openCart,
     optimizationMinimumCondition,
     selectedStores,
+    setMutationLocked,
   ]);
 
   const handleAddBestCards = useCallback(() => {
@@ -546,14 +596,24 @@ function BuilderRoute() {
     }
     setDeliverySelections(selections);
     setDeliveryOpen(false);
-    const result = await addManyToCart(pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer));
-    if (result.added) {
-      openCart();
-      enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${result.skippedSoldOut ? ` (${result.skippedSoldOut} sold out)` : ''}`, { variant: 'success' });
-    } else if (result.skippedSoldOut) {
-      enqueueSnackbar(`${result.skippedSoldOut} selected ${result.skippedSoldOut === 1 ? 'card was' : 'cards were'} sold out and could not be added`, { variant: 'warning' });
+    setIsAddingBestCards(true);
+    setMutationLocked(true);
+    try {
+      const result = await addManyToCart(
+        pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer),
+        { allowWhileLocked: true, historyType: 'fill' },
+      );
+      if (result.added) {
+        openCart();
+        enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${result.skippedSoldOut ? ` (${result.skippedSoldOut} sold out)` : ''}`, { variant: 'success' });
+      } else if (result.skippedSoldOut) {
+        enqueueSnackbar(`${result.skippedSoldOut} selected ${result.skippedSoldOut === 1 ? 'card was' : 'cards were'} sold out and could not be added`, { variant: 'warning' });
+      }
+      setPendingOptimization(null);
+    } finally {
+      setIsAddingBestCards(false);
+      setMutationLocked(false);
     }
-    setPendingOptimization(null);
   }, [
     addManyToCart,
     deliveryQuote,
@@ -562,6 +622,7 @@ function BuilderRoute() {
     pendingOptimization,
     selectedDeliveryMethods,
     setDeliverySelections,
+    setMutationLocked,
   ]);
 
   const startEstimatedFill = useCallback(() => {
@@ -629,8 +690,9 @@ function BuilderRoute() {
   );
 
   const handleAddCard = useCallback(
-    (cardName: string) => {
-      const entryId = addCard(cardName);
+    async (cardName: string) => {
+      const entryId = await addCard(cardName);
+      if (!entryId) return;
       const key = enqueueSnackbar(`Added "${cardName}" to list`, {
         autoHideDuration: 6000,
         action: (snackKey) => (
@@ -713,6 +775,8 @@ function BuilderRoute() {
   const selectedCard = selectedName
     ? {
         name: selectedName,
+        imageUri: entries.find((entry) => entry.cardName === selectedName)?.imageUri,
+        artCropUri: entries.find((entry) => entry.cardName === selectedName)?.artCropUri,
         set:
           results[selectedName]?.state === 'success'
             ? results[selectedName].cheapest?.set
@@ -740,7 +804,30 @@ function BuilderRoute() {
         onToggleAll={handleToggleAll}
         conditions={conditions}
         onToggleCondition={handleToggleCondition}
+        onHeightChange={setFilterBarHeight}
       />
+
+      {selectedName && (
+        <Box
+          sx={(theme) => ({
+            display: { xs: 'flex', sm: 'none' }, position: 'sticky', top: `calc(64px + ${filterBarHeight}px)`,
+            zIndex: 35, minHeight: 52, alignItems: 'center', gap: 1, px: 2,
+            bgcolor: 'background.paper', borderBottom: `1px solid ${theme.palette.divider}`,
+            boxShadow: theme.shadows[1],
+          })}
+        >
+          <IconButton aria-label="Previous card" onClick={handleSelectPrevious} disabled={selectedIndex <= 0} sx={{ minWidth: 44, minHeight: 44 }}>
+            <KeyboardArrowLeftIcon />
+          </IconButton>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Box sx={{ fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedName}</Box>
+            <Box sx={{ fontSize: '0.72rem', color: 'text.secondary' }}>{cartItems.filter((item) => item.title === selectedName).length} copies in cart</Box>
+          </Box>
+          <IconButton aria-label="Next card" onClick={handleSelectNext} disabled={selectedIndex < 0 || selectedIndex >= sortedNames.length - 1} sx={{ minWidth: 44, minHeight: 44 }}>
+            <KeyboardArrowRightIcon />
+          </IconButton>
+        </Box>
+      )}
 
       <Box
         sx={{
@@ -748,6 +835,7 @@ function BuilderRoute() {
           gridTemplateColumns: { xs: '1fr', lg: '1fr 380px' },
           gap: '20px',
           padding: '20px',
+          pb: { xs: 'calc(116px + env(safe-area-inset-bottom))', sm: '20px' },
           maxWidth: 1600,
           mx: 'auto',
           width: '100%',
@@ -770,6 +858,7 @@ function BuilderRoute() {
             conditions={conditions}
             inCartByOffer={inCartByOffer}
             onAddOffer={handleAddOffer}
+            onPreviewOffer={setPreviewOffer}
             positionLabel={selectedPosition}
             canSelectPrevious={selectedIndex > 0}
             canSelectNext={selectedIndex >= 0 && selectedIndex < sortedNames.length - 1}
@@ -801,6 +890,33 @@ function BuilderRoute() {
           onLoadMorePrices={() => undefined}
         />
       </Box>
+      {cartCount > 0 && (
+        <Box
+          sx={(theme) => ({
+            display: { xs: 'flex', sm: 'none' }, position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50,
+            alignItems: 'center', gap: 1, px: 2, py: 1.25, pb: 'calc(10px + env(safe-area-inset-bottom))',
+            bgcolor: 'background.paper', borderTop: `1px solid ${theme.palette.divider}`, boxShadow: theme.shadows[8],
+          })}
+        >
+          <ShoppingCartIcon color="primary" />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Box sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{cartCount} {cartCount === 1 ? 'item' : 'items'} · {formatCurrency(cartTotal, 'CAD')}</Box>
+            <Box sx={{ fontSize: '0.68rem', color: 'text.secondary' }}>includes shipping est.</Box>
+          </Box>
+          <Button variant="contained" onClick={openCart} sx={{ minHeight: 44, whiteSpace: 'nowrap' }}>View cart</Button>
+        </Box>
+      )}
+      <Dialog open={Boolean(previewOffer)} onClose={() => setPreviewOffer(null)} fullScreen aria-labelledby="card-art-preview-title">
+        <Box sx={{ minHeight: '100%', bgcolor: '#111', color: '#fff', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1 }}>
+            <Box id="card-art-preview-title" sx={{ minWidth: 0, fontSize: '1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{previewOffer?.title}</Box>
+            <IconButton aria-label="Close artwork preview" onClick={() => setPreviewOffer(null)} sx={{ color: '#fff', minWidth: 44, minHeight: 44 }}><CloseIcon /></IconButton>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', p: 2 }}>
+            {previewOffer?.image ? <Box component="img" src={previewOffer.image} alt={`${previewOffer.title} card artwork`} sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 1 }} /> : <Box>No card artwork is available for this offer.</Box>}
+          </Box>
+        </Box>
+      </Dialog>
       <Dialog open={deliveryOpen} onClose={() => !deliveryLoading && setDeliveryOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>Set up delivery for this fill<IconButton aria-label="Close delivery setup" onClick={() => setDeliveryOpen(false)} disabled={deliveryLoading}><CloseIcon /></IconButton></DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 1.5, pt: '12px !important', maxHeight: '65vh', overflowY: 'auto' }}>

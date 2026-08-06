@@ -45,7 +45,7 @@ export function HistoryPopover({
             ) : (
               history.map((entry) => (
                 <Box key={entry.id} sx={entryRowSx}>
-                  <Box aria-hidden="true" sx={entryDotSx(entry.type === 'add')} />
+                  <Box aria-hidden="true" sx={entryDotSx(entry.type !== 'remove')} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Box
                       sx={{

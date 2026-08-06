@@ -36,6 +36,7 @@ export function SelectedCardPanel({
   conditions,
   inCartByOffer,
   onAddOffer,
+  onPreviewOffer,
   positionLabel,
   canSelectPrevious = false,
   canSelectNext = false,
@@ -181,6 +182,7 @@ export function SelectedCardPanel({
                   isCheapest={idx === 0}
                   inCart={inCartByOffer(offer)}
                   onAdd={() => onAddOffer(offer)}
+                  onPreview={onPreviewOffer ? () => onPreviewOffer(offer) : undefined}
                 />
               );
             })}

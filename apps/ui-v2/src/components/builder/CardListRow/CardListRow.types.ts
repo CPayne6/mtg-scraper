@@ -1,5 +1,6 @@
+import type { ListCardEntry } from '@/api/lists';
 export type CardListRowProps = {
-  name: string;
+  card: ListCardEntry;
   selected: boolean;
   inCart: boolean;
   cartPrice?: number;

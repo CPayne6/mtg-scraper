@@ -42,7 +42,9 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
   const options = input.options ?? {};
   const now = options.now ?? Date.now;
   const deadline = now() + Math.max(0, options.timeBudgetMs ?? DEFAULT_BUDGET_MS);
-  const wanted = expandWanted(input.wantedCards);
+  const initialNames = new Set((input.initialCart ?? []).map((item) => normalizeCardName(item.title)));
+  const wanted = expandWanted(input.wantedCards)
+    .filter((card) => !initialNames.has(normalizeCardName(card.name)));
   const candidates = prepareCandidates(wanted, input.candidates, options);
   const stores = [...new Set(candidates.flatMap((group) => group.map((c) => c.storeKey)))].sort();
   const subsetCount = 2 ** stores.length;
@@ -67,7 +69,10 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
       objective += effectiveCost(choice);
     }
     const missing = wanted.length - selected.length;
-    const usedStores = new Set(selected.map((item) => item.storeKey));
+    const usedStores = new Set([
+      ...(input.initialCart ?? []).map((item) => item.store_key),
+      ...selected.map((item) => item.storeKey),
+    ]);
     for (const store of usedStores) objective += shippingFor(store, options);
     if (missing < bestMissing || (missing === bestMissing && objective < bestCost)) {
       bestMissing = missing; bestCost = objective; best = selected;
@@ -75,6 +80,10 @@ export function optimizeCart(input: OptimizeCartInput): CartOptimizationResult {
   }
 
   return buildResult(wanted, candidates, input.candidates, best ?? [], options, optimal, subsetsEvaluated);
+}
+
+function normalizeCardName(value: string): string {
+  return value.replace(/\s*\[[^\]]+\]\s*$/, '').trim().toLowerCase();
 }
 
 /** Kept as a compatibility shim; the asynchronous contract returns one cart. */

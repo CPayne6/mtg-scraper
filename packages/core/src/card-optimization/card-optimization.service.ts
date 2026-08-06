@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { Condition } from '@scoutlgs/shared';
 import type { CardOptimizationJobData, CardWithStore } from '@scoutlgs/shared';
+import { freshOfferCutoff } from '../database/offer-freshness';
 import { normalizeCondition, optimizeCart } from '../cart-optimizer/cart-optimizer';
 import type { CartOptimizationCandidate, CartOptimizationResult, CartOptimizationWantedCard } from '../cart-optimizer/cart-optimizer.types';
 
@@ -52,9 +53,10 @@ export class CardOptimizationService {
         LEFT JOIN sets ps ON ps.id = p.set_id
         WHERE e.card_list_id = $4 AND l.card_name_id = ANY($1::int[]) AND ($2::text[] IS NULL OR s.name = ANY($2))
           AND c.code = ANY($3::text[]) AND v.in_stock = TRUE
+          AND v.price_updated_at > $5
           AND (e.preferred_set_code IS NULL OR lower(e.preferred_set_code) = lower(COALESCE(ps.code, '')))
       ) SELECT * FROM ranked WHERE price_rank = 1 ORDER BY card_name_id, store_slug`,
-      [ids, data.stores, conditions, data.listId]) : [];
+      [ids, data.stores, conditions, data.listId, freshOfferCutoff()]) : [];
     const databaseQueryMs = Date.now() - queryStarted;
     const byPosition = new Map<string, CandidateRow[]>();
     for (const row of candidates) byPosition.set(row.wanted_position, [...(byPosition.get(row.wanted_position) ?? []), row]);
@@ -69,7 +71,7 @@ export class CardOptimizationService {
         setCode: row.set_code ?? undefined, setName: row.set_name ?? undefined,
       })));
     const optimizationStarted = Date.now();
-    const result = optimizeCart({ wantedCards, candidates: mapped, options: {
+    const result = optimizeCart({ wantedCards, candidates: mapped, initialCart: data.initialCart, options: {
       defaultMinimumCondition: normalizeCondition(data.minimumCondition), defaultShippingCost: 3,
       shippingCostByStoreKey: data.delivery?.shippingCostByStoreKey,
       timeBudgetMs: 60_000,

@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { CardsService, SearchResponse } from './cards.service';
 import { SearchCardsQueryDto } from './dto/search-cards-query.dto';
+import { BulkSearchCardsDto } from './dto/bulk-search-cards.dto';
 
 @Controller('cards')
 export class CardsController {
@@ -26,5 +27,13 @@ export class CardsController {
       stores,
       conditions,
     );
+  }
+
+  @Get('bulk-search')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async bulkSearchCards(
+    @Query() query: BulkSearchCardsDto,
+  ): Promise<{ results: Record<string, SearchResponse> }> {
+    return this.cardsService.bulkSearchCards(query.names, query.limit);
   }
 }
