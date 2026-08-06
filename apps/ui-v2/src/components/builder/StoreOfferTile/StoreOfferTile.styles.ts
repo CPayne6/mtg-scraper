@@ -7,8 +7,7 @@ export const OVERLAY_GRADIENT =
   'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.88) 70%, rgba(0,0,0,0.98) 88%, rgba(0,0,0,1) 100%)';
 export const ACTIVE_OVERLAY_GRADIENT =
   'linear-gradient(to bottom, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.2) 18%, rgba(0,0,0,0.5) 42%, rgba(0,0,0,0.82) 63%, rgba(0,0,0,0.97) 83%, rgba(0,0,0,1) 100%)';
-export const REVEAL_OVERLAY_GRADIENT =
-  'rgba(0,0,0,0.16)';
+export const REVEAL_OVERLAY_GRADIENT = 'rgba(0,0,0,0.16)';
 
 export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => (theme) => ({
   position: 'relative',
@@ -35,14 +34,53 @@ export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => 
         ? '0 10px 24px rgba(0, 0, 0, 0.65)'
         : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
     },
-    '& .cart-action:hover ~ .cart-gradient, & .cart-action:focus-visible ~ .cart-gradient': { background: REVEAL_OVERLAY_GRADIENT },
-    '& .cart-action:hover ~ .offer-details, & .cart-action:focus-visible ~ .offer-details': { opacity: 0 },
+    '&:hover .preview-action': { opacity: 1 },
+    '& .preview-action:hover ~ .cart-gradient': { background: REVEAL_OVERLAY_GRADIENT },
+    '& .preview-action:hover ~ .offer-details': { opacity: 0 },
+  },
+  '&:focus-within .preview-action': { opacity: 1 },
+  '& .preview-action:focus-visible ~ .cart-gradient, &.previewing .cart-gradient': {
+    background: REVEAL_OVERLAY_GRADIENT,
+  },
+  '& .preview-action:focus-visible ~ .offer-details, &.previewing .offer-details': {
+    opacity: 0,
   },
   '&:focus-within': {
     boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
       ? '0 10px 24px rgba(0, 0, 0, 0.65)'
       : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
   },
+  '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+});
+
+export const previewActionSx: SxProps<Theme> = (theme) => ({
+  position: 'absolute',
+  right: 10,
+  bottom: 10,
+  zIndex: 4,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 34,
+  height: 34,
+  padding: 0,
+  border: '1px solid rgba(255,255,255,0.5)',
+  borderRadius: '50%',
+  background: 'rgba(0,0,0,0.6)',
+  color: '#fff',
+  cursor: 'zoom-in',
+  opacity: 0,
+  boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+  transition: 'opacity 160ms ease, background 160ms ease, transform 160ms ease',
+  '&:hover, &:focus-visible': {
+    background: theme.palette.primary.main,
+    transform: 'scale(1.08)',
+    outline: 'none',
+  },
+  '&:focus-visible': {
+    boxShadow: '0 0 0 3px rgba(255,255,255,0.9)',
+  },
+  '@media (hover: none), (pointer: coarse)': { opacity: 1 },
   '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
 });
 
