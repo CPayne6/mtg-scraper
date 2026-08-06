@@ -135,7 +135,7 @@ describe('ListsController', () => {
 
       expect(listsService.createOptimization).toHaveBeenCalledWith(
         LIST_UUID,
-        PRINCIPAL_UUID,
+        PRINCIPAL,
         expect.objectContaining({
           minimumCondition: 'lp',
           stores: 'store-a,store-b',

@@ -46,8 +46,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     Record<string, CartDeliverySelection>
   >(CART_DELIVERY_KEY, {});
   const [isOpen, setIsOpen] = useState(false);
+  const [isMutationLocked, setIsMutationLockedState] = useState(false);
   const { status, principalId } = useAuth();
   const itemsRef = useRef(items);
+  const mutationLockedRef = useRef(false);
   const syncVersionRef = useRef(0);
   const hydratedPrincipalRef = useRef<string | null>(null);
 
@@ -57,6 +59,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
+  const setMutationLocked = useCallback((locked: boolean) => {
+    mutationLockedRef.current = locked;
+    setIsMutationLockedState(locked);
+  }, []);
 
   const persist = useCallback(
     async (nextItems: CartItem[]) => {
@@ -127,6 +133,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const add = useCallback(
     async (card: CardWithStore): Promise<AddResult> => {
+      if (mutationLockedRef.current) return { outcome: 'locked' };
       if (!isPersistableCard(card)) return { outcome: 'invalid' };
       const id = cartItemId(card);
       const currentItems = itemsRef.current;
@@ -148,7 +155,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addMany = useCallback(
-    async (cards: CardWithStore[]): Promise<AddManyResult> => {
+    async (cards: CardWithStore[], options: { allowWhileLocked?: boolean } = {}): Promise<AddManyResult> => {
+      if (mutationLockedRef.current && !options.allowWhileLocked) {
+        return { added: 0, skippedDuplicate: 0, skippedInvalid: 0, skippedCapacity: 0, skippedSoldOut: 0, addedCards: [] };
+      }
       const currentItems = itemsRef.current;
       const existingItemIds = new Set(currentItems.map((item) => cartItemId(item)));
       const existingVariantIds = new Set(cartVariantIds(currentItems));
@@ -160,8 +170,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         skippedInvalid: 0,
         skippedCapacity: 0,
         skippedSoldOut: 0,
+        addedCards: [],
       };
       const requestedAddedIds = new Set<number>();
+      const requestedCards: CardWithStore[] = [];
 
       for (const card of cards) {
         if (!isPersistableCard(card)) {
@@ -183,6 +195,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         existingItemIds.add(itemId);
         existingVariantIds.add(card.id);
         requestedAddedIds.add(card.id);
+        requestedCards.push(card);
         nextItems.push({ ...card, id: card.id, addedAt });
         result.added += 1;
       }
@@ -196,9 +209,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const returnedIds = new Set(response.variantIds);
             result.skippedSoldOut = [...requestedAddedIds].filter((id) => !returnedIds.has(id)).length;
             result.added -= result.skippedSoldOut;
+            result.addedCards = requestedCards.filter((card) => returnedIds.has(Number(card.id)));
+          } else {
+            result.addedCards = requestedCards;
           }
         } catch (err) {
           console.warn('Failed to persist cart', err);
+          result.addedCards = requestedCards;
         }
       }
 
@@ -209,6 +226,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const remove = useCallback(
     (id: string) => {
+      if (mutationLockedRef.current) return;
       const currentItems = itemsRef.current;
       const nextItems = currentItems.filter((c) => cartItemId(c) !== id);
       if (nextItems.length === currentItems.length) return;
@@ -221,6 +239,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const clear = useCallback(() => {
+    if (mutationLockedRef.current) return;
     itemsRef.current = [];
     setItems([]);
     setDeliveryByStore({});
@@ -237,6 +256,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const setDeliverySelections = useCallback(
     (selections: Record<string, CartDeliverySelection>) => {
+      if (mutationLockedRef.current) return;
       setDeliveryByStore((current) => ({ ...current, ...selections }));
     },
     [setDeliveryByStore],
@@ -262,6 +282,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       count: items.length,
       total,
       isOpen,
+      isMutationLocked,
       open,
       close,
       add,
@@ -272,11 +293,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       sync,
       deliveryByStore,
       setDeliverySelections,
+      setMutationLocked,
     }),
     [
       items,
       total,
       isOpen,
+      isMutationLocked,
       open,
       close,
       add,
@@ -287,6 +310,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       sync,
       deliveryByStore,
       setDeliverySelections,
+      setMutationLocked,
     ],
   );
 

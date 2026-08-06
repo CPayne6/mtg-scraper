@@ -14,9 +14,10 @@ export type AddManyResult = {
   skippedInvalid: number;
   skippedCapacity: number;
   skippedSoldOut: number;
+  addedCards: CardWithStore[];
 };
 
-export type CartAddOutcome = 'added' | 'duplicate' | 'capacity' | 'invalid' | 'soldOut';
+export type CartAddOutcome = 'added' | 'duplicate' | 'capacity' | 'invalid' | 'soldOut' | 'locked';
 
 export type AddResult = { outcome: CartAddOutcome };
 
@@ -25,10 +26,11 @@ export type CartContextValue = {
   count: number;
   total: number;
   isOpen: boolean;
+  isMutationLocked: boolean;
   open: () => void;
   close: () => void;
   add: (card: CardWithStore) => Promise<AddResult>;
-  addMany: (cards: CardWithStore[]) => Promise<AddManyResult>;
+  addMany: (cards: CardWithStore[], options?: { allowWhileLocked?: boolean }) => Promise<AddManyResult>;
   remove: (id: string) => void;
   clear: () => void;
   has: (id: string) => boolean;
@@ -37,4 +39,5 @@ export type CartContextValue = {
   setDeliverySelections: (
     selections: Record<string, CartDeliverySelection>,
   ) => void;
+  setMutationLocked: (locked: boolean) => void;
 };

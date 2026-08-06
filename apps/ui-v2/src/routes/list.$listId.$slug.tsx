@@ -31,7 +31,7 @@ import { DecklistRow } from '@/components/results/DecklistRow';
 import { getListColorIdentity } from '@/components/lists/colorIdentity';
 import { ListRenameDialog } from '@/components/lists/ListRenameDialog';
 import { groupByName } from '@/utils/parseDeckList';
-import { fetchCardByName } from '@/api/cards';
+import { fetchCardsByName } from '@/api/cards';
 
 export const Route = createFileRoute('/list/$listId/$slug')({
   component: ListDetailRoute,
@@ -57,7 +57,7 @@ function ListDetailRoute() {
   const { listId } = useParams({ from: '/list/$listId/$slug' });
   const navigate = useNavigate();
   const { get, getList, remove: removeList, removeCardFromList, loading } = useLists();
-  const { add: addToCart, items: cartItems } = useCart();
+  const { add: addToCart, items: cartItems, isMutationLocked } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const confirm = useConfirm();
   const cards = get(listId);
@@ -84,34 +84,27 @@ function ListDetailRoute() {
   useEffect(() => {
     if (entries.length === 0) return;
     const controller = new AbortController();
-    const nextResults: Record<string, CardState> = {};
-    let remaining = entries.length;
-    const tick = () => {
-      remaining -= 1;
-      if (remaining <= 0 && !controller.signal.aborted) {
-      }
-    };
-    for (const entry of entries) {
-      fetchCardByName(entry.name, controller.signal)
-        .then((resp) => {
-          if (controller.signal.aborted) return;
-          const cheapest =
-            resp.results.length > 0
-              ? [...resp.results].sort((a, b) => a.price - b.price)[0]
-              : null;
+    fetchCardsByName(entries.map((entry) => entry.name), controller.signal)
+      .then((responses) => {
+        if (controller.signal.aborted) return;
+        const nextResults: Record<string, CardState> = {};
+        for (const entry of entries) {
+          const resp = responses[entry.name];
+          const cheapest = resp?.results.length
+            ? [...resp.results].sort((a, b) => a.price - b.price)[0]
+            : null;
           nextResults[entry.name] = { state: 'success', cheapest };
-          setLookupResults({ key: entryKey, results: { ...nextResults } });
-          tick();
-        })
-        .catch((err: unknown) => {
-          if (controller.signal.aborted) return;
-          if (err instanceof Error && err.name === 'AbortError') return;
-          const message = err instanceof Error ? err.message : 'Failed to fetch';
-          nextResults[entry.name] = { state: 'error', message };
-          setLookupResults({ key: entryKey, results: { ...nextResults } });
-          tick();
+        }
+        setLookupResults({ key: entryKey, results: nextResults });
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = err instanceof Error ? err.message : 'Failed to fetch cards';
+        setLookupResults({
+          key: entryKey,
+          results: Object.fromEntries(entries.map((entry) => [entry.name, { state: 'error', message }])),
         });
-    }
+      });
     return () => controller.abort();
   }, [entries, entryKey]);
 
@@ -210,6 +203,12 @@ function ListDetailRoute() {
 
   const identity = getListColorIdentity(list?.cards ?? []);
   const handleAddRowToCart = async (cardName: string) => {
+    if (isMutationLocked) {
+      enqueueSnackbar('Cart updates are paused while Fill Best Cards is running', {
+        variant: 'info',
+      });
+      return;
+    }
     const r = results[cardName];
     if (!r || r.state !== 'success' || !r.cheapest) {
       enqueueSnackbar(`No price yet for "${cardName}"`, { variant: 'warning' });

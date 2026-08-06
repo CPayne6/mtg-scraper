@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min, IsObject } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
 import type { ConditionFlexibilityMode } from '@scoutlgs/core';
 
 export class OptimizeListQueryDto {

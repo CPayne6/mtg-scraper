@@ -25,7 +25,7 @@ import {
 } from './CartDrawer.styles';
 
 export function CartDrawer() {
-  const { items, isOpen, close, remove, clear, total, deliveryByStore } = useCart();
+  const { items, isOpen, close, remove, clear, total, deliveryByStore, isMutationLocked } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -175,6 +175,7 @@ export function CartDrawer() {
                       <IconButton
                         size="small"
                         aria-label="Remove"
+                        disabled={isMutationLocked}
                         onClick={() => remove(id)}
                         sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
@@ -201,7 +202,7 @@ export function CartDrawer() {
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
           <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
-            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} fullWidth>
+            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} disabled={isMutationLocked} fullWidth>
               Clear
             </Button>
             <Button

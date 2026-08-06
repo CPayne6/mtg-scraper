@@ -5,11 +5,17 @@ import type { ProductTileProps } from './ProductTile.types';
 
 // Keep search results visually and behaviorally aligned with the cart builder.
 export function ProductTile({ card, isCheapest }: ProductTileProps) {
-  const { add, has, remove } = useCart();
+  const { add, has, remove, isMutationLocked } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const inCart = has(cartItemId(card));
 
   const handleAdd = async () => {
+    if (isMutationLocked) {
+      enqueueSnackbar('Cart updates are paused while Fill Best Cards is running', {
+        variant: 'info',
+      });
+      return;
+    }
     if (inCart) {
       remove(cartItemId(card));
       enqueueSnackbar(`Removed "${card.title}" from cart`, { variant: 'default' });

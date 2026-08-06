@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLists } from '@/components/lists/ListsContext';
+import { useCart } from '@/components/cart/CartContext';
+import { cartItemId } from '@/components/cart/CartContext/CartContext.utils';
+import type { CardWithStore } from '@scoutlgs/shared';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 export type ListHistoryEntry = {
   id: string;
-  type: 'add' | 'remove';
+  type: 'add' | 'remove' | 'fill';
   cardName: string;
   at: number;
+  cartItemIds?: string[];
 };
 
 const MAX_HISTORY = 30;
@@ -34,9 +38,11 @@ export function useListEditor(
   history: ListHistoryEntry[];
   addCard: (cardName: string) => string;
   removeCard: (cardName: string) => string | null;
+  recordCartFill: (cards: CardWithStore[]) => string | null;
   undo: (entryId?: string) => UndoResult;
 } {
   const { addCardToList, removeCardFromList, getList } = useLists();
+  const { remove: removeCartItem } = useCart();
   const [history, setHistory] = useLocalStorage<ListHistoryEntry[]>(
     `scoutlgs:list-history:${listId}`,
     [],
@@ -74,7 +80,7 @@ export function useListEditor(
       // Server rejects empty lists. Hand off to the context so it surfaces the
       // "lists need at least one card" toast, and skip history so the Undo
       // affordance doesn't accumulate a stale entry.
-      if (list && list.cards.length <= 1 && list.cards.includes(cardName)) {
+      if (list && list.cards.length <= 1 && list.cards.some((card) => card.cardName === cardName)) {
         void removeCardFromList(listId, cardName);
         return null;
       }
@@ -83,6 +89,16 @@ export function useListEditor(
     },
     [getList, removeCardFromList, listId, pushEntry],
   );
+
+  const recordCartFill = useCallback((cards: CardWithStore[]): string | null => {
+    if (cards.length === 0) return null;
+    const entry: ListHistoryEntry = {
+      id: makeId(), type: 'fill', cardName: `${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`,
+      at: Date.now(), cartItemIds: cards.map((card) => cartItemId(card)),
+    };
+    setHistory((current) => [entry, ...current].slice(0, MAX_HISTORY));
+    return entry.id;
+  }, [setHistory]);
 
   // Keep a ref to the latest history so undo can read it without making the
   // setHistory updater impure (StrictMode double-invokes updaters in dev,
@@ -101,7 +117,9 @@ export function useListEditor(
         : current[0];
       if (!target) return 'noop';
 
-      if (target.type === 'add') {
+      if (target.type === 'fill') {
+        for (const cartItemIdValue of target.cartItemIds ?? []) removeCartItem(cartItemIdValue);
+      } else if (target.type === 'add') {
         if (inCartByName(target.cardName)) return 'blocked';
         void removeCardFromList(listId, target.cardName);
       } else {
@@ -110,8 +128,8 @@ export function useListEditor(
       setHistory((h) => h.filter((e) => e.id !== target.id));
       return 'undone';
     },
-    [addCardToList, inCartByName, listId, removeCardFromList, setHistory],
+    [addCardToList, inCartByName, listId, removeCartItem, removeCardFromList, setHistory],
   );
 
-  return { history, addCard, removeCard, undo };
+  return { history, addCard, removeCard, recordCartFill, undo };
 }

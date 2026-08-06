@@ -44,6 +44,35 @@ function candidate(
 }
 
 describe('optimizeCart', () => {
+  it('skips wanted cards already present in the initial cart', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Sol Ring'), wanted('Counterspell')],
+      initialCart: [{ title: 'Sol Ring [Commander]', store_key: 'store-a' }],
+      candidates: [
+        candidate('Sol Ring', { price: 1 }),
+        candidate('Counterspell', { price: 2 }),
+      ],
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.selectedOffers.map((item) => item.wantedCardName)).toEqual(['Counterspell']);
+    expect(result.missingCards).toHaveLength(0);
+  });
+
+  it('includes stores from the initial cart when choosing the cheapest store set', () => {
+    const result = optimizeCart({
+      wantedCards: [wanted('Counterspell')],
+      initialCart: [{ title: 'Sol Ring [Commander]', store_key: 'store-a' }],
+      candidates: [
+        candidate('Counterspell', { price: 2, store_key: 'store-a', store: 'Store A' }),
+        candidate('Counterspell', { price: 1, store_key: 'store-b', store: 'Store B' }),
+      ],
+      options: { shippingCostByStoreKey: { 'store-a': 3, 'store-b': 3 } },
+    });
+
+    expect(result.selectedOffers[0].storeKey).toBe('store-a');
+  });
+
   it('minimizes card prices plus one shipping charge per used store', () => {
     const result = optimizeCart({
       wantedCards: [wanted('Sol Ring'), wanted('Counterspell')],

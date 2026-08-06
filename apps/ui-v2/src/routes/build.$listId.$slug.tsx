@@ -19,7 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import { fetchCardByName } from '@/api/cards';
+import { fetchCardById, fetchCardByName } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
 import { useLists } from '@/components/lists/ListsContext';
@@ -31,7 +31,6 @@ import {
 import { useAuth } from '@/components/auth/AuthContext';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { groupByName } from '@/utils/parseDeckList';
 import { formatCurrency } from '@/utils/formatCurrency';
 import type { PriceLookupState } from '@/hooks/useListPrices';
 import { useListEditor } from '@/hooks/useListEditor';
@@ -129,7 +128,7 @@ function BuilderRoute() {
   const { listId, slug } = useParams({ from: '/build/$listId/$slug' });
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const { get, getList, loading } = useLists();
+  const { getList, loading } = useLists();
   const { session } = useAuth();
   const {
     add: addToCart,
@@ -140,13 +139,14 @@ function BuilderRoute() {
     remove: removeFromCart,
     open: openCart,
     setDeliverySelections,
+    isMutationLocked,
+    setMutationLocked,
   } = useCart();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
-  const cards = get(listId);
   const list = getList(listId);
-  const entries = useMemo(() => groupByName(cards), [cards]);
-  const uniqueNames = useMemo(() => entries.map((e) => e.name), [entries]);
+  const entries = useMemo(() => list?.cards ?? [], [list]);
+  const uniqueNames = useMemo(() => entries.map((e) => e.cardName), [entries]);
   const existingNames = useMemo(
     () => uniqueNames.map((n) => n.toLowerCase()),
     [uniqueNames],
@@ -170,7 +170,7 @@ function BuilderRoute() {
     [entries, sortBy, results],
   );
   const sortedNames = useMemo(
-    () => sortedEntries.map((entry) => entry.name),
+    () => sortedEntries.map((entry) => entry.cardName),
     [sortedEntries],
   );
 
@@ -178,6 +178,10 @@ function BuilderRoute() {
   const [selectedName, setSelectedName] = useLocalStorage<string | null>(
     `scoutlgs:builder:selected:${listId}`,
     null,
+  );
+  const selectedEntry = useMemo(
+    () => entries.find((entry) => entry.cardName === selectedName),
+    [entries, selectedName],
   );
   // Stored values are store slugs (e.g. "face-to-face-games"), matching the
   // `store_key` field on offers from the API. Bumped to v3 after migrating from
@@ -262,7 +266,7 @@ function BuilderRoute() {
   );
 
   // Editor: add/remove + history.
-  const { history, addCard, removeCard, undo } = useListEditor(
+  const { history, addCard, removeCard, recordCartFill, undo } = useListEditor(
     listId,
     inCartByName,
   );
@@ -277,8 +281,8 @@ function BuilderRoute() {
       return;
     }
 
-    const entryNames = new Set(entries.map((entry) => entry.name));
-    const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const entryNames = new Set(entries.map((entry) => entry.cardName));
+    const sorted = entries.slice().sort((a, b) => a.cardName.localeCompare(b.cardName));
     const urlName = search.card && entryNames.has(search.card) ? search.card : null;
     const selectedStillValid =
       selectedName && entryNames.has(selectedName) ? selectedName : null;
@@ -287,7 +291,7 @@ function BuilderRoute() {
     const nextName =
       shouldApplyUrlSelection && urlName
         ? urlName
-        : selectedStillValid ?? urlName ?? sorted[0].name;
+          : selectedStillValid ?? urlName ?? sorted[0].cardName;
 
     appliedUrlSelectionForListRef.current = listId;
     if (selectedName !== nextName) {
@@ -329,6 +333,12 @@ function BuilderRoute() {
 
   const handleAddOffer = useCallback(
     async (offer: CardWithStore) => {
+      if (isMutationLocked) {
+        enqueueSnackbar('Cart updates are paused while Fill Best Cards is running', {
+          variant: 'info',
+        });
+        return;
+      }
       if (inCartByOffer(offer)) {
         removeFromCart(cartItemId(offer));
         enqueueSnackbar(`Removed "${offer.title}" from cart`, { variant: 'default' });
@@ -351,7 +361,7 @@ function BuilderRoute() {
         });
       }
     },
-    [addToCart, enqueueSnackbar, inCartByOffer, removeFromCart],
+    [addToCart, enqueueSnackbar, inCartByOffer, isMutationLocked, removeFromCart],
   );
 
   const optimizationMinimumCondition = useMemo(
@@ -368,7 +378,11 @@ function BuilderRoute() {
       [selectedName]: { state: 'pending' },
     }));
 
-    fetchCardByName(selectedName, controller.signal)
+    const lookup = selectedEntry && selectedEntry.cardNameId > 0
+      ? fetchCardById(selectedEntry.cardNameId, selectedName, controller.signal)
+      : fetchCardByName(selectedName, controller.signal);
+
+    lookup
       .then((response) => {
         if (controller.signal.aborted) return;
         setDetailedResults((prev) => ({
@@ -387,7 +401,7 @@ function BuilderRoute() {
       });
 
     return () => controller.abort();
-  }, [selectedName]);
+  }, [selectedEntry, selectedName]);
 
   const canAddBestCards =
     entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards;
@@ -401,6 +415,25 @@ function BuilderRoute() {
     }
 
     setIsAddingBestCards(true);
+    setMutationLocked(true);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10_000);
+    const waitForPoll = () => new Promise<void>((resolve, reject) => {
+      let pollTimeout: number | undefined;
+      const onAbort = () => {
+        window.clearTimeout(pollTimeout);
+        reject(new DOMException('Optimization timed out', 'AbortError'));
+      };
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      pollTimeout = window.setTimeout(() => {
+        controller.signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, 500);
+    });
     try {
       const created = await createListOptimization(listId, {
         stores: selectedStores,
@@ -408,12 +441,11 @@ function BuilderRoute() {
         conditionFlexibility: 'allow-if-cheaper',
         maxDowngradeSteps: 2,
         shippingCostByStoreKey,
-      });
-      const deadline = Date.now() + 60_000;
+      }, controller.signal);
       let completed: Awaited<ReturnType<typeof fetchListOptimizationStatus>> | undefined;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const status = await fetchListOptimizationStatus(listId, created.jobId);
+      while (!controller.signal.aborted) {
+        await waitForPoll();
+        const status = await fetchListOptimizationStatus(listId, created.jobId, controller.signal);
         if (status.status === 'queued' || status.status === 'running') continue;
         completed = status;
         break;
@@ -424,7 +456,9 @@ function BuilderRoute() {
       if (completed.status !== 'completed') throw new Error('Optimization did not complete. Please retry.');
       const bestOption = completed.result.result;
       if (!bestOption || bestOption.selectedOffers.length === 0) {
-        enqueueSnackbar('No purchasable cards were found for this list', {
+        enqueueSnackbar(bestOption?.status === 'empty' && bestOption.missingCards.length === 0
+          ? 'All cards from this list are already in your cart'
+          : 'No purchasable cards were found for this list', {
           variant: 'warning',
         });
         return;
@@ -432,7 +466,7 @@ function BuilderRoute() {
 
       if (quoteAddress) {
         setPendingOptimization(bestOption);
-        const quote = await fetchDeliveryOptions(listId, created.jobId, quoteAddress);
+        const quote = await fetchDeliveryOptions(listId, created.jobId, quoteAddress, controller.signal);
         setDeliveryQuote(quote);
         const defaults: Record<string, string> = {};
         for (const store of quote.stores) {
@@ -449,7 +483,9 @@ function BuilderRoute() {
 
       const result = await addManyToCart(
         bestOption.selectedOffers.map((selectedOffer) => selectedOffer.offer),
+        { allowWhileLocked: true },
       );
+      recordCartFill(result.addedCards);
       const skipped =
         result.skippedDuplicate + result.skippedInvalid + result.skippedCapacity;
       const soldOut = result.skippedSoldOut;
@@ -479,10 +515,14 @@ function BuilderRoute() {
         { variant: soldOut > 0 ? 'warning' : 'default' },
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to optimize list';
+      const message = timedOut || (err instanceof Error && err.name === 'AbortError')
+        ? 'Optimization took too long. Please retry.'
+        : err instanceof Error ? err.message : 'Failed to optimize list';
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
+      window.clearTimeout(timeout);
       setIsAddingBestCards(false);
+      setMutationLocked(false);
     }
   }, [
     addManyToCart,
@@ -491,6 +531,8 @@ function BuilderRoute() {
     openCart,
     optimizationMinimumCondition,
     selectedStores,
+    recordCartFill,
+    setMutationLocked,
   ]);
 
   const handleAddBestCards = useCallback(() => {
@@ -553,14 +595,25 @@ function BuilderRoute() {
     }
     setDeliverySelections(selections);
     setDeliveryOpen(false);
-    const result = await addManyToCart(pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer));
-    if (result.added) {
-      openCart();
-      enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${result.skippedSoldOut ? ` (${result.skippedSoldOut} sold out)` : ''}`, { variant: 'success' });
-    } else if (result.skippedSoldOut) {
-      enqueueSnackbar(`${result.skippedSoldOut} selected ${result.skippedSoldOut === 1 ? 'card was' : 'cards were'} sold out and could not be added`, { variant: 'warning' });
+    setIsAddingBestCards(true);
+    setMutationLocked(true);
+    try {
+      const result = await addManyToCart(
+        pendingOptimization.selectedOffers.map((selectedOffer) => selectedOffer.offer),
+        { allowWhileLocked: true },
+      );
+      recordCartFill(result.addedCards);
+      if (result.added) {
+        openCart();
+        enqueueSnackbar(`Added ${result.added} best ${result.added === 1 ? 'card' : 'cards'} to cart${result.skippedSoldOut ? ` (${result.skippedSoldOut} sold out)` : ''}`, { variant: 'success' });
+      } else if (result.skippedSoldOut) {
+        enqueueSnackbar(`${result.skippedSoldOut} selected ${result.skippedSoldOut === 1 ? 'card was' : 'cards were'} sold out and could not be added`, { variant: 'warning' });
+      }
+      setPendingOptimization(null);
+    } finally {
+      setIsAddingBestCards(false);
+      setMutationLocked(false);
     }
-    setPendingOptimization(null);
   }, [
     addManyToCart,
     deliveryQuote,
@@ -569,6 +622,8 @@ function BuilderRoute() {
     pendingOptimization,
     selectedDeliveryMethods,
     setDeliverySelections,
+    recordCartFill,
+    setMutationLocked,
   ]);
 
   const startEstimatedFill = useCallback(() => {

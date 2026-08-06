@@ -90,7 +90,7 @@ export class ListsController {
   ) {
     return this.listsService.createOptimization(
       listId,
-      principal?.principalUuid,
+      principal,
       query,
     );
   }

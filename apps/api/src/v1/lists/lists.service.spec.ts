@@ -2,10 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EntityManager } from 'typeorm';
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { CardList, CardListEntry } from '@scoutlgs/core';
+import { CardList, CardListEntry, CardListing, CardPrinting } from '@scoutlgs/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ListsService } from './lists.service';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
+import { CartService } from '../cart/cart.service';
 
 const OWNER_COOKIE = '11111111-1111-1111-1111-111111111111';
 const LIST_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -32,6 +33,9 @@ describe('ListsService', () => {
   let cardListEntryRepo: Record<string, ReturnType<typeof vi.fn>>;
   let cardNameResolver: Record<string, ReturnType<typeof vi.fn>>;
   let entityManager: Record<string, ReturnType<typeof vi.fn>>;
+  let cardPrintingRepo: Record<string, ReturnType<typeof vi.fn>>;
+  let cardListingRepo: Record<string, ReturnType<typeof vi.fn>>;
+  let cartService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     const mockListQb = {
@@ -62,7 +66,24 @@ describe('ListsService', () => {
       create: vi.fn((data) => data),
       save: vi.fn((entries) => Promise.resolve(entries)),
       delete: vi.fn(),
+      find: vi.fn().mockResolvedValue([]),
+      createQueryBuilder: vi.fn().mockReturnValue({
+        innerJoin: vi.fn().mockReturnThis(), select: vi.fn().mockReturnThis(), addSelect: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(), groupBy: vi.fn().mockReturnThis(), addGroupBy: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(), getRawMany: vi.fn().mockResolvedValue([]),
+      }),
     };
+    cardPrintingRepo = { createQueryBuilder: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(), addSelect: vi.fn().mockReturnThis(), leftJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(), andWhere: vi.fn().mockReturnThis(), orderBy: vi.fn().mockReturnThis(),
+      getRawMany: vi.fn().mockResolvedValue([]),
+    }) };
+    cardListingRepo = { createQueryBuilder: vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnThis(), leftJoin: vi.fn().mockReturnThis(), select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(), andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(), addOrderBy: vi.fn().mockReturnThis(), groupBy: vi.fn().mockReturnThis(),
+      getRawMany: vi.fn().mockResolvedValue([]),
+    }) };
 
     cardNameResolver = {
       resolveCardNames: vi.fn().mockResolvedValue({ resolved: [], unresolved: [] }),
@@ -72,14 +93,18 @@ describe('ListsService', () => {
     entityManager = {
       query: vi.fn().mockResolvedValue([]),
     };
+    cartService = { getCart: vi.fn().mockResolvedValue({ items: [] }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ListsService,
         { provide: getRepositoryToken(CardList), useValue: cardListRepo },
         { provide: getRepositoryToken(CardListEntry), useValue: cardListEntryRepo },
+        { provide: getRepositoryToken(CardListing), useValue: cardListingRepo },
+        { provide: getRepositoryToken(CardPrinting), useValue: cardPrintingRepo },
         { provide: CardNameResolverService, useValue: cardNameResolver },
         { provide: EntityManager, useValue: entityManager },
+        { provide: CartService, useValue: cartService },
       ],
     }).compile();
 
@@ -575,7 +600,7 @@ describe('ListsService', () => {
       const add = vi.fn().mockResolvedValue({ id: '42' });
       (service as unknown as { optimizationQueue: { add: typeof add } }).optimizationQueue = { add };
 
-      const result = await service.createOptimization(LIST_UUID, OWNER_COOKIE, {
+      const result = await service.createOptimization(LIST_UUID, { principalUuid: OWNER_COOKIE, kind: 'anonymous' }, {
         minimumCondition: 'lp',
         stores: 'store-a,store-b',
       });
