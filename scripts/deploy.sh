@@ -170,7 +170,7 @@ rollback() {
     cd "$PROJECT_DIR"
 
     # Try to rollback each service
-    for service in api ui scheduler scraper; do
+    for service in api ui scheduler scraper cloudflared; do
         local full_service_name="${STACK_NAME}_${service}"
         log_info "Rolling back $full_service_name..."
         docker service rollback "$full_service_name" 2>/dev/null || log_warn "Could not rollback $full_service_name"
@@ -281,6 +281,13 @@ deploy() {
     fi
 
     if ! check_service_health "ui"; then
+        rollback
+        exit 1
+    fi
+
+    # The public health checks in CI route through this service. A running API
+    # alone cannot serve scoutlgs.ca if the Cloudflare Tunnel task is down.
+    if ! check_service_health "cloudflared"; then
         rollback
         exit 1
     fi
