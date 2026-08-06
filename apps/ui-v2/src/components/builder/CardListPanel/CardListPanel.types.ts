@@ -1,10 +1,10 @@
 import type { PriceLookupState } from '@/hooks/useListPrices';
 import type { ListHistoryEntry } from '@/hooks/useListEditor';
-import type { DeckListEntry } from '@/utils/parseDeckList';
+import type { ListCardEntry } from '@/api/lists';
 import type { SortBy } from '../SortByMenu';
 
 export type CardListPanelProps = {
-  entries: DeckListEntry[];
+  entries: ListCardEntry[];
   selectedName: string | null;
   onSelect: (name: string) => void;
   sortBy: SortBy;

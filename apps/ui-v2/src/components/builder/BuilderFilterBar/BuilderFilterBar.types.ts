@@ -8,4 +8,5 @@ export type BuilderFilterBarProps = {
   onToggleAll: () => void;
   conditions: string[];
   onToggleCondition: (c: string) => void;
+  onHeightChange?: (height: number) => void;
 };

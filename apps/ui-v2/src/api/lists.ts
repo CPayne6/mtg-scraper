@@ -16,10 +16,12 @@ export interface ListSummary {
 }
 
 export interface CheapestVariant {
+  name: string;
   position: number;
   cardNameId: number;
   cardName: string;
   colorIdentity: string | null;
+  oracleId: string | null;
   variantId: number | null;
   price: number | null;
   foil: boolean | null;
@@ -36,6 +38,7 @@ export interface CheapestVariant {
   collectorNumber: string | null;
   rarity: string | null;
   imageUri: string | null;
+  artCropUri: string | null;
   setCode: string | null;
   setName: string | null;
   totalListings: number;
@@ -53,6 +56,7 @@ export interface ListWithPricesResponse {
   cards: CheapestVariant[];
   unresolved: string[];
 }
+export type ListCardEntry = CheapestVariant;
 
 export interface SelectedOptimizedOffer {
   wantedCardKey: string;

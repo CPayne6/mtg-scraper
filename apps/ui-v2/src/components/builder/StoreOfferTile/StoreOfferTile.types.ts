@@ -5,6 +5,7 @@ export type StoreOfferTileProps = {
   isCheapest?: boolean;
   inCart: boolean;
   onAdd: () => void;
+  onPreview?: () => void;
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
 };

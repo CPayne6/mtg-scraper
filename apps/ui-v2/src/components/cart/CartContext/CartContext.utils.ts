@@ -2,6 +2,7 @@ import type { CardWithStore } from '@scoutlgs/shared';
 
 export const CART_KEY = 'scoutlgs:cart';
 export const CART_DELIVERY_KEY = 'scoutlgs:cart:delivery';
+export const CART_HISTORY_KEY = 'scoutlgs:cart:history';
 export const MAX_CART_ITEMS = 150;
 
 export function cartItemId(card: CardWithStore): string {

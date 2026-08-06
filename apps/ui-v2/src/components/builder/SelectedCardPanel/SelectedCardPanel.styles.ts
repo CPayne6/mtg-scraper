@@ -99,7 +99,9 @@ export const sectionTitleSx: SxProps<Theme> = {
 
 export const offerGridSx: SxProps<Theme> = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+  // Phone widths need predictable, side-by-side offers; the more spacious
+  // adaptive grid resumes at the existing sm breakpoint.
+  gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(auto-fill, minmax(180px, 1fr))' },
   gap: '12px',
 };
 

@@ -5,7 +5,7 @@ import ClickAwayListener from '@mui/material/ClickAwayListener';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { Add as AddIcon } from '@mui/icons-material';
-import { fetchScryfallAutocomplete } from '@/api/cards';
+import { fetchScryfallAutocomplete, scheduleScryfallUrl } from '@/api/cards';
 import type { AddCardPopoverProps } from './AddCardPopover.types';
 import { MAX_RESULTS, artUrl } from './AddCardPopover.utils';
 import {
@@ -31,6 +31,7 @@ export function AddCardPopover({
   const [q, setQ] = useState('');
   const [matches, setMatches] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const existingSet = useMemo(
@@ -75,6 +76,17 @@ export function AddCardPopover({
       controller.abort();
     };
   }, [q, open]);
+
+  useEffect(() => {
+    let active = true;
+    for (const name of matches) {
+      if (thumbnailUrls[name]) continue;
+      void scheduleScryfallUrl(artUrl(name)).then((url) => {
+        if (active) setThumbnailUrls((prev) => ({ ...prev, [name]: url }));
+      }).catch(() => undefined);
+    }
+    return () => { active = false; };
+  }, [matches, thumbnailUrls]);
 
   if (!open || !anchorEl) return null;
 
@@ -141,7 +153,7 @@ export function AddCardPopover({
                     }}
                     sx={optionRowSx(already)}
                   >
-                    <Box aria-hidden="true" sx={optionThumbSx(name, artUrl)} />
+                    <Box aria-hidden="true" sx={optionThumbSx(thumbnailUrls[name] ?? artUrl(name))} />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Box sx={optionTitleSx}>{name}</Box>
                       <Box sx={optionSubtitleSx}>

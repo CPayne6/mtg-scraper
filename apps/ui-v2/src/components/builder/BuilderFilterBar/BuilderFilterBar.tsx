@@ -31,6 +31,7 @@ export function BuilderFilterBar({
   onToggleAll,
   conditions,
   onToggleCondition,
+  onHeightChange,
 }: BuilderFilterBarProps) {
   const labelFor = (slug: string) => storeLabels[slug] ?? slug;
   const allOn = selectedStores.length === allStores.length && allStores.length > 0;
@@ -39,6 +40,18 @@ export function BuilderFilterBar({
 
   const addBtnRef = useRef<HTMLButtonElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || !onHeightChange) return;
+    const reportHeight = () => onHeightChange(element.getBoundingClientRect().height);
+    reportHeight();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(reportHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [onHeightChange]);
 
   // If user removes all stores and then re-adds them, close popover if nothing remains.
   useEffect(() => {
@@ -46,7 +59,7 @@ export function BuilderFilterBar({
   }, [unselected.length]);
 
   return (
-    <Box sx={containerSx}>
+    <Box ref={containerRef} sx={containerSx}>
       <Box sx={innerSx}>
         <Typography component="span" sx={sectionLabelSx}>
           Stores

@@ -14,6 +14,8 @@ import type { Queue } from 'bullmq';
 import {
   CardList,
   CardListEntry,
+  CardListing,
+  CardPrinting,
   freshOfferCutoff,
   normalizeCondition,
   optimizeCartOptions,
@@ -24,7 +26,8 @@ import {
 } from '@scoutlgs/core';
 import { Condition, JOB_NAMES, QUEUE_NAMES, type CardOptimizationJobData, type CardWithStore } from '@scoutlgs/shared';
 import { CardNameResolverService } from '../shared/card-name-resolver.service';
-import type { PrincipalKind } from '../../auth/principal.types';
+import type { PrincipalContext, PrincipalKind } from '../../auth/principal.types';
+import { CartService } from '../cart/cart.service';
 import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import type { DeliveryOptionsDto } from './dto/delivery-options.dto';
@@ -52,10 +55,12 @@ export interface ListSummary {
 }
 
 export interface CheapestVariant {
+  name: string;
   position: number;
   cardNameId: number;
   cardName: string;
   colorIdentity: string | null;
+  oracleId: string | null;
   variantId: number | null;
   price: number | null;
   foil: boolean | null;
@@ -72,6 +77,7 @@ export interface CheapestVariant {
   collectorNumber: string | null;
   rarity: string | null;
   imageUri: string | null;
+  artCropUri: string | null;
   setCode: string | null;
   setName: string | null;
   totalListings: number;
@@ -152,8 +158,13 @@ export class ListsService {
     private readonly cardListRepository: Repository<CardList>,
     @InjectRepository(CardListEntry)
     private readonly cardListEntryRepository: Repository<CardListEntry>,
+    @InjectRepository(CardListing)
+    private readonly cardListingRepository: Repository<CardListing>,
+    @InjectRepository(CardPrinting)
+    private readonly cardPrintingRepository: Repository<CardPrinting>,
     private readonly cardNameResolver: CardNameResolverService,
     private readonly entityManager: EntityManager,
+    private readonly cartService: CartService,
     @Optional()
     private readonly deliveryQuotes?: DeliveryQuoteService,
     @Optional()
@@ -163,14 +174,17 @@ export class ListsService {
 
   async createOptimization(
     listUuid: string,
-    principalUuid: string | undefined,
+    principal?: PrincipalContext,
     options: OptimizeListOptions = {},
   ): Promise<{ jobId: string; status: 'queued' }> {
-    const list = await this.findVisibleList(listUuid, principalUuid);
+    const list = await this.findVisibleList(listUuid, principal?.principalUuid);
     const requestedStores = this.parseCsvFilter(options.stores ?? list.filterStores) ?? [];
     const shippingCostByStoreKey = Object.fromEntries(requestedStores.map((store) => [store, Math.max(0, Math.min(1000, Number(options.shippingCostByStoreKey?.[store] ?? 3)) || 0)]));
     const delivery = { mode: 'legacy' as const, shippingCostByStoreKey };
     const minimumCondition = this.resolveMinimumCondition(options.minimumCondition, list.filterConditions);
+    const initialCart = principal
+      ? (await this.cartService.getCart(principal)).items.map((item) => ({ title: item.title, store_key: item.store_key }))
+      : [];
     if (!this.optimizationQueue) throw new Error('Optimization queue is unavailable');
     const job = await this.optimizationQueue.add(JOB_NAMES.CARD_OPTIMIZATION, {
       listId: list.id,
@@ -182,6 +196,7 @@ export class ListsService {
       maxDowngradeSteps: options.maxDowngradeSteps,
       downgradePenaltyPerStep: options.downgradePenaltyPerStep,
       delivery,
+      initialCart,
       enqueuedAt: Date.now(),
     }, {
       attempts: 1,
@@ -366,13 +381,15 @@ export class ListsService {
       const cardNameId = parseInt(row.card_name_id, 10);
       return {
         position: parseInt(row.position, 10),
+        name: row.card_name,
         cardNameId,
         cardName: row.card_name,
         colorIdentity: row.color_identity ?? null,
+        oracleId: row.oracle_id ?? null,
         variantId: row.variant_id ? parseInt(row.variant_id, 10) : null,
         price: row.price ? parseFloat(row.price) : null,
         foil: row.foil != null ? row.foil : null,
-        quantity: row.quantity != null ? parseInt(row.quantity, 10) : null,
+        quantity: row.quantity != null ? parseInt(row.quantity, 10) : 0,
         condition: row.condition_code ?? null,
         currency: row.currency ?? null,
         imageUrl: row.image_url ?? null,
@@ -385,6 +402,7 @@ export class ListsService {
         collectorNumber: row.collector_number ?? null,
         rarity: row.rarity ?? null,
         imageUri: row.image_uri ?? null,
+        artCropUri: row.art_crop_uri ?? (row.image_uri ? row.image_uri.replace('/normal/', '/art_crop/') : null),
         setCode: row.set_code ?? null,
         setName: row.set_name ?? null,
         totalListings: countMap.get(cardNameId) ?? 0,
@@ -808,74 +826,90 @@ export class ListsService {
     setCode: string | null,
     offerCutoff: Date,
   ): Promise<any[]> {
-    return this.entityManager.query(
-      `
-      SELECT
-        e.position,
-        e.card_name_id,
-        cn.name AS card_name,
-        cn.color_identity,
-        best.variant_id,
-        best.price,
-        best.foil,
-        best.quantity,
-        best.condition_code,
-        best.currency,
-        best.image_url,
-        best.store_slug,
-        best.store_display_name,
-        best.store_base_url,
-        best.printing_id,
-        best.scryfall_id,
-        best.collector_number,
-        best.rarity,
-        best.image_uri,
-        best.set_code,
-        best.set_name,
-        best.product_handle
-      FROM card_list_entries e
-      JOIN card_names cn ON cn.id = e.card_name_id
-      LEFT JOIN LATERAL (
-        SELECT
-          v.id AS variant_id,
-          v.price,
-          v.foil,
-          v.quantity,
-          c.code AS condition_code,
-          l.currency,
-          l.image_url,
-          s.name AS store_slug,
-          s.display_name AS store_display_name,
-          s.base_url AS store_base_url,
-          p.id AS printing_id,
-          p.scryfall_id,
-          p.collector_number,
-          p.rarity,
-          p.image_uri,
-          ps.code AS set_code,
-          ps.name AS set_name,
-          pu.handle AS product_handle
-        FROM card_listings l
-        JOIN card_variants v ON v.card_listing_id = l.id
-        JOIN stores s ON s.id = l.store_id
-        JOIN card_conditions c ON c.id = v.condition_id
-        LEFT JOIN product_urls pu ON pu.id = l.product_url_id
-        LEFT JOIN card_printings p ON p.id = l.card_printing_id
-        LEFT JOIN sets ps ON ps.id = p.set_id
-        WHERE l.card_name_id = e.card_name_id
-          AND ($2::text[] IS NULL OR s.name = ANY($2))
-          AND ($3::text[] IS NULL OR c.code = ANY($3))
-          AND ($4::text IS NULL OR ps.code = $4)
-          AND v.in_stock = TRUE
-          AND v.price_updated_at > $5
-        ORDER BY v.price ASC
-        LIMIT 1
-      ) best ON true
-      WHERE e.card_list_id = $1
-      ORDER BY e.position ASC
-      `,
-      [listId, stores, conditions, setCode, offerCutoff],
-    );
+    const entries = await this.cardListEntryRepository.createQueryBuilder('entry')
+      .innerJoin('entry.cardName', 'cardName')
+      .select('entry.cardNameId', 'card_name_id')
+      .addSelect('MIN(entry.position)', 'position')
+      .addSelect('COUNT(entry.id)', 'quantity')
+      .addSelect('cardName.name', 'card_name')
+      .addSelect('cardName.colorIdentity', 'color_identity')
+      .addSelect('cardName.oracleId', 'oracle_id')
+      .where('entry.cardListId = :listId', { listId })
+      .groupBy('entry.cardNameId')
+      .addGroupBy('cardName.name')
+      .addGroupBy('cardName.colorIdentity')
+      .addGroupBy('cardName.oracleId')
+      .orderBy('MIN(entry.position)', 'ASC')
+      .getRawMany();
+    if (!entries.length) return [];
+    const cardNameIds = entries.map((entry) => Number(entry.card_name_id));
+
+    const fallbackRows = await this.cardPrintingRepository.createQueryBuilder('printing')
+      .select('printing.cardNameId', 'card_name_id')
+      .addSelect('printing.id', 'printing_id')
+      .addSelect('printing.scryfallId', 'scryfall_id')
+      .addSelect('printing.collectorNumber', 'collector_number')
+      .addSelect('printing.rarity', 'rarity')
+      .addSelect('printing.imageUri', 'image_uri')
+      .leftJoin('printing.set', 'set')
+      .addSelect('set.code', 'set_code')
+      .addSelect('set.name', 'set_name')
+      .where('printing.cardNameId IN (:...cardNameIds)', { cardNameIds })
+      .andWhere('printing.imageUri IS NOT NULL')
+      .orderBy('printing.id', 'ASC')
+      .getRawMany();
+    const fallbackByCard = new Map<number, any>();
+    for (const row of fallbackRows) if (!fallbackByCard.has(Number(row.card_name_id))) fallbackByCard.set(Number(row.card_name_id), row);
+
+    const candidateQuery = this.cardListingRepository.createQueryBuilder('listing')
+      .innerJoin('listing.variants', 'variant')
+      .innerJoin('variant.condition', 'condition')
+      .innerJoin('listing.store', 'store')
+      .leftJoin('listing.cardPrinting', 'printing')
+      .leftJoin('printing.set', 'set')
+      .leftJoin('listing.productUrl', 'productUrl')
+      .select('listing.cardNameId', 'card_name_id')
+      .addSelect('variant.id', 'variant_id')
+      .addSelect('variant.price', 'price')
+      .addSelect('variant.foil', 'foil')
+      .addSelect('condition.code', 'condition_code')
+      .addSelect('listing.currency', 'currency')
+      .addSelect('listing.imageUrl', 'image_url')
+      .addSelect('store.name', 'store_slug')
+      .addSelect('store.displayName', 'store_display_name')
+      .addSelect('store.baseUrl', 'store_base_url')
+      .addSelect('productUrl.handle', 'product_handle')
+      .addSelect('printing.id', 'printing_id')
+      .addSelect('printing.scryfallId', 'scryfall_id')
+      .addSelect('printing.collectorNumber', 'collector_number')
+      .addSelect('printing.rarity', 'rarity')
+      .addSelect('printing.imageUri', 'image_uri')
+      .addSelect('set.code', 'set_code')
+      .addSelect('set.name', 'set_name')
+      .where('listing.cardNameId IN (:...cardNameIds)', { cardNameIds })
+      .andWhere('variant.inStock = :inStock', { inStock: true })
+      .andWhere('variant.priceUpdatedAt > :offerCutoff', { offerCutoff });
+    if (stores) candidateQuery.andWhere('store.name IN (:...stores)', { stores });
+    if (conditions) candidateQuery.andWhere('condition.code IN (:...conditions)', { conditions });
+    if (setCode) candidateQuery.andWhere('set.code = :setCode', { setCode });
+    const candidates = await candidateQuery.orderBy('listing.cardNameId', 'ASC').addOrderBy('variant.price', 'ASC').addOrderBy('variant.id', 'ASC').getRawMany();
+    const bestByCard = new Map<number, any>();
+    for (const row of candidates) if (!bestByCard.has(Number(row.card_name_id))) bestByCard.set(Number(row.card_name_id), row);
+
+    return entries.map((entry) => {
+      const cardNameId = Number(entry.card_name_id);
+      const best = bestByCard.get(cardNameId);
+      const fallback = fallbackByCard.get(cardNameId);
+      const imageUri = best?.image_uri ?? fallback?.image_uri ?? null;
+      return { ...entry, card_name_id: String(cardNameId), quantity: Number(entry.quantity), ...best,
+        printing_id: best?.printing_id ?? fallback?.printing_id ?? null,
+        scryfall_id: best?.scryfall_id ?? fallback?.scryfall_id ?? null,
+        collector_number: best?.collector_number ?? fallback?.collector_number ?? null,
+        rarity: best?.rarity ?? fallback?.rarity ?? null, image_uri: imageUri,
+        art_crop_uri: imageUri?.replace('/normal/', '/art_crop/') ?? null,
+        set_code: best?.set_code ?? fallback?.set_code ?? null, set_name: best?.set_name ?? fallback?.set_name ?? null,
+      };
+    });
   }
 
   private async getListingCounts(
@@ -885,30 +919,24 @@ export class ListsService {
     setCode: string | null,
     offerCutoff: Date,
   ): Promise<any[]> {
-    return this.entityManager.query(
-      `
-      WITH list_card_names AS (
-        SELECT DISTINCT card_name_id
-        FROM card_list_entries
-        WHERE card_list_id = $1
-      )
-      SELECT e.card_name_id, COUNT(v.id) AS total_listings
-      FROM list_card_names e
-      JOIN card_listings l ON l.card_name_id = e.card_name_id
-      JOIN card_variants v ON v.card_listing_id = l.id
-      JOIN stores s ON s.id = l.store_id
-      JOIN card_conditions c ON c.id = v.condition_id
-      LEFT JOIN card_printings p ON p.id = l.card_printing_id
-      LEFT JOIN sets ps ON ps.id = p.set_id
-      WHERE ($2::text[] IS NULL OR s.name = ANY($2))
-        AND ($3::text[] IS NULL OR c.code = ANY($3))
-        AND ($4::text IS NULL OR ps.code = $4)
-        AND v.in_stock = TRUE
-        AND v.price_updated_at > $5
-      GROUP BY e.card_name_id
-      `,
-      [listId, stores, conditions, setCode, offerCutoff],
-    );
+    const listEntries = await this.cardListEntryRepository.find({ where: { cardListId: listId } });
+    const cardNameIds = [...new Set(listEntries.map((entry) => entry.cardNameId))];
+    if (!cardNameIds.length) return [];
+    const query = this.cardListingRepository.createQueryBuilder('listing')
+      .innerJoin('listing.variants', 'variant')
+      .innerJoin('listing.store', 'store')
+      .innerJoin('variant.condition', 'condition')
+      .leftJoin('listing.cardPrinting', 'printing')
+      .leftJoin('printing.set', 'set')
+      .select('listing.cardNameId', 'card_name_id')
+      .addSelect('COUNT(variant.id)', 'total_listings')
+      .where('listing.cardNameId IN (:...cardNameIds)', { cardNameIds })
+      .andWhere('variant.inStock = :inStock', { inStock: true })
+      .andWhere('variant.priceUpdatedAt > :offerCutoff', { offerCutoff });
+    if (stores) query.andWhere('store.name IN (:...stores)', { stores });
+    if (conditions) query.andWhere('condition.code IN (:...conditions)', { conditions });
+    if (setCode) query.andWhere('set.code = :setCode', { setCode });
+    return query.groupBy('listing.cardNameId').getRawMany();
   }
 
   private expiresAt(): Date {
