@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
+import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -25,7 +26,18 @@ import {
 } from './CartDrawer.styles';
 
 export function CartDrawer() {
-  const { items, isOpen, close, remove, clear, total, deliveryByStore } = useCart();
+  const {
+    items,
+    isOpen,
+    close,
+    remove,
+    clear,
+    total,
+    deliveryByStore,
+    history,
+    isMutationLocked,
+    undoHistory,
+  } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -54,6 +66,15 @@ export function CartDrawer() {
     }
     close();
     navigate({ to: '/checkout' });
+  };
+
+  const undoCartHistory = async (id: string) => {
+    const result = await undoHistory(id);
+    if (result === 'partial') {
+      enqueueSnackbar('Some cards could not be restored because they are no longer available.', {
+        variant: 'warning',
+      });
+    }
   };
 
   return (
@@ -175,6 +196,7 @@ export function CartDrawer() {
                       <IconButton
                         size="small"
                         aria-label="Remove"
+                        disabled={isMutationLocked}
                         onClick={() => remove(id)}
                         sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
@@ -186,6 +208,41 @@ export function CartDrawer() {
               </Box>
             );
           })
+        )}
+
+        {history.length > 0 && (
+          <Box sx={{ mt: items.length > 0 ? 2 : 0 }}>
+            <Divider sx={{ mb: 1.25 }} />
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.5 }}>
+              Recent cart activity
+            </Typography>
+            {history.slice(0, 8).map((entry) => {
+              const count = entry.items.length;
+              const action = entry.type === 'clear'
+                ? 'Cleared cart'
+                : entry.type === 'fill'
+                  ? 'Filled'
+                  : entry.type === 'add'
+                    ? 'Added'
+                    : 'Removed';
+              return (
+                <Stack key={entry.id} direction="row" alignItems="center" spacing={1} sx={{ py: 0.75 }}>
+                  <Typography sx={{ flex: 1, minWidth: 0, fontSize: '0.78rem' }}>
+                    <Box component="strong" sx={{ fontWeight: 600 }}>{action}</Box>{' '}
+                    {count === 1 ? formatCartItemName(entry.items[0]) : `${count} cards`}
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => void undoCartHistory(entry.id)}
+                    disabled={isMutationLocked}
+                    sx={{ minWidth: 0, px: 1, fontSize: '0.72rem' }}
+                  >
+                    Undo
+                  </Button>
+                </Stack>
+              );
+            })}
+          </Box>
         )}
       </Box>
 
@@ -201,7 +258,7 @@ export function CartDrawer() {
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
           <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
-            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} fullWidth>
+            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} disabled={isMutationLocked} fullWidth>
               Clear
             </Button>
             <Button

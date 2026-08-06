@@ -129,7 +129,7 @@ function ListsRoute() {
         >
           {lists.map((list) => {
             const meta = DECK_META[list.name] ?? { archetype: 'Custom', updated: 'recently' };
-            const identity = getListColorIdentity(list.cardRecords);
+            const identity = getListColorIdentity(list.cards);
             return (
               <DeckCard
                 key={list.id}

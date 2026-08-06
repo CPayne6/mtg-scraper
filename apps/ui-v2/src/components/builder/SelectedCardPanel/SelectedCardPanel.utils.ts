@@ -9,10 +9,6 @@ export const CONDITION_TO_LABEL: Record<Condition, string> = {
   unknown: 'Unknown',
 };
 
-export function scryfallPreviewUrl(name: string): string {
-  return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}&format=image&version=normal`;
-}
-
 export function offerKey(o: CardWithStore): string {
   return `${o.store_key}|${o.set}|${o.card_number ?? ''}|${o.condition}|${o.price}|${o.link ?? ''}`;
 }

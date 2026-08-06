@@ -79,6 +79,7 @@ export interface CartOptimizationOptions {
 export interface OptimizeCartInput {
   wantedCards: CartOptimizationWantedCard[];
   candidates: CartOptimizationCandidate[];
+  initialCart?: Array<{ title: string; store_key: string }>;
   options?: CartOptimizationOptions;
 }
 

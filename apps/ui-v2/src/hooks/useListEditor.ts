@@ -24,15 +24,14 @@ function makeId(): string {
 
 export type UndoResult = 'undone' | 'blocked' | 'noop';
 
-// `listId` is the server list UUID. Mutations are fire-and-forget: ListsContext
-// owns the optimistic state and rolls it back on API error (with a toast). The
-// history here is local UI state for the Undo affordance.
+// `listId` is the server list UUID. ListsContext owns optimistic state and
+// rollback; additions wait for persistence before they enter undo history.
 export function useListEditor(
   listId: string,
   inCartByName: (name: string) => boolean,
 ): {
   history: ListHistoryEntry[];
-  addCard: (cardName: string) => string;
+  addCard: (cardName: string) => Promise<string | null>;
   removeCard: (cardName: string) => string | null;
   undo: (entryId?: string) => UndoResult;
 } {
@@ -61,9 +60,9 @@ export function useListEditor(
   );
 
   const addCard = useCallback(
-    (cardName: string) => {
-      void addCardToList(listId, cardName);
-      return pushEntry('add', cardName);
+    async (cardName: string) => {
+      const added = await addCardToList(listId, cardName);
+      return added ? pushEntry('add', cardName) : null;
     },
     [addCardToList, listId, pushEntry],
   );
@@ -74,7 +73,7 @@ export function useListEditor(
       // Server rejects empty lists. Hand off to the context so it surfaces the
       // "lists need at least one card" toast, and skip history so the Undo
       // affordance doesn't accumulate a stale entry.
-      if (list && list.cards.length <= 1 && list.cards.includes(cardName)) {
+      if (list && list.cards.length <= 1 && list.cards.some((card) => card.cardName === cardName)) {
         void removeCardFromList(listId, cardName);
         return null;
       }

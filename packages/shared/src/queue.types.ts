@@ -42,8 +42,10 @@ export interface CardOptimizationJobData {
   /** Always the initial CA$3/store sourcing estimate. Never contains an address or cart id. */
   delivery: {
     mode: 'legacy';
-    shippingCostByStoreKey: Record<string, number>;
+  shippingCostByStoreKey: Record<string, number>;
   };
+  /** Existing cart entries used to skip already-owned cards and price delivery stores. */
+  initialCart?: Array<{ title: string; store_key: string }>;
   enqueuedAt: number;
 }
 

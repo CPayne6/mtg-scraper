@@ -4,7 +4,6 @@ import Tooltip from '@mui/material/Tooltip';
 import { Check } from '@mui/icons-material';
 import { Close } from '@mui/icons-material';
 import type { CardListRowProps } from './CardListRow.types';
-import { ScryfallArtImage } from './ScryfallArtImage';
 import {
   containerSx,
   gradientOverlaySx,
@@ -17,7 +16,7 @@ import {
 } from './CardListRow.styles';
 
 export function CardListRow({
-  name,
+  card,
   selected,
   inCart,
   cartPrice,
@@ -36,10 +35,10 @@ export function CardListRow({
           onSelect();
         }
       }}
-      title={name + (inCart ? ' — in cart' : ' — not yet in cart')}
+      title={card.cardName + (inCart ? ' — in cart' : ' — not yet in cart')}
       sx={containerSx}
     >
-      <ScryfallArtImage name={name} scrollRoot={artScrollRoot} />
+      {card.artCropUri || card.imageUri ? <Box aria-hidden="true" sx={{ position: 'absolute', inset: 0, backgroundImage: `url(${card.artCropUri ?? card.imageUri})`, backgroundSize: 'cover', backgroundPosition: 'center' }} /> : null}
       {/* Gradient overlay */}
       <Box aria-hidden="true" sx={gradientOverlaySx} />
       {/* This sits above the card art, so selection remains visible on bright artwork. */}
@@ -47,7 +46,7 @@ export function CardListRow({
       {/* Inner */}
       <Box sx={innerSx(inCart)}>
         <Box component="span" sx={nameSx}>
-          {name}
+          {card.cardName}
         </Box>
       </Box>
       {/* Right-edge status / remove slot */}
@@ -69,11 +68,11 @@ export function CardListRow({
       ) : onRemove ? (
         <IconButton
           className="row-remove-btn"
-          aria-label={`Remove ${name} from list`}
+          aria-label={`Remove ${card.cardName} from list`}
           title="Remove from list"
           onClick={(e) => {
             e.stopPropagation();
-            onRemove(name);
+            onRemove(card.cardName);
           }}
           sx={removeBtnSx}
         >

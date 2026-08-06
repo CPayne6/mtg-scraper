@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { AddShoppingCart, Check as CheckIcon, Close, OpenInNew } from '@mui/icons-material';
+import { AddShoppingCart, Check as CheckIcon, Close, OpenInNew, VisibilityOutlined } from '@mui/icons-material';
 import { gradientForCard } from '@/utils/cardGradient';
 import type { StoreOfferTileProps } from './StoreOfferTile.types';
 import { CONDITION_DISPLAY, CONDITION_TOOLTIP, getCondVisual } from './StoreOfferTile.utils';
@@ -17,6 +17,7 @@ import {
   condBadgeSx,
   actionRowSx,
   viewLinkSx,
+  previewActionSx,
 } from './StoreOfferTile.styles';
 
 export function StoreOfferTile({
@@ -34,6 +35,7 @@ export function StoreOfferTile({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [isCartActionHovered, setIsCartActionHovered] = useState(false);
+  const [isPreviewPinned, setIsPreviewPinned] = useState(false);
 
   const placeholderGradient = useMemo(
     () => gradientForCard(offer.scryfall_id ?? offer.title ?? offer.store_key),
@@ -45,8 +47,12 @@ export function StoreOfferTile({
 
   return (
     <Box
+      className={isPreviewPinned ? 'previewing' : undefined}
       onMouseEnter={onHoverStart}
-      onMouseLeave={onHoverEnd}
+      onMouseLeave={() => {
+        setIsPreviewPinned(false);
+        onHoverEnd?.();
+      }}
       onFocus={onHoverStart}
       onBlur={onHoverEnd}
       sx={tileContainerSx(placeholderGradient)}
@@ -84,6 +90,19 @@ export function StoreOfferTile({
           }}
         />
       )}
+
+      <Box
+        component="button"
+        className="preview-action"
+        type="button"
+        aria-label={`Preview the full card art for ${offer.title}`}
+        title="Preview full card art"
+        aria-pressed={isPreviewPinned}
+        onClick={() => setIsPreviewPinned((value) => !value)}
+        sx={previewActionSx}
+      >
+        <VisibilityOutlined sx={{ fontSize: 19 }} />
+      </Box>
 
       <Box
         component="button"
