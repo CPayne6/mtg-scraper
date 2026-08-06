@@ -30,9 +30,9 @@ export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => 
     'box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
   '@media (hover: hover) and (pointer: fine)': {
     '&:hover': {
-      boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
+      boxShadow: theme.palette.mode === 'dark'
         ? '0 10px 24px rgba(0, 0, 0, 0.65)'
-        : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
+        : '0 10px 22px rgba(15, 23, 42, 0.28)',
     },
     '&:hover .preview-action': { opacity: 0.82 },
     '& .preview-action:hover ~ .cart-gradient': { background: REVEAL_OVERLAY_GRADIENT },
@@ -46,9 +46,9 @@ export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => 
     opacity: 0,
   },
   '&:focus-within': {
-    boxShadow: `0 0 0 2px ${theme.palette.primary.main}, ${theme.palette.mode === 'dark'
+    boxShadow: theme.palette.mode === 'dark'
       ? '0 10px 24px rgba(0, 0, 0, 0.65)'
-      : '0 10px 22px rgba(15, 23, 42, 0.28)'}`,
+      : '0 10px 22px rgba(15, 23, 42, 0.28)',
   },
   '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
 });
@@ -56,7 +56,7 @@ export const tileContainerSx = (placeholderGradient: string): SxProps<Theme> => 
 export const previewActionSx: SxProps<Theme> = {
   position: 'absolute',
   right: 10,
-  bottom: 10,
+  bottom: 4,
   zIndex: 4,
   display: 'inline-flex',
   alignItems: 'center',
@@ -68,8 +68,8 @@ export const previewActionSx: SxProps<Theme> = {
   borderRadius: 0,
   background: 'transparent',
   color: '#fff',
-  cursor: 'zoom-in',
-  opacity: 0.48,
+  cursor: 'default',
+  opacity: 0,
   textShadow: '0 1px 3px rgba(0,0,0,0.75)',
   transition: 'opacity 160ms ease, transform 160ms ease',
   '&:hover, &:focus-visible': {
