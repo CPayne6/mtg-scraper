@@ -8,8 +8,10 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Badge from '@mui/material/Badge';
 import Popover from '@mui/material/Popover';
+import Tooltip from '@mui/material/Tooltip';
 import { Close } from '@mui/icons-material';
 import { OpenInNew } from '@mui/icons-material';
+import { Refresh } from '@mui/icons-material';
 import { ShoppingCartOutlined } from '@mui/icons-material';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
@@ -27,6 +29,22 @@ import {
   storeHeaderSx,
 } from './CartDrawer.styles';
 import { useCartRefresh } from './useCartRefresh';
+
+const refreshIconSx = {
+  animation: 'cart-refresh-spin 1s linear infinite',
+  '@keyframes cart-refresh-spin': {
+    to: { transform: 'rotate(360deg)' },
+  },
+};
+
+function refreshDetail(item: { outcome: string; previousPrice: number; price?: number }): string {
+  if (item.outcome === 'price_changed') {
+    return `${formatCurrency(item.previousPrice, 'CAD')} → ${formatCurrency(item.price ?? item.previousPrice, 'CAD')}`;
+  }
+  if (item.outcome === 'unavailable') return 'removed — unavailable';
+  if (item.outcome === 'unsupported') return 'not mapped to a refreshable Shopify product yet';
+  return 'could not be confirmed';
+}
 
 export function CartDrawer() {
   const {
@@ -106,7 +124,21 @@ export function CartDrawer() {
 
       <Box sx={headerSx(isMobile)}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
+            <Tooltip title={notableRefreshItems.length ? 'View refresh details' : 'Refresh all known store offers'}>
+              <Badge badgeContent={notableRefreshItems.length} color="warning" invisible={notableRefreshItems.length === 0} overlap="circular">
+                <IconButton
+                  size="small"
+                  aria-label={notableRefreshItems.length ? 'View refresh details' : 'Refresh cart'}
+                  disabled={isRefreshing || items.length === 0}
+                  onClick={(event) => notableRefreshItems.length ? setDetailsAnchor(event.currentTarget) : void refreshCart()}
+                >
+                  <Refresh sx={isRefreshing ? refreshIconSx : undefined} />
+                </IconButton>
+              </Badge>
+            </Tooltip>
+          </Box>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.78rem', display: 'block', mt: 0.5 }}>
             {items.length} {items.length === 1 ? 'card' : 'cards'} from {storeKeys.length}{' '}
             {storeKeys.length === 1 ? 'store' : 'stores'}
@@ -270,11 +302,6 @@ export function CartDrawer() {
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
           <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
-            <Badge badgeContent={notableRefreshItems.length} color="warning" invisible={notableRefreshItems.length === 0} sx={{ flex: { xs: 'unset', sm: 1 } }}>
-              <Button variant="outlined" onClick={(event) => notableRefreshItems.length ? setDetailsAnchor(event.currentTarget) : void refreshCart()} disabled={isRefreshing} fullWidth>
-                {isRefreshing ? 'Refreshing…' : notableRefreshItems.length ? 'Refresh details' : 'Refresh cart'}
-              </Button>
-            </Badge>
             <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} disabled={isMutationLocked} fullWidth>
               Clear
             </Button>
@@ -289,15 +316,16 @@ export function CartDrawer() {
               Check out at {storeKeys.length} {storeKeys.length === 1 ? 'store' : 'stores'}
             </Button>
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, lineHeight: 1.35 }}>
-            Refresh cart updates all known store offers for the cards in your cart. You can keep editing your cart while it runs.
-          </Typography>
         </Box>
       )}
       <Popover open={Boolean(detailsAnchor)} anchorEl={detailsAnchor} onClose={() => setDetailsAnchor(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }} transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Box sx={{ p: 2, maxWidth: 320 }}>
           <Typography sx={{ fontWeight: 700, mb: 1 }}>Refresh details</Typography>
-          {notableRefreshItems.map((item) => <Typography key={item.variantId} variant="body2" sx={{ mb: .75 }}>{item.title}: {item.outcome === 'price_changed' ? `${formatCurrency(item.previousPrice, 'CAD')} → ${formatCurrency(item.price ?? item.previousPrice, 'CAD')}` : item.outcome === 'unavailable' ? 'removed — unavailable' : 'could not be confirmed'}</Typography>)}
+          {notableRefreshItems.map((item) => (
+            <Typography key={item.variantId} variant="body2" sx={{ mb: 0.75 }}>
+              {item.title}: {refreshDetail(item)}
+            </Typography>
+          ))}
           <Button size="small" onClick={() => { dismissRefreshResults(); setDetailsAnchor(null); }}>Dismiss</Button>
         </Box>
       </Popover>

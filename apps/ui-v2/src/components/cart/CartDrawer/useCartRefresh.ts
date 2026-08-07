@@ -19,12 +19,13 @@ function isPending(status: CartRefreshStatus): boolean {
 function refreshMessage(items: CartRefreshItem[]): { message: string; variant: 'success' | 'warning' } {
   const unavailable = items.filter((item) => item.outcome === 'unavailable').length;
   const changed = items.filter((item) => item.outcome === 'price_changed').length;
-  const unconfirmed = items.filter((item) => item.outcome === 'unconfirmed' || item.outcome === 'unsupported').length;
+  const unconfirmed = items.filter((item) => item.outcome === 'unconfirmed').length;
+  const unsupported = items.filter((item) => item.outcome === 'unsupported').length;
 
-  if (unavailable || changed || unconfirmed) {
+  if (unavailable || changed || unconfirmed || unsupported) {
     return {
-      message: `Cart refreshed: ${unavailable} unavailable, ${changed} price ${changed === 1 ? 'change' : 'changes'}${unconfirmed ? `, ${unconfirmed} unconfirmed` : ''}.`,
-      variant: unavailable || unconfirmed ? 'warning' : 'success',
+      message: `Cart refreshed: ${unavailable} unavailable, ${changed} price ${changed === 1 ? 'change' : 'changes'}${unconfirmed ? `, ${unconfirmed} unconfirmed` : ''}${unsupported ? `, ${unsupported} not mapped yet` : ''}.`,
+      variant: unavailable || unconfirmed || unsupported ? 'warning' : 'success',
     };
   }
 
