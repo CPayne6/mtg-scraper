@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
+import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -14,6 +15,7 @@ import { useSnackbar } from 'notistack';
 import { useNavigate } from '@tanstack/react-router';
 import { cartItemId, formatCartItemName, type CartItem, useCart } from '@/components/cart/CartContext';
 import { CartThumbnail } from '@/components/cart/ItemThumbnail';
+import { formatCurrency } from '@/utils/formatCurrency';
 import {
   footerSx,
   headerSx,
@@ -24,7 +26,18 @@ import {
 } from './CartDrawer.styles';
 
 export function CartDrawer() {
-  const { items, isOpen, close, remove, clear } = useCart();
+  const {
+    items,
+    isOpen,
+    close,
+    remove,
+    clear,
+    total,
+    deliveryByStore,
+    history,
+    isMutationLocked,
+    undoHistory,
+  } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -41,7 +54,6 @@ export function CartDrawer() {
   }, [items]);
 
   const storeKeys = Object.keys(byStore);
-  const total = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
   const hasAnyVariant = items.some((item) => item.variant_id);
 
   const goToCheckout = () => {
@@ -54,6 +66,15 @@ export function CartDrawer() {
     }
     close();
     navigate({ to: '/checkout' });
+  };
+
+  const undoCartHistory = async (id: string) => {
+    const result = await undoHistory(id);
+    if (result === 'partial') {
+      enqueueSnackbar('Some cards could not be restored because they are no longer available.', {
+        variant: 'warning',
+      });
+    }
   };
 
   return (
@@ -96,23 +117,29 @@ export function CartDrawer() {
           storeKeys.map((store) => {
             const list = byStore[store] ?? [];
             const subtotal = list.reduce((sum, item) => sum + (item.price ?? 0), 0);
+            const delivery = list[0] ? deliveryByStore[list[0].store_key] : null;
 
             return (
               <Box key={store}>
                 <Box sx={storeHeaderSx}>
-                  <Typography
-                    sx={{
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                      color: 'primary.main',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      minWidth: 0,
-                    }}
-                  >
-                    {store}
-                  </Typography>
+                  <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
+                    <Typography
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        color: 'primary.main',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        minWidth: 0,
+                      }}
+                    >
+                      {store}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      · Shipping est. {delivery ? formatCurrency(delivery.price, delivery.currency) : '—'}
+                    </Typography>
+                  </Box>
                   <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', flexShrink: 0 }}>
                     CA${subtotal.toFixed(2)}
                   </Typography>
@@ -169,6 +196,7 @@ export function CartDrawer() {
                       <IconButton
                         size="small"
                         aria-label="Remove"
+                        disabled={isMutationLocked}
                         onClick={() => remove(id)}
                         sx={{ width: 28, height: 28, flexShrink: 0 }}
                       >
@@ -181,12 +209,47 @@ export function CartDrawer() {
             );
           })
         )}
+
+        {history.length > 0 && (
+          <Box sx={{ mt: items.length > 0 ? 2 : 0 }}>
+            <Divider sx={{ mb: 1.25 }} />
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.5 }}>
+              Recent cart activity
+            </Typography>
+            {history.slice(0, 8).map((entry) => {
+              const count = entry.items.length;
+              const action = entry.type === 'clear'
+                ? 'Cleared cart'
+                : entry.type === 'fill'
+                  ? 'Filled'
+                  : entry.type === 'add'
+                    ? 'Added'
+                    : 'Removed';
+              return (
+                <Stack key={entry.id} direction="row" alignItems="center" spacing={1} sx={{ py: 0.75 }}>
+                  <Typography sx={{ flex: 1, minWidth: 0, fontSize: '0.78rem' }}>
+                    <Box component="strong" sx={{ fontWeight: 600 }}>{action}</Box>{' '}
+                    {count === 1 ? formatCartItemName(entry.items[0]) : `${count} cards`}
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => void undoCartHistory(entry.id)}
+                    disabled={isMutationLocked}
+                    sx={{ minWidth: 0, px: 1, fontSize: '0.72rem' }}
+                  >
+                    Undo
+                  </Button>
+                </Stack>
+              );
+            })}
+          </Box>
+        )}
       </Box>
 
       {items.length > 0 && (
         <Box sx={footerSx}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
-            <Typography sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>Total</Typography>
+            <Typography sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>Total (includes shipping est.)</Typography>
             <Typography sx={{ fontSize: '1.25rem', fontWeight: 700, color: 'primary.main' }}>
               CA${total.toFixed(2)}
             </Typography>
@@ -195,7 +258,7 @@ export function CartDrawer() {
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
           <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
-            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} fullWidth>
+            <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} disabled={isMutationLocked} fullWidth>
               Clear
             </Button>
             <Button

@@ -211,13 +211,13 @@ export function CardListPanel({
           <>
             {visibleEntries.map((e) => (
               <CardListRow
-                key={e.name}
-                name={e.name}
-                selected={selectedName === e.name}
-                inCart={inCartByName(e.name)}
-                cartPrice={cartPriceByName(e.name)}
+                key={e.cardName}
+                card={e}
+                selected={selectedName === e.cardName}
+                inCart={inCartByName(e.cardName)}
+                cartPrice={cartPriceByName(e.cardName)}
                 artScrollRoot={artScrollRoot}
-                onSelect={() => onSelect(e.name)}
+                onSelect={() => onSelect(e.cardName)}
                 onRemove={onRemoveCard}
               />
             ))}

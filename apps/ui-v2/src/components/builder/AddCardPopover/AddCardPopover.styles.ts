@@ -62,12 +62,12 @@ export const optionRowSx = (already: boolean): SxProps<Theme> => (theme) => ({
   },
 });
 
-export const optionThumbSx = (name: string, artUrlFn: (n: string) => string): SxProps<Theme> => (theme) => ({
+export const optionThumbSx = (artUrl: string): SxProps<Theme> => (theme) => ({
   width: 32,
   height: 32,
   borderRadius: '5px',
   backgroundColor: theme.palette.background.default,
-  backgroundImage: `url("${artUrlFn(name)}")`,
+  backgroundImage: `url("${artUrl}")`,
   backgroundSize: 'cover',
   backgroundPosition: 'center',
   backgroundRepeat: 'no-repeat',

@@ -1,4 +1,3 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { CardController } from './card.controller';
 import { CardService } from './card.service';
 import { mockCardSearchResponse } from '@scoutlgs/core/test';
@@ -7,20 +6,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('CardController', () => {
   let controller: CardController;
-  let cardService: { getCardByOracleId: ReturnType<typeof vi.fn> };
+  let cardService: {
+    getCardByOracleId: ReturnType<typeof vi.fn>;
+    getCardByCardNameId: ReturnType<typeof vi.fn>;
+  };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     const mockCardService = {
       getCardByOracleId: vi.fn(),
+      getCardByCardNameId: vi.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [CardController],
-      providers: [{ provide: CardService, useValue: mockCardService }],
-    }).compile();
-
-    controller = module.get<CardController>(CardController);
-    cardService = module.get(CardService);
+    controller = new CardController(mockCardService as unknown as CardService);
+    cardService = mockCardService;
   });
 
   it('should be defined', () => {
@@ -91,6 +89,17 @@ describe('CardController', () => {
       expect(result.results).toHaveLength(0);
       expect(result.stores).toHaveLength(0);
       expect(result.priceStats.count).toBe(0);
+    });
+  });
+
+  describe('getCardByCardNameId', () => {
+    it('looks up the supplied local card-name ID', async () => {
+      cardService.getCardByCardNameId.mockResolvedValue(mockCardSearchResponse);
+
+      const result = await controller.getCardByCardNameId(42, 'Earth Rumble');
+
+      expect(cardService.getCardByCardNameId).toHaveBeenCalledWith(42, 'Earth Rumble');
+      expect(result).toEqual(mockCardSearchResponse);
     });
   });
 });

@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ConfigService } from '@nestjs/config';
-import { CacheService, CardWithStore, StoreService, Card, CardName, Store, freshOfferCutoff } from '@scoutlgs/core';
+import { CacheService, CardWithStore, StoreService, Card, CardName, CardPrinting, Store, freshOfferCutoff } from '@scoutlgs/core';
 import { CardSearchResponse, StoreInfo, PriceStats, Condition } from '@scoutlgs/shared';
 
 @Injectable()
@@ -14,31 +13,109 @@ export class CardService {
     private readonly cardRepository: Repository<Card>,
     @InjectRepository(CardName)
     private readonly cardNameRepository: Repository<CardName>,
+    @InjectRepository(CardPrinting)
+    private readonly cardPrintingRepository: Repository<CardPrinting>,
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
     private readonly cacheService: CacheService,
     private readonly storeService: StoreService,
-    private readonly configService: ConfigService,
   ) {}
 
   async getCardByOracleId(oracleId: string, requestedName: string): Promise<CardSearchResponse> {
-    return this.getCardFromDatabase(oracleId, requestedName);
+    this.logger.debug(`Querying database for oracle ID: ${oracleId}`);
+    const cardNameRecord = await this.cardNameRepository.findOne({
+      where: { oracleId },
+    });
+    return this.getCardFromRecord(cardNameRecord, requestedName);
+  }
+
+  async getCardByCardNameId(
+    cardNameId: number,
+    requestedName: string,
+  ): Promise<CardSearchResponse> {
+    this.logger.debug(`Querying database for card name ID: ${cardNameId}`);
+    const cardNameRecord = await this.cardNameRepository.findOne({
+      where: { id: cardNameId },
+    });
+    return this.getCardFromRecord(cardNameRecord, requestedName);
+  }
+
+  async getCardsByName(names: string[]): Promise<Record<string, CardSearchResponse>> {
+    const uniqueNames = [...new Set(names)].slice(0, 150);
+    const normalized = uniqueNames.map((name) => {
+      const normalizedName = name
+          .toLowerCase()
+          .replace(/\[.*?\]/g, '')
+          .replace(/\s*\([^)]*\)\s*/g, ' ')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .replace(/['']/g, "'")
+          .replace(/[“”]/g, '"');
+      return { name, normalizedName };
+    });
+    const records = await this.cardNameRepository.find({
+      where: normalized.map(({ normalizedName }) => ({ normalizedName })),
+    });
+    const byName = new Map(records.map((record) => [record.normalizedName, record]));
+    const ids = records.map((record) => record.id);
+    const listings = ids.length === 0 ? [] : await this.cardRepository
+      .createQueryBuilder('listing')
+      .leftJoinAndSelect('listing.store', 'store')
+      .leftJoinAndSelect('listing.productUrl', 'productUrl')
+      .leftJoinAndSelect('listing.variants', 'variant')
+      .leftJoinAndSelect('variant.condition', 'condition')
+      .leftJoinAndSelect('listing.cardPrinting', 'printing')
+      .leftJoinAndSelect('printing.set', 'printingSet')
+      .where('listing.card_name_id IN (:...ids)', { ids })
+      .andWhere('variant.in_stock = :inStock', { inStock: true })
+      .andWhere('variant.price_updated_at > :offerCutoff', { offerCutoff: freshOfferCutoff() })
+      .orderBy('variant.price', 'ASC')
+      .getMany();
+    const allStores = await this.storeService.findAllActive();
+    const listingsById = new Map<number, Card[]>();
+    for (const listing of listings) {
+      const id = listing.cardNameId ?? 0;
+      const group = listingsById.get(id) ?? [];
+      group.push(listing);
+      listingsById.set(id, group);
+    }
+    return Object.fromEntries(normalized.map(({ name, normalizedName }) => {
+      const record = byName.get(normalizedName);
+      if (!record) return [name, this.buildEmptyResponse(name)];
+      return [name, this.buildResponseFromListings(record.name, listingsById.get(record.id) ?? [], allStores)];
+    }));
+  }
+
+  private buildResponseFromListings(
+    cardName: string,
+    listings: Card[],
+    allStores: Awaited<ReturnType<StoreService['findAllActive']>>,
+  ): CardSearchResponse {
+    const cards: CardWithStore[] = [];
+    for (const listing of listings) {
+      const setName = listing.cardPrinting?.set?.name ?? '';
+      const productLink = listing.productUrl ? `${listing.store.baseUrl}/products/${listing.productUrl.handle}` : listing.store.baseUrl;
+      for (const variant of listing.variants ?? []) cards.push({
+        id: variant.id, price: Number(variant.price), condition: (variant.condition?.code ?? 'unknown') as Condition,
+        foil: variant.foil, image: listing.imageUrl || '', title: `${cardName}${setName ? ` [${setName}]` : ''}`,
+        currency: listing.currency, link: productLink, set: setName, card_number: listing.cardPrinting?.collectorNumber ?? '',
+        scryfall_id: listing.cardPrinting?.scryfallId, variant_id: variant.platformVariantId,
+        store: listing.store.displayName, store_key: listing.store.name,
+      });
+    }
+    return this.buildResponse(cardName, cards, [], allStores);
   }
 
   /**
    * Database-first approach - query cards table directly.
    * Results are pre-scraped via storefront extraction pipeline.
    */
-  private async getCardFromDatabase(oracleId: string, requestedName: string): Promise<CardSearchResponse> {
-    this.logger.debug(`Querying database for oracle ID: ${oracleId}`);
-
-    // Find card name record
-    const cardNameRecord = await this.cardNameRepository.findOne({
-      where: { oracleId },
-    });
-
+  private async getCardFromRecord(
+    cardNameRecord: CardName | null,
+    requestedName: string,
+  ): Promise<CardSearchResponse> {
     if (!cardNameRecord) {
-      this.logger.debug(`Card oracle ID not found: ${oracleId}`);
+      this.logger.debug(`Card name record not found for: ${requestedName}`);
       return this.buildEmptyResponse(requestedName);
     }
 

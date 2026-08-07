@@ -1,3 +1,3 @@
 export { CartProvider, useCart } from './CartContext';
 export { cartItemId, formatCartItemName } from './CartContext.utils';
-export type { CartContextValue, CartDeliverySelection, CartItem } from './CartContext.types';
+export type { AddManyResult, AddResult, CartAddOutcome, CartContextValue, CartDeliverySelection, CartHistoryEntry, CartHistoryUndoResult, CartItem } from './CartContext.types';

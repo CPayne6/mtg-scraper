@@ -98,6 +98,20 @@ export class CardsService {
     private readonly cardNameResolver: CardNameResolverService,
   ) {}
 
+  async bulkSearchCards(
+    names: string[],
+    limit = 50,
+  ): Promise<{ results: Record<string, SearchResponse> }> {
+    const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 150);
+    const entries = await Promise.all(
+      uniqueNames.map(async (name) => [
+        name,
+        await this.searchCards(name, limit, 1),
+      ] as const),
+    );
+    return { results: Object.fromEntries(entries) };
+  }
+
   async searchCards(
     name: string,
     limit: number = 50,

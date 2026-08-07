@@ -16,6 +16,7 @@ import {
   renameList as apiRenameList,
   replaceListCards,
   type ListSummary,
+  type ListCardEntry,
 } from '@/api/lists';
 import type { ListsContextValue, ServerList } from './ListsContext.types';
 
@@ -37,11 +38,10 @@ async function loadList(
     return {
       id: full.id,
       name: full.name,
-      cards: full.cards.map((c) => c.cardName),
-      cardRecords: full.cards.map(({ cardName, colorIdentity }) => ({ cardName, colorIdentity })),
+      cards: full.cards,
     };
   } catch {
-    return { id: summary.id, name: summary.name, cards: [], cardRecords: [] };
+    return { id: summary.id, name: summary.name, cards: [] };
   }
 }
 
@@ -115,7 +115,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   }, [authStatus, enqueueSnackbar, principalId]);
 
   const get = useCallback(
-    (id: string) => lists.find((l) => l.id === id)?.cards ?? [],
+    (id: string) => lists.find((l) => l.id === id)?.cards.map((card) => card.cardName) ?? [],
     [lists],
   );
 
@@ -149,8 +149,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
         const newList: ServerList = {
           id: full.id,
           name: full.name,
-          cards: full.cards.map((c) => c.cardName),
-          cardRecords: full.cards.map(({ cardName, colorIdentity }) => ({ cardName, colorIdentity })),
+          cards: full.cards,
         };
         setLists((prev) => [...prev, newList]);
         if (created.warnings.length > 0) {
@@ -209,42 +208,57 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const replaceCardsForList = useCallback(
-    async (id: string, prevCards: ServerList['cardRecords'], nextCards: string[]) => {
+    async (id: string, prevCards: ServerList['cards'], nextCards: string[]): Promise<ServerList['cards'] | null> => {
       try {
         const response = await replaceListCards(id, nextCards);
-        setLists((current) => current.map((l) => l.id === id ? { ...l, cards: response.cards.map((card) => card.cardName), cardRecords: response.cards } : l));
+        const full = await fetchList(id);
+        setLists((current) => current.map((l) => l.id === id ? { ...l, cards: full.cards } : l));
         if (response.warnings.length) enqueueSnackbar(response.warnings.join(' · '), { variant: 'info' });
+        return full.cards;
       } catch (err) {
         // Roll back to the pre-mutation cards.
         setLists((current) =>
-          current.map((l) => (l.id === id ? { ...l, cards: prevCards.map((card) => card.cardName), cardRecords: prevCards } : l)),
+          current.map((l) => (l.id === id ? { ...l, cards: prevCards } : l)),
         );
         const msg = err instanceof Error ? err.message : 'Failed to update list';
         enqueueSnackbar(msg, { variant: 'error' });
+        return null;
       }
     },
     [enqueueSnackbar],
   );
 
   const addCardToList = useCallback(
-    async (id: string, cardName: string): Promise<void> => {
+    async (id: string, cardName: string): Promise<boolean> => {
       const current = lists.find((l) => l.id === id);
-      if (!current) return;
-      const nextCards = [...current.cards, cardName];
-      const nextRecords = [...current.cardRecords, { cardName, colorIdentity: null }];
+      if (!current) return false;
+      const nextCards = [...current.cards.map((card) => card.cardName), cardName];
+      const nextRecords: ListCardEntry[] = [...current.cards, {
+        name: cardName, position: current.cards.length + 1, cardNameId: 0, cardName,
+        colorIdentity: null, oracleId: null, variantId: null, price: null, foil: null,
+        quantity: 1, condition: null, currency: null, imageUrl: null, store: null,
+        storeSlug: null, storeBaseUrl: null, productHandle: null, printingId: null,
+        scryfallId: null, collectorNumber: null, rarity: null, imageUri: null,
+        artCropUri: null, setCode: null, setName: null, totalListings: 0,
+      }];
       setLists((all) =>
-        all.map((l) => (l.id === id ? { ...l, cards: nextCards, cardRecords: nextRecords } : l)),
+        all.map((l) => (l.id === id ? { ...l, cards: nextRecords } : l)),
       );
-      await replaceCardsForList(id, current.cardRecords, nextCards);
+      const persistedCards = await replaceCardsForList(id, current.cards, nextCards);
+      const added = persistedCards !== null && persistedCards.length > current.cards.length;
+      if (!added && persistedCards !== null) {
+        enqueueSnackbar(`Couldn't add "${cardName}" to the list`, { variant: 'warning' });
+      }
+      return added;
     },
-    [lists, replaceCardsForList],
+    [enqueueSnackbar, lists, replaceCardsForList],
   );
 
   const removeCardFromList = useCallback(
     async (id: string, cardName: string): Promise<void> => {
       const current = lists.find((l) => l.id === id);
       if (!current) return;
-      const idx = current.cards.indexOf(cardName);
+      const idx = current.cards.findIndex((card) => card.cardName === cardName);
       if (idx < 0) return;
       // Lists must have at least one card on the server side, so refuse the
       // removal here and tell the user. Callers can offer Delete-List instead.
@@ -257,19 +271,18 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       }
       const nextCards = current.cards.slice();
       nextCards.splice(idx, 1);
-      const nextRecords = current.cardRecords.slice();
-      nextRecords.splice(idx, 1);
+      const nextNames = nextCards.map((card) => card.cardName);
       setLists((all) =>
-        all.map((l) => (l.id === id ? { ...l, cards: nextCards, cardRecords: nextRecords } : l)),
+        all.map((l) => (l.id === id ? { ...l, cards: nextCards } : l)),
       );
-      await replaceCardsForList(id, current.cardRecords, nextCards);
+      await replaceCardsForList(id, current.cards, nextNames);
     },
     [lists, replaceCardsForList, enqueueSnackbar],
   );
 
   const names = useMemo(() => lists.map((l) => l.name), [lists]);
   const totalCards = useMemo(
-    () => lists.reduce((sum, l) => sum + l.cards.length, 0),
+    () => lists.reduce((sum, l) => sum + l.cards.reduce((count, card) => count + (card.quantity ?? 0), 0), 0),
     [lists],
   );
 

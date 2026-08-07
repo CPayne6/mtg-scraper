@@ -504,7 +504,7 @@ function CheckoutRoute() {
 
       <Box sx={(theme) => ({ mt: 3, pt: 2, borderTop: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' })}>
         <Typography variant="body2" color="text.secondary">
-          Total across {groups.length} {groups.length === 1 ? 'store' : 'stores'}
+          Total across {groups.length} {groups.length === 1 ? 'store' : 'stores'} (includes shipping est.)
         </Typography>
         <Typography sx={{ fontSize: '1.25rem', fontWeight: 700, color: 'primary.main' }}>
           CA${total.toFixed(2)}

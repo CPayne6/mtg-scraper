@@ -5,10 +5,10 @@ describe('CardService', () => {
   let service: CardService;
   let cardRepository: any;
   let cardNameRepository: any;
+  let cardPrintingRepository: any;
   let storeRepository: any;
   let cacheService: any;
   let storeService: any;
-  let configService: any;
   let listingsQuery: any;
 
   beforeEach(() => {
@@ -27,6 +27,8 @@ describe('CardService', () => {
       findOne: vi.fn(),
     };
 
+    cardPrintingRepository = {};
+
     storeRepository = {};
 
     cacheService = {};
@@ -35,17 +37,13 @@ describe('CardService', () => {
       findAllActive: vi.fn().mockResolvedValue([]),
     };
 
-    configService = {
-      get: vi.fn(),
-    };
-
     service = new CardService(
       cardRepository,
       cardNameRepository,
+      cardPrintingRepository,
       storeRepository,
       cacheService,
       storeService,
-      configService,
     );
   });
 
@@ -78,6 +76,24 @@ describe('CardService', () => {
       expect(listingsQuery.andWhere).toHaveBeenCalledWith(
         'variant.price_updated_at > :offerCutoff',
         expect.objectContaining({ offerCutoff: expect.any(Date) }),
+      );
+    });
+  });
+
+  describe('getCardByCardNameId', () => {
+    it('queries listings using the supplied card-name ID', async () => {
+      cardNameRepository.findOne.mockResolvedValue({
+        id: 42,
+        name: 'Earth Rumble',
+        normalizedName: 'earth rumble',
+      });
+
+      await service.getCardByCardNameId(42, 'Earth Rumble');
+
+      expect(cardNameRepository.findOne).toHaveBeenCalledWith({ where: { id: 42 } });
+      expect(listingsQuery.where).toHaveBeenCalledWith(
+        'listing.card_name_id = :cardNameId',
+        { cardNameId: 42 },
       );
     });
   });
