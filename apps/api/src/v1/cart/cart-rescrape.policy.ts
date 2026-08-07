@@ -5,5 +5,8 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class CartRescrapePolicy {
   constructor(private readonly config: ConfigService) {}
-  isEnabled(): boolean { return this.config.get<string>('CART_RESCRAPE_ENABLED', 'false') === 'true'; }
+  isEnabled(): boolean {
+    const value = this.config.get<boolean | string>('CART_RESCRAPE_ENABLED', true);
+    return value === true || value === 'true';
+  }
 }
