@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
@@ -6,6 +6,8 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import Badge from '@mui/material/Badge';
+import Popover from '@mui/material/Popover';
 import { Close } from '@mui/icons-material';
 import { OpenInNew } from '@mui/icons-material';
 import { ShoppingCartOutlined } from '@mui/icons-material';
@@ -16,6 +18,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { cartItemId, formatCartItemName, type CartItem, useCart } from '@/components/cart/CartContext';
 import { CartThumbnail } from '@/components/cart/ItemThumbnail';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { fetchCartRefresh, startCartRefresh, type CartRefreshItem } from '@/api/cart';
 import {
   footerSx,
   headerSx,
@@ -37,11 +40,20 @@ export function CartDrawer() {
     history,
     isMutationLocked,
     undoHistory,
+    sync,
   } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshItems, setRefreshItems] = useState<CartRefreshItem[]>([]);
+  const [detailsAnchor, setDetailsAnchor] = useState<HTMLElement | null>(null);
+  const pollingRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (pollingRef.current != null) window.clearTimeout(pollingRef.current);
+  }, []);
 
   // Group display by displayName (`item.store`) but keep `store_key` for the
   // payload to the API (that's what stores.name is in the DB).
@@ -75,6 +87,37 @@ export function CartDrawer() {
         variant: 'warning',
       });
     }
+  };
+
+  const notableRefreshItems = refreshItems.filter((item) => item.outcome === 'unavailable' || item.outcome === 'price_changed' || item.outcome === 'unconfirmed' || item.outcome === 'unsupported');
+  const refreshCart = async () => {
+    if (isRefreshing || items.length === 0) return;
+    setIsRefreshing(true);
+    try {
+      const { jobId } = await startCartRefresh();
+      const started = Date.now();
+      const poll = async () => {
+        try {
+          const status = await fetchCartRefresh(jobId);
+          if (status.status === 'queued' || status.status === 'running') {
+            if (Date.now() - started < 60_000) { pollingRef.current = window.setTimeout(() => void poll(), 2000); return; }
+            setIsRefreshing(false);
+            enqueueSnackbar('Cart refresh is still running. Your cart remains usable.', { variant: 'info' });
+            return;
+          }
+          setIsRefreshing(false);
+          setRefreshItems(status.items);
+          if (status.status === 'completed') {
+            await sync();
+            const unavailable = status.items.filter((item) => item.outcome === 'unavailable').length;
+            const changed = status.items.filter((item) => item.outcome === 'price_changed').length;
+            const unconfirmed = status.items.filter((item) => item.outcome === 'unconfirmed' || item.outcome === 'unsupported').length;
+            enqueueSnackbar(unavailable || changed || unconfirmed ? `Cart refreshed: ${unavailable} unavailable, ${changed} price ${changed === 1 ? 'change' : 'changes'}${unconfirmed ? `, ${unconfirmed} unconfirmed` : ''}.` : 'Cart refreshed — all selected listings are unchanged.', { variant: unavailable || unconfirmed ? 'warning' : 'success' });
+          } else enqueueSnackbar(status.failedReason ?? 'Cart refresh failed. Your saved prices were kept.', { variant: 'error' });
+        } catch (error) { setIsRefreshing(false); enqueueSnackbar(error instanceof Error ? error.message : 'Cart refresh failed', { variant: 'error' }); }
+      };
+      await poll();
+    } catch (error) { setIsRefreshing(false); enqueueSnackbar(error instanceof Error ? error.message : 'Unable to start cart refresh', { variant: 'error' }); }
   };
 
   return (
@@ -258,6 +301,11 @@ export function CartDrawer() {
             You'll check out separately at each store. ScoutLGS doesn't take payment.
           </Typography>
           <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
+            <Badge badgeContent={notableRefreshItems.length} color="warning" invisible={notableRefreshItems.length === 0} sx={{ flex: { xs: 'unset', sm: 1 } }}>
+              <Button variant="outlined" onClick={(event) => notableRefreshItems.length ? setDetailsAnchor(event.currentTarget) : void refreshCart()} disabled={isRefreshing} fullWidth>
+                {isRefreshing ? 'Refreshing…' : notableRefreshItems.length ? 'Refresh details' : 'Refresh cart'}
+              </Button>
+            </Badge>
             <Button variant="outlined" color="primary" sx={{ flex: { xs: 'unset', sm: 1 } }} onClick={clear} disabled={isMutationLocked} fullWidth>
               Clear
             </Button>
@@ -272,8 +320,18 @@ export function CartDrawer() {
               Check out at {storeKeys.length} {storeKeys.length === 1 ? 'store' : 'stores'}
             </Button>
           </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, lineHeight: 1.35 }}>
+            Refresh cart updates all known store offers for the cards in your cart. You can keep editing your cart while it runs.
+          </Typography>
         </Box>
       )}
+      <Popover open={Boolean(detailsAnchor)} anchorEl={detailsAnchor} onClose={() => setDetailsAnchor(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }} transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Box sx={{ p: 2, maxWidth: 320 }}>
+          <Typography sx={{ fontWeight: 700, mb: 1 }}>Refresh details</Typography>
+          {notableRefreshItems.map((item) => <Typography key={item.variantId} variant="body2" sx={{ mb: .75 }}>{item.title}: {item.outcome === 'price_changed' ? `${formatCurrency(item.previousPrice, 'CAD')} → ${formatCurrency(item.price ?? item.previousPrice, 'CAD')}` : item.outcome === 'unavailable' ? 'removed — unavailable' : 'could not be confirmed'}</Typography>)}
+          <Button size="small" onClick={() => { setRefreshItems([]); setDetailsAnchor(null); }}>Dismiss</Button>
+        </Box>
+      </Popover>
     </Drawer>
   );
 }

@@ -17,5 +17,10 @@ export type {
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
   CardOptimizationJobData,
+  CartProductRefreshJobData,
+  CartProductRefreshJobResult,
+  CartProductRefreshProductTarget,
+  CartRefreshItemResult,
+  CartRefreshOutcome,
 } from './queue.types';
 export { QUEUE_NAMES, JOB_NAMES, PUBSUB_CHANNELS } from './queue.types';

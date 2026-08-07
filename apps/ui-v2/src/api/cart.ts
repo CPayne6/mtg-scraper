@@ -15,6 +15,16 @@ export type CartResponse = {
   updatedAt: string | null;
 };
 
+export type CartRefreshItem = {
+  variantId: number;
+  title: string;
+  outcome: 'refreshed' | 'price_changed' | 'unavailable' | 'unsupported' | 'unconfirmed';
+  previousPrice: number;
+  price?: number;
+  message?: string;
+};
+export type CartRefreshStatus = { jobId: string; status: 'queued' | 'running' | 'completed' | 'failed'; items: CartRefreshItem[]; failedReason?: string };
+
 export type BuildCheckoutStoreResult = {
   storeKey: string;
   checkoutUrl: string;
@@ -118,6 +128,14 @@ export function clearCart(signal?: AbortSignal): Promise<CartResponse> {
     method: 'DELETE',
     signal,
   });
+}
+
+export function startCartRefresh(): Promise<{ jobId: string; status: 'queued'; cooldownExpiresAt: string }> {
+  return request('/api/v1/cart/refresh', { method: 'POST' });
+}
+
+export function fetchCartRefresh(jobId: string): Promise<CartRefreshStatus> {
+  return request(`/api/v1/cart/refresh/${encodeURIComponent(jobId)}`);
 }
 
 // X-Requested-With is the CSRF gate enforced by apps/api -- browsers preflight

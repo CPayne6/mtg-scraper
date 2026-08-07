@@ -11,6 +11,9 @@ import {
   StorefrontBucketJobResult,
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
+  CartProductRefreshJobData,
+  CartProductRefreshJobResult,
+  CartRefreshItemResult,
 } from '@scoutlgs/shared';
 import {
   Store,
@@ -18,6 +21,7 @@ import {
   ShopifyProduct,
   UnmatchedCard,
   CardListing,
+  CardVariant,
   ExtractionHttpError,
   PlatformAdapterFactory,
   StorefrontPaginationLimitError,
@@ -82,6 +86,8 @@ export class StorefrontProcessor implements OnModuleInit {
     private readonly unmatchedCardRepository: Repository<UnmatchedCard>,
     @InjectRepository(CardListing)
     private readonly cardListingRepository: Repository<CardListing>,
+    @InjectRepository(CardVariant)
+    private readonly cardVariantRepository: Repository<CardVariant>,
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
     private readonly storefrontQueue: Queue,
     private readonly dataSource: DataSource,
@@ -408,7 +414,7 @@ export class StorefrontProcessor implements OnModuleInit {
     let refetched = 0;
     let errors = 0;
 
-    // Re-fetch in batches via the products(query: "id:X OR id:Y OR ...") API.
+    // Re-fetch known IDs directly through Storefront's nodes(ids:) API.
     // Each batch:
     //   1. Fetch from Shopify first — if this fails, no DB changes
     //   2. Delete the batch's stale unmatched_cards rows
@@ -420,16 +426,13 @@ export class StorefrontProcessor implements OnModuleInit {
     const BATCH_SIZE = 50;
     for (let i = 0; i < unmatched.length; i += BATCH_SIZE) {
       const batch = unmatched.slice(i, i + BATCH_SIZE);
-      const idQuery = batch
-        .map((p) => `id:${p.shopifyProductId}`)
-        .join(' OR ');
       const batchProductUrlIds = batch
         .map((p) => p.productUrlId)
         .filter((id): id is number => id != null);
 
       try {
         // 1. Fetch first — pre-commit to nothing if Shopify fails
-        const { products } = await adapter.fetchProductsByQuery(store, idQuery);
+        const { products } = await adapter.fetchProductsByIds(store, batch.map((p) => p.shopifyProductId));
         refetched += products.length;
 
         if (products.length === 0) continue;
@@ -486,6 +489,64 @@ export class StorefrontProcessor implements OnModuleInit {
       errors,
       success: true,
     };
+  }
+
+  /** Re-fetches bounded, known Shopify products for the cart cards only. */
+  @Process({ name: JOB_NAMES.CART_PRODUCT_REFRESH, concurrency: 2 })
+  async refreshCartProducts(job: Job<CartProductRefreshJobData>): Promise<CartProductRefreshJobResult> {
+    const outcomes = new Map<number, CartRefreshItemResult>(job.data.snapshot.map((item) => [item.variantId, {
+      variantId: item.variantId, title: item.title, previousPrice: item.previousPrice,
+      outcome: (!item.storeId || !item.shopifyProductId ? 'unsupported' : 'unconfirmed') as import('@scoutlgs/shared').CartRefreshOutcome,
+    }]));
+
+    for (const target of job.data.targets) {
+      try {
+        const store = await this.storeRepository.findOne({ where: { id: target.storeId } });
+        if (!store) throw new Error('Store no longer exists');
+        const adapter = this.platformAdapterFactory.getExtractionAdapter(store.platformType!) as StorefrontExtractionAdapter;
+        // Shopify query strings and Storefront cost limits both stay bounded.
+        for (let offset = 0; offset < target.products.length; offset += 50) {
+          const batch = target.products.slice(offset, offset + 50);
+          const batchIds = new Set(batch.map((product) => product.productId));
+          const targetItems = job.data.snapshot.filter((item) => item.storeId === target.storeId && item.shopifyProductId && batchIds.has(item.shopifyProductId));
+          try {
+            const { products } = await adapter.fetchProductsByIds(store, batch.map(({ productId }) => productId));
+            const returned = new Set(products.map((product) => product.shopifyProductId));
+            const missing = batch.filter((product) => !returned.has(product.productId));
+            const missingListingIds = missing.flatMap((product) => product.listingIds);
+            // A confirmed absent product invalidates every locally known offer
+            // for that product, not merely the cart's selected variant.
+            if (missingListingIds.length) await this.cardVariantRepository.update({ cardListingId: In(missingListingIds) }, { inStock: false, quantity: 0 });
+            for (const item of targetItems.filter((item) => !returned.has(item.shopifyProductId!))) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, previousPrice: item.previousPrice, outcome: 'unavailable' });
+            const processed = products.length ? await this.processPage(products, store.id) : undefined;
+            if (processed && processed.errors > 0) {
+              for (const item of targetItems.filter((item) => returned.has(item.shopifyProductId!))) {
+                outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, previousPrice: item.previousPrice, outcome: 'unconfirmed', message: 'Listing extraction did not complete' });
+              }
+              continue;
+            }
+            const refreshed = await this.cardVariantRepository.find({ where: { id: In(targetItems.filter((item) => returned.has(item.shopifyProductId!)).map((item) => item.variantId)) } });
+            const byId = new Map(refreshed.map((variant) => [variant.id, variant]));
+            for (const item of targetItems) {
+              if (!returned.has(item.shopifyProductId!)) continue;
+              const variant = byId.get(item.variantId);
+              if (!variant || !variant.inStock) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, previousPrice: item.previousPrice, outcome: 'unavailable' });
+              else outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, previousPrice: item.previousPrice, price: Number(variant.price), outcome: Number(variant.price) !== item.previousPrice ? 'price_changed' : 'refreshed' });
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            for (const item of targetItems) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, previousPrice: item.previousPrice, outcome: 'unconfirmed', message });
+            this.logger.warn(`cart-product-refresh store ${target.storeId} batch ${offset}: ${message}`);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const targetItems = job.data.snapshot.filter((item) => item.storeId === target.storeId && item.shopifyProductId);
+        for (const item of targetItems) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, previousPrice: item.previousPrice, outcome: 'unconfirmed', message });
+        this.logger.warn(`cart-product-refresh store ${target.storeId}: ${message}`);
+      }
+    }
+    return { items: [...outcomes.values()], success: true };
   }
 
   // ---------------------------------------------------------------------------
