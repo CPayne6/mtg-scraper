@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
@@ -18,7 +18,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { cartItemId, formatCartItemName, type CartItem, useCart } from '@/components/cart/CartContext';
 import { CartThumbnail } from '@/components/cart/ItemThumbnail';
 import { formatCurrency } from '@/utils/formatCurrency';
-import { fetchCartRefresh, startCartRefresh, type CartRefreshItem } from '@/api/cart';
 import {
   footerSx,
   headerSx,
@@ -27,6 +26,7 @@ import {
   paperSx,
   storeHeaderSx,
 } from './CartDrawer.styles';
+import { useCartRefresh } from './useCartRefresh';
 
 export function CartDrawer() {
   const {
@@ -46,14 +46,12 @@ export function CartDrawer() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshItems, setRefreshItems] = useState<CartRefreshItem[]>([]);
   const [detailsAnchor, setDetailsAnchor] = useState<HTMLElement | null>(null);
-  const pollingRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (pollingRef.current != null) window.clearTimeout(pollingRef.current);
-  }, []);
+  const { isRefreshing, refreshItems, refreshCart, dismissRefreshResults } = useCartRefresh({
+    hasItems: items.length > 0,
+    sync,
+    enqueueSnackbar,
+  });
 
   // Group display by displayName (`item.store`) but keep `store_key` for the
   // payload to the API (that's what stores.name is in the DB).
@@ -89,36 +87,7 @@ export function CartDrawer() {
     }
   };
 
-  const notableRefreshItems = refreshItems.filter((item) => item.outcome === 'unavailable' || item.outcome === 'price_changed' || item.outcome === 'unconfirmed' || item.outcome === 'unsupported');
-  const refreshCart = async () => {
-    if (isRefreshing || items.length === 0) return;
-    setIsRefreshing(true);
-    try {
-      const { jobId } = await startCartRefresh();
-      const started = Date.now();
-      const poll = async () => {
-        try {
-          const status = await fetchCartRefresh(jobId);
-          if (status.status === 'queued' || status.status === 'running') {
-            if (Date.now() - started < 60_000) { pollingRef.current = window.setTimeout(() => void poll(), 2000); return; }
-            setIsRefreshing(false);
-            enqueueSnackbar('Cart refresh is still running. Your cart remains usable.', { variant: 'info' });
-            return;
-          }
-          setIsRefreshing(false);
-          setRefreshItems(status.items);
-          if (status.status === 'completed') {
-            await sync();
-            const unavailable = status.items.filter((item) => item.outcome === 'unavailable').length;
-            const changed = status.items.filter((item) => item.outcome === 'price_changed').length;
-            const unconfirmed = status.items.filter((item) => item.outcome === 'unconfirmed' || item.outcome === 'unsupported').length;
-            enqueueSnackbar(unavailable || changed || unconfirmed ? `Cart refreshed: ${unavailable} unavailable, ${changed} price ${changed === 1 ? 'change' : 'changes'}${unconfirmed ? `, ${unconfirmed} unconfirmed` : ''}.` : 'Cart refreshed — all selected listings are unchanged.', { variant: unavailable || unconfirmed ? 'warning' : 'success' });
-          } else enqueueSnackbar(status.failedReason ?? 'Cart refresh failed. Your saved prices were kept.', { variant: 'error' });
-        } catch (error) { setIsRefreshing(false); enqueueSnackbar(error instanceof Error ? error.message : 'Cart refresh failed', { variant: 'error' }); }
-      };
-      await poll();
-    } catch (error) { setIsRefreshing(false); enqueueSnackbar(error instanceof Error ? error.message : 'Unable to start cart refresh', { variant: 'error' }); }
-  };
+  const notableRefreshItems = refreshItems.filter((item) => item.outcome !== 'refreshed');
 
   return (
     <Drawer
@@ -329,7 +298,7 @@ export function CartDrawer() {
         <Box sx={{ p: 2, maxWidth: 320 }}>
           <Typography sx={{ fontWeight: 700, mb: 1 }}>Refresh details</Typography>
           {notableRefreshItems.map((item) => <Typography key={item.variantId} variant="body2" sx={{ mb: .75 }}>{item.title}: {item.outcome === 'price_changed' ? `${formatCurrency(item.previousPrice, 'CAD')} → ${formatCurrency(item.price ?? item.previousPrice, 'CAD')}` : item.outcome === 'unavailable' ? 'removed — unavailable' : 'could not be confirmed'}</Typography>)}
-          <Button size="small" onClick={() => { setRefreshItems([]); setDetailsAnchor(null); }}>Dismiss</Button>
+          <Button size="small" onClick={() => { dismissRefreshResults(); setDetailsAnchor(null); }}>Dismiss</Button>
         </Box>
       </Popover>
     </Drawer>
