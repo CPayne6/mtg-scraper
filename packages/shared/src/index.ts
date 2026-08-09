@@ -20,6 +20,7 @@ export type {
   CartProductRefreshJobData,
   CartProductRefreshJobResult,
   CartProductRefreshProductTarget,
+  StorefrontKnownOfferRecoveryJobData,
   CartRefreshItemResult,
   CartRefreshOutcome,
 } from './queue.types';

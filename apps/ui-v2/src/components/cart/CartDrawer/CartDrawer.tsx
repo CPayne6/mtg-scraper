@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
@@ -6,12 +6,8 @@ import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import Badge from '@mui/material/Badge';
-import Popover from '@mui/material/Popover';
-import Tooltip from '@mui/material/Tooltip';
 import { Close } from '@mui/icons-material';
 import { OpenInNew } from '@mui/icons-material';
-import { Refresh } from '@mui/icons-material';
 import { ShoppingCartOutlined } from '@mui/icons-material';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
@@ -28,23 +24,6 @@ import {
   paperSx,
   storeHeaderSx,
 } from './CartDrawer.styles';
-import { useCartRefresh } from './useCartRefresh';
-
-const refreshIconSx = {
-  animation: 'cart-refresh-spin 1s linear infinite',
-  '@keyframes cart-refresh-spin': {
-    to: { transform: 'rotate(360deg)' },
-  },
-};
-
-function refreshDetail(item: { outcome: string; previousPrice: number; price?: number }): string {
-  if (item.outcome === 'price_changed') {
-    return `${formatCurrency(item.previousPrice, 'CAD')} → ${formatCurrency(item.price ?? item.previousPrice, 'CAD')}`;
-  }
-  if (item.outcome === 'unavailable') return 'removed — unavailable';
-  if (item.outcome === 'unsupported') return 'not mapped to a refreshable Shopify product yet';
-  return 'could not be confirmed';
-}
 
 export function CartDrawer() {
   const {
@@ -58,18 +37,11 @@ export function CartDrawer() {
     history,
     isMutationLocked,
     undoHistory,
-    sync,
   } = useCart();
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [detailsAnchor, setDetailsAnchor] = useState<HTMLElement | null>(null);
-  const { isRefreshing, refreshItems, refreshCart, dismissRefreshResults } = useCartRefresh({
-    hasItems: items.length > 0,
-    sync,
-    enqueueSnackbar,
-  });
 
   // Group display by displayName (`item.store`) but keep `store_key` for the
   // payload to the API (that's what stores.name is in the DB).
@@ -83,7 +55,6 @@ export function CartDrawer() {
 
   const storeKeys = Object.keys(byStore);
   const hasAnyVariant = items.some((item) => item.variant_id);
-
   const goToCheckout = () => {
     if (!hasAnyVariant) {
       enqueueSnackbar(
@@ -105,8 +76,6 @@ export function CartDrawer() {
     }
   };
 
-  const notableRefreshItems = refreshItems.filter((item) => item.outcome !== 'refreshed');
-
   return (
     <Drawer
       anchor={isMobile ? 'bottom' : 'right'}
@@ -124,29 +93,15 @@ export function CartDrawer() {
 
       <Box sx={headerSx(isMobile)}>
         <Box sx={{ minWidth: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
-            <Tooltip title={notableRefreshItems.length ? 'View refresh details' : 'Refresh all known store offers'}>
-              <Badge badgeContent={notableRefreshItems.length} color="warning" invisible={notableRefreshItems.length === 0} overlap="circular">
-                <IconButton
-                  size="small"
-                  aria-label={notableRefreshItems.length ? 'View refresh details' : 'Refresh cart'}
-                  disabled={isRefreshing || items.length === 0}
-                  onClick={(event) => notableRefreshItems.length ? setDetailsAnchor(event.currentTarget) : void refreshCart()}
-                >
-                  <Refresh sx={isRefreshing ? refreshIconSx : undefined} />
-                </IconButton>
-              </Badge>
-            </Tooltip>
-          </Box>
+          <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, m: 0 }}>Your cart</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.78rem', display: 'block', mt: 0.5 }}>
             {items.length} {items.length === 1 ? 'card' : 'cards'} from {storeKeys.length}{' '}
             {storeKeys.length === 1 ? 'store' : 'stores'}
           </Typography>
         </Box>
-        <IconButton onClick={close} aria-label="Close" size="small">
-          <Close />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton onClick={close} aria-label="Close" size="small"><Close /></IconButton>
+        </Box>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, pt: 0, pb: 1.75, minHeight: 0, bgcolor: 'background.default' }}>
@@ -318,17 +273,6 @@ export function CartDrawer() {
           </Stack>
         </Box>
       )}
-      <Popover open={Boolean(detailsAnchor)} anchorEl={detailsAnchor} onClose={() => setDetailsAnchor(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }} transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Box sx={{ p: 2, maxWidth: 320 }}>
-          <Typography sx={{ fontWeight: 700, mb: 1 }}>Refresh details</Typography>
-          {notableRefreshItems.map((item) => (
-            <Typography key={item.variantId} variant="body2" sx={{ mb: 0.75 }}>
-              {item.title}: {refreshDetail(item)}
-            </Typography>
-          ))}
-          <Button size="small" onClick={() => { dismissRefreshResults(); setDetailsAnchor(null); }}>Dismiss</Button>
-        </Box>
-      </Popover>
     </Drawer>
   );
 }

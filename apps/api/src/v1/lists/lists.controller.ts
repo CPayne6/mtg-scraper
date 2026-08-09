@@ -34,14 +34,29 @@ import type { Response } from 'express';
 import { CheckoutRateLimiterService } from '../checkout/checkout-rate-limiter.service';
 import { hashIp } from '../checkout/ip-hash.util';
 import { ConfigService } from '@nestjs/config';
+import { ListRefreshService } from './list-refresh.service';
 
 @Controller('lists')
 export class ListsController {
   constructor(
     private readonly listsService: ListsService,
+    private readonly refreshService: ListRefreshService,
     @Optional() private readonly quoteRateLimiter?: CheckoutRateLimiterService,
     @Optional() private readonly configService?: ConfigService,
   ) {}
+
+  @Post(':listId/refresh')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(PrincipalGuard)
+  refresh(@Param('listId') listId: string, @CurrentPrincipal() principal: PrincipalContext) {
+    return this.refreshService.request(listId, principal);
+  }
+
+  @Get(':listId/refresh/:jobId')
+  @UseGuards(PrincipalGuard)
+  refreshStatus(@Param('listId') listId: string, @Param('jobId') jobId: string, @CurrentPrincipal() principal: PrincipalContext) {
+    return this.refreshService.status(listId, principal, jobId);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

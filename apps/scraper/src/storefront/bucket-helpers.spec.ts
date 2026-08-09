@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   generateYearlyBuckets,
   halveDateRange,
+  canSplitDateRange,
 } from './storefront.processor';
 
 describe('generateYearlyBuckets', () => {
@@ -86,5 +87,22 @@ describe('halveDateRange', () => {
     const a = halveDateRange('2024-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
     const b = halveDateRange('2024-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
     expect(a).toEqual(b);
+  });
+});
+
+describe('canSplitDateRange', () => {
+  it('allows adaptive splitting beyond a fixed depth while preserving a shared boundary', () => {
+    let start = '2025-06-15T00:00:00.000Z';
+    let end = '2025-06-15T00:00:01.000Z';
+    for (let depth = 0; depth < 9; depth += 1) {
+      expect(canSplitDateRange(start, end)).toBe(true);
+      const [, right] = halveDateRange(start, end);
+      start = right.start;
+      end = right.end;
+    }
+  });
+
+  it('stops only at timestamp precision', () => {
+    expect(canSplitDateRange('2025-06-15T00:00:00.000Z', '2025-06-15T00:00:00.001Z')).toBe(false);
   });
 });

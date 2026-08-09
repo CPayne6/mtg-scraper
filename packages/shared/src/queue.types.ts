@@ -28,6 +28,8 @@ export const JOB_NAMES = {
    * stored `raw_name` is wrong because we pull fresh data from Shopify.
    */
   REEXTRACT_UNMATCHED: 'reextract-unmatched',
+  /** Recover locally-known offers when a created_at bucket cannot split further. */
+  STOREFRONT_KNOWN_OFFER_RECOVERY: 'storefront-known-offer-recovery',
   CART_PRODUCT_REFRESH: 'cart-product-refresh',
 } as const;
 
@@ -89,13 +91,22 @@ export interface ReextractUnmatchedJobResult {
 }
 
 export type CartRefreshOutcome = 'refreshed' | 'price_changed' | 'unavailable' | 'unsupported' | 'unconfirmed';
-export interface CartRefreshSnapshotItem { variantId: number; title: string; previousPrice: number; storeId?: number; shopifyProductId?: string; }
+export interface CartRefreshSnapshotItem { variantId: number; title: string; previousPrice: number; cardKey?: string; storeId?: number; shopifyProductId?: string; }
 /** A de-duplicated Shopify product and every known local listing it backs. */
 export interface CartProductRefreshProductTarget { productId: string; listingIds: number[]; }
 export interface CartProductRefreshTarget { storeId: number; products: CartProductRefreshProductTarget[]; }
-export interface CartProductRefreshJobData { principalUuid: string; snapshot: CartRefreshSnapshotItem[]; targets: CartProductRefreshTarget[]; }
-export interface CartRefreshItemResult { variantId: number; title: string; outcome: CartRefreshOutcome; previousPrice: number; price?: number; message?: string; }
+export interface CartProductRefreshJobData {
+  principalUuid: string;
+  /** Present for card-list initiated refreshes. */
+  listUuid?: string;
+  snapshot: CartRefreshSnapshotItem[];
+  targets: CartProductRefreshTarget[];
+  /** Calculated before enqueueing so progress has a fixed, exact denominator. */
+  totalProducts?: number;
+}
+export interface CartRefreshItemResult { variantId: number; title: string; cardKey?: string; outcome: CartRefreshOutcome; previousPrice: number; price?: number; message?: string; }
 export interface CartProductRefreshJobResult { items: CartRefreshItemResult[]; success: boolean; }
+export interface StorefrontKnownOfferRecoveryJobData { storeId: number; createdAtStart: string; createdAtEnd: string; discoveryRunId?: number; }
 
 /**
  * Per-store plan job. Probes the store's `created_at` range and fans out

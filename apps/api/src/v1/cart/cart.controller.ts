@@ -2,8 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  Param,
-  Post,
   Get,
   HttpCode,
   HttpStatus,
@@ -16,20 +14,12 @@ import { CurrentPrincipal } from '../../auth/current-principal.decorator';
 import { PrincipalGuard } from '../../auth/principal.guard';
 import type { PrincipalContext } from '../../auth/principal.types';
 import { CartService } from './cart.service';
-import { CartRefreshService } from './cart-refresh.service';
 import { ReplaceCartDto } from './dto/replace-cart.dto';
 
 @Controller('cart')
 @UseGuards(PrincipalGuard)
 export class CartController {
-  constructor(private readonly cartService: CartService, private readonly refreshService: CartRefreshService) {}
-
-  @Post('refresh')
-  @HttpCode(HttpStatus.ACCEPTED)
-  refresh(@CurrentPrincipal() principal: PrincipalContext) { return this.refreshService.request(principal); }
-
-  @Get('refresh/:jobId')
-  refreshStatus(@Param('jobId') jobId: string, @CurrentPrincipal() principal: PrincipalContext) { return this.refreshService.status(principal, jobId); }
+  constructor(private readonly cartService: CartService) {}
 
   @Get()
   getCart(@CurrentPrincipal() principal: PrincipalContext) {
