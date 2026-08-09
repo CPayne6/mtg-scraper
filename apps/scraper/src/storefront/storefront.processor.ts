@@ -573,7 +573,10 @@ export class StorefrontProcessor implements OnModuleInit {
   }
 
   /** Re-fetches bounded, known Shopify products for the cart cards only. */
-  @Process({ name: JOB_NAMES.CART_PRODUCT_REFRESH, concurrency: 2 })
+  /**
+   * Runs the exact-ID refresh work. A dedicated processor owns the interactive
+   * queue so scheduled storefront discovery cannot starve user requests.
+   */
   async refreshCartProducts(job: Job<CartProductRefreshJobData>): Promise<CartProductRefreshJobResult> {
     // The request service calculates this before enqueueing. Retain the
     // derived fallback so older queued jobs remain refreshable.

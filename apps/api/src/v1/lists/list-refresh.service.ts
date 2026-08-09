@@ -37,7 +37,7 @@ export class ListRefreshService implements OnModuleDestroy {
     @InjectRepository(CardListEntry) private readonly entries: Repository<CardListEntry>,
     @InjectRepository(CardListing) private readonly listings: Repository<CardListing>,
     @InjectRepository(ShopifyProduct) private readonly products: Repository<ShopifyProduct>,
-    @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION) private readonly queue: Queue<CartProductRefreshJobData>,
+    @InjectQueue(QUEUE_NAMES.LIST_REFRESH) private readonly queue: Queue<CartProductRefreshJobData>,
     config: ConfigService,
     private readonly policy: ListRescrapePolicy,
   ) {

@@ -1,5 +1,7 @@
 export const QUEUE_NAMES = {
   STOREFRONT_EXTRACTION: 'storefront-extraction',
+  /** Interactive exact-ID offer refreshes must not wait behind catalog discovery. */
+  LIST_REFRESH: 'list-refresh',
   CARD_OPTIMIZATION: 'card-optimization',
 } as const;
 
