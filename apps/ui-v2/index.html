@@ -11,9 +11,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#4a6741" />
     <title>ScoutLGS — Find the cheapest copy at your LGS</title>
+    <style>
+      html {
+        background: #f5f5f5;
+      }
+
+      html.dark {
+        background: #121212;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html:not(.light) {
+          background: #121212;
+        }
+      }
+
+      body,
+      #root {
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      .app-boot-loader {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      .app-boot-loader::after {
+        width: 32px;
+        height: 32px;
+        border: 3px solid rgba(128, 128, 128, 0.32);
+        border-top-color: #248721;
+        border-radius: 50%;
+        content: '';
+        animation: app-boot-spin 700ms linear infinite;
+      }
+
+      @keyframes app-boot-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('theme');
+        const isDark = savedTheme === 'dark' ||
+          (savedTheme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.add(isDark ? 'dark' : 'light');
+      } catch {
+        // The media-query fallback in the style block handles unavailable storage.
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="app-boot-loader" role="status" aria-label="Loading ScoutLGS"></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

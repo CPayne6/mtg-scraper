@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -156,6 +157,7 @@ function BuilderRoute() {
   const [detailedResults, setDetailedResults] = useState<
     Record<string, PriceLookupState>
   >({});
+  const [initialContentReadyForListId, setInitialContentReadyForListId] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const { isRefreshing, refreshProgress, refreshItems, refreshList, dismissRefreshResults } = useListRefresh(listId, entries.length > 0, () => setRefreshNonce((value) => value + 1));
   const results = detailedResults;
@@ -767,6 +769,31 @@ function BuilderRoute() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [performUndo]);
+
+  // The list arrives before the selection effect and selected-card request.
+  // Gate only that first render. Subsequent card selections keep the builder
+  // visible and let SelectedCardPanel show its own loading skeleton.
+  const selectedLookup = selectedName ? results[selectedName] : undefined;
+  const isInitialContentReady = Boolean(list) && (
+    entries.length === 0 || Boolean(selectedName && selectedLookup && selectedLookup.state !== 'pending')
+  );
+  useEffect(() => {
+    if (isInitialContentReady && initialContentReadyForListId !== listId) {
+      setInitialContentReadyForListId(listId);
+    }
+  }, [initialContentReadyForListId, isInitialContentReady, listId]);
+
+  if (loading || (list && initialContentReadyForListId !== listId && !isInitialContentReady)) {
+    return (
+      <Box
+        aria-busy="true"
+        aria-label="Loading card list"
+        sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}
+      >
+        <CircularProgress aria-label="Loading card list" />
+      </Box>
+    );
+  }
 
   if (!list && !loading) {
     return (
