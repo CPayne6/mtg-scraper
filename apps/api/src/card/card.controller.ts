@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Logger, Query, VERSION_NEUTRAL, BadRequestException, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param, Logger, Query, VERSION_NEUTRAL, ParseIntPipe } from '@nestjs/common';
 import { CardService } from './card.service';
 import { CardSearchResponse } from '@scoutlgs/shared';
 import { GetCardDto } from './dto/get-card.dto';
@@ -25,21 +25,6 @@ export class CardController {
     const response = await this.cardService.getCardByOracleId(params.oracleId, params.cardName);
     this.logger.log(`Found ${response.results.length} results for: ${params.cardName}`);
     return response;
-  }
-
-  @Get('bulk')
-  async getCards(
-    @Query('names') rawNames: string | string[],
-  ): Promise<{ results: Record<string, CardSearchResponse> }> {
-    // `names` is a repeated query parameter. Do not split on commas because
-    // commas are valid card-name punctuation (e.g. "Zada, Hedron Grinder").
-    const names = (Array.isArray(rawNames) ? rawNames : [rawNames ?? ''])
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (names.length === 0 || names.length > 150) {
-      throw new BadRequestException('names must contain between 1 and 150 cards');
-    }
-    return { results: await this.cardService.getCardsByName(names) };
   }
 
 }
