@@ -99,14 +99,41 @@ export class StorefrontProcessor implements OnModuleInit {
   async onModuleInit() {
     this.printingMatcher.subscribeToCardDataChanges();
     await this.printingMatcher.warmCaches();
-    // One-time/idempotent backfill for mappings created before card_listing_id
-    // was maintained at the listing-upsert boundary.
-    await this.dataSource.query(
-      `UPDATE shopify_products sp SET card_listing_id = cl.id
-       FROM card_listings cl
-       WHERE sp.card_listing_id IS NULL AND sp.store_id = cl.store_id
-         AND sp.product_url_id = cl.product_url_id`,
-    );
+    await this.backfillShopifyListingMappings();
+  }
+
+  /**
+   * This is an idempotent compatibility backfill, but every Swarm scraper
+   * replica starts it at once after a deployment. Serialize it explicitly:
+   * the broad UPDATE otherwise deadlocks and prevents workers from starting.
+   */
+  private async backfillShopifyListingMappings(): Promise<void> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+      await queryRunner.query('SELECT pg_advisory_xact_lock($1)', [47_384_921]);
+      await queryRunner.query(
+        `UPDATE shopify_products sp SET card_listing_id = cl.id
+         FROM card_listings cl
+         WHERE sp.card_listing_id IS NULL AND sp.store_id = cl.store_id
+           AND sp.product_url_id = cl.product_url_id`,
+      );
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction().catch(() => undefined);
+      const code = (error as { code?: string; driverError?: { code?: string } }).code
+        ?? (error as { driverError?: { code?: string } }).driverError?.code;
+      // Existing product_url_id joins keep refresh lookup correct; do not
+      // sacrifice the entire worker to a transient startup deadlock.
+      if (code === '40P01') {
+        this.logger.warn('Skipping startup Shopify-listing mapping backfill after a database deadlock');
+        return;
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   /**
