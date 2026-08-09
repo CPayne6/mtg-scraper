@@ -50,7 +50,7 @@ export function SavedListsMenu() {
   const handleOpenList = (id: string, name: string) => {
     setAnchor(null);
     navigate({
-      to: '/list/$listId/$slug',
+      to: '/build/$listId/$slug',
       params: { listId: id, slug: slugifyName(name) },
     });
   };

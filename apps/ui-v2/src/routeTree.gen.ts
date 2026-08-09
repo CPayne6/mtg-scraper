@@ -15,7 +15,6 @@ import { Route as ListsRouteImport } from './routes/lists'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CardNameRouteImport } from './routes/card.$name'
-import { Route as ListListIdSlugRouteImport } from './routes/list.$listId.$slug'
 import { Route as CardOracleIdNameRouteImport } from './routes/card.$oracleId.$name'
 import { Route as BuildListIdSlugRouteImport } from './routes/build.$listId.$slug'
 
@@ -49,11 +48,6 @@ const CardNameRoute = CardNameRouteImport.update({
   path: '/card/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ListListIdSlugRoute = ListListIdSlugRouteImport.update({
-  id: '/list/$listId/$slug',
-  path: '/list/$listId/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CardOracleIdNameRoute = CardOracleIdNameRouteImport.update({
   id: '/card/$oracleId/$name',
   path: '/card/$oracleId/$name',
@@ -74,7 +68,6 @@ export interface FileRoutesByFullPath {
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/card/$oracleId/$name': typeof CardOracleIdNameRoute
-  '/list/$listId/$slug': typeof ListListIdSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -85,7 +78,6 @@ export interface FileRoutesByTo {
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/card/$oracleId/$name': typeof CardOracleIdNameRoute
-  '/list/$listId/$slug': typeof ListListIdSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -97,7 +89,6 @@ export interface FileRoutesById {
   '/card/$name': typeof CardNameRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/card/$oracleId/$name': typeof CardOracleIdNameRoute
-  '/list/$listId/$slug': typeof ListListIdSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -110,7 +101,6 @@ export interface FileRouteTypes {
     | '/card/$name'
     | '/build/$listId/$slug'
     | '/card/$oracleId/$name'
-    | '/list/$listId/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -121,7 +111,6 @@ export interface FileRouteTypes {
     | '/card/$name'
     | '/build/$listId/$slug'
     | '/card/$oracleId/$name'
-    | '/list/$listId/$slug'
   id:
     | '__root__'
     | '/'
@@ -132,7 +121,6 @@ export interface FileRouteTypes {
     | '/card/$name'
     | '/build/$listId/$slug'
     | '/card/$oracleId/$name'
-    | '/list/$listId/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -144,7 +132,6 @@ export interface RootRouteChildren {
   CardNameRoute: typeof CardNameRoute
   BuildListIdSlugRoute: typeof BuildListIdSlugRoute
   CardOracleIdNameRoute: typeof CardOracleIdNameRoute
-  ListListIdSlugRoute: typeof ListListIdSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -191,13 +178,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CardNameRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/list/$listId/$slug': {
-      id: '/list/$listId/$slug'
-      path: '/list/$listId/$slug'
-      fullPath: '/list/$listId/$slug'
-      preLoaderRoute: typeof ListListIdSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/card/$oracleId/$name': {
       id: '/card/$oracleId/$name'
       path: '/card/$oracleId/$name'
@@ -224,7 +204,6 @@ const rootRouteChildren: RootRouteChildren = {
   CardNameRoute: CardNameRoute,
   BuildListIdSlugRoute: BuildListIdSlugRoute,
   CardOracleIdNameRoute: CardOracleIdNameRoute,
-  ListListIdSlugRoute: ListListIdSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

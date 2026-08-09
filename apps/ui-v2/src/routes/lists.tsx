@@ -140,7 +140,7 @@ function ListsRoute() {
                 updated={meta.updated}
                 onOpen={() =>
                   navigate({
-                    to: '/list/$listId/$slug',
+                    to: '/build/$listId/$slug',
                     params: { listId: list.id, slug: slugifyName(list.name) },
                   })
                 }

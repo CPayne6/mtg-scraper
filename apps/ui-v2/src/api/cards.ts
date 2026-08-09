@@ -80,17 +80,6 @@ export async function fetchCardById(
   return (await res.json()) as CardSearchResponse;
 }
 
-export async function fetchCardByName(cardName: string, signal?: AbortSignal): Promise<CardSearchResponse> {
-  const results = await fetchCardsByName([cardName], signal);
-  return results[cardName] ?? {
-    cardName,
-    stores: [],
-    priceStats: { min: 0, max: 0, avg: 0, count: 0 },
-    results: [],
-    timestamp: Date.now(),
-  };
-}
-
 export async function fetchScryfallAutocomplete(query: string, signal?: AbortSignal): Promise<string[]> {
   if (!query.trim()) return [];
   return scryfallRequest(`autocomplete:${query.trim().toLowerCase()}`, async (requestSignal) => {
@@ -100,15 +89,6 @@ export async function fetchScryfallAutocomplete(query: string, signal?: AbortSig
     const data = (await res.json()) as { data?: string[] };
     return Array.isArray(data.data) ? data.data : [];
   }, signal);
-}
-
-export async function fetchCardsByName(cardNames: string[], signal?: AbortSignal): Promise<Record<string, CardSearchResponse>> {
-  const params = new URLSearchParams();
-  cardNames.slice(0, 150).forEach((name) => params.append('names', name));
-  const res = await fetch(`${API_BASE}/api/card/bulk?${params.toString()}`, { signal });
-  if (!res.ok) throw new CardFetchError(`Bulk card lookup failed (${res.status})`, res.status);
-  const data = (await res.json()) as { results: Record<string, CardSearchResponse> };
-  return data.results;
 }
 
 export async function fetchScryfallCard(name: string, signal?: AbortSignal): Promise<ScryfallCardOption> {
