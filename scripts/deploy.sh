@@ -70,28 +70,61 @@ validate_secrets() {
     log_info "All required secrets exist"
 }
 
-# Function to check if a service is healthy via Docker Swarm
+# Wait for the exact Swarm service to converge. Do not use `docker service ls`
+# name filtering here: it is a substring match, so `scoutlgs_auth` also matches
+# `scoutlgs_auth-postgres`. During a start-first update Docker also keeps the
+# draining task in the replica count temporarily, even though it is no longer a
+# desired running task.
 check_service_health() {
     local service=$1
     local full_service_name="${STACK_NAME}_${service}"
+    local service_id
+    local desired_replicas
+    local update_state
+    local running_replicas
+    local task_states
 
     log_info "Checking health of $full_service_name"
 
+    if ! service_id=$(docker service inspect --format '{{.ID}}' "$full_service_name" 2>/dev/null); then
+        log_error "Service $full_service_name does not exist"
+        return 1
+    fi
+
+    if ! desired_replicas=$(docker service inspect --format '{{.Spec.Mode.Replicated.Replicas}}' "$service_id" 2>/dev/null); then
+        log_error "Could not determine desired replicas for $full_service_name"
+        return 1
+    fi
+
+    if ! [[ "$desired_replicas" =~ ^[1-9][0-9]*$ ]]; then
+        log_error "Service $full_service_name does not use a positive replicated-service mode"
+        return 1
+    fi
+
     for i in $(seq 1 $HEALTH_CHECK_RETRIES); do
-        # Check if service has running replicas
-        local replicas=$(docker service ls --filter "name=${full_service_name}" --format "{{.Replicas}}" 2>/dev/null)
+        update_state=$(docker service inspect --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}completed{{end}}' "$service_id" 2>/dev/null || true)
+        case "$update_state" in
+            paused|rollback_started|rollback_paused|rollback_completed)
+                log_error "$full_service_name update is $update_state"
+                break
+                ;;
+        esac
 
-        if [ -n "$replicas" ]; then
-            local current=$(echo "$replicas" | cut -d'/' -f1)
-            local desired=$(echo "$replicas" | cut -d'/' -f2)
+        # Count only tasks that Swarm currently desires to run. A start-first
+        # deployment can have an additional task whose desired state is
+        # shutdown while it drains; it must not make a healthy rollout fail.
+        task_states=$(docker service ps "$service_id" --filter desired-state=running --format '{{.CurrentState}}' 2>/dev/null || true)
+        running_replicas=$(printf '%s\n' "$task_states" | awk '$1 == "Running" { count++ } END { print count + 0 }')
 
-            if [ "$current" = "$desired" ] && [ "$current" != "0" ]; then
-                log_info "$full_service_name is healthy ($replicas replicas)"
-                return 0
-            fi
+        # A task is not considered deployed merely because its container has
+        # started. Require Swarm to mark the update complete as well; this
+        # waits for a start-first replacement to finish draining its old task.
+        if [ "$update_state" = "completed" ] && [ "$running_replicas" -eq "$desired_replicas" ]; then
+            log_info "$full_service_name is healthy ($running_replicas/$desired_replicas desired tasks running)"
+            return 0
         fi
 
-        log_warn "Health check attempt $i/$HEALTH_CHECK_RETRIES: $full_service_name has $replicas replicas"
+        log_warn "Health check attempt $i/$HEALTH_CHECK_RETRIES: $full_service_name has $running_replicas/$desired_replicas desired tasks running (update: $update_state)"
         sleep $HEALTH_CHECK_INTERVAL
     done
 
@@ -170,7 +203,7 @@ rollback() {
     cd "$PROJECT_DIR"
 
     # Try to rollback each service
-    for service in api ui scheduler scraper; do
+    for service in api ui scheduler scraper cloudflared; do
         local full_service_name="${STACK_NAME}_${service}"
         log_info "Rolling back $full_service_name..."
         docker service rollback "$full_service_name" 2>/dev/null || log_warn "Could not rollback $full_service_name"
@@ -219,8 +252,9 @@ deploy() {
     log_info "Using repository owner: ${GITHUB_REPOSITORY_OWNER:-unknown}"
     log_info "Using image tag: ${IMAGE_TAG:-latest}"
 
-    # Pull images for all services
-    for service in api ui scheduler scraper; do
+    # Pull every first-party image before scheduling the update. This avoids
+    # consuming the convergence timeout while a task downloads its image.
+    for service in api auth ui scheduler scraper optimizer; do
         image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/scoutlgs-${service}:${IMAGE_TAG:-latest}"
         log_info "Pulling ${image}..."
         if ! docker pull "$image"; then
@@ -230,7 +264,9 @@ deploy() {
 
     # Deploy stack with Docker Swarm
     log_info "Deploying stack to Docker Swarm..."
-    if ! docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME" --with-registry-auth; then
+    # Wait for Swarm to schedule the requested update before running our
+    # service-level convergence checks below.
+    if ! docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME" --with-registry-auth --detach=false; then
         log_error "Docker stack deploy failed"
         rollback
         exit 1
@@ -281,6 +317,13 @@ deploy() {
     fi
 
     if ! check_service_health "ui"; then
+        rollback
+        exit 1
+    fi
+
+    # The public health checks in CI route through this service. A running API
+    # alone cannot serve scoutlgs.ca if the Cloudflare Tunnel task is down.
+    if ! check_service_health "cloudflared"; then
         rollback
         exit 1
     fi
