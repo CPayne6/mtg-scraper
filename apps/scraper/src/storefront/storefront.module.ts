@@ -14,15 +14,17 @@ import {
 } from '@scoutlgs/core';
 import { ExtractionModule } from '../extraction/extraction.module';
 import { StorefrontProcessor } from './storefront.processor';
+import { ListRefreshProcessor } from './list-refresh.processor';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Store, ProductUrl, ShopifyProduct, UnmatchedCard, CardListing, CardVariant]),
     QueueModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.STOREFRONT_EXTRACTION }),
+    BullModule.registerQueue({ name: QUEUE_NAMES.LIST_REFRESH }),
     PlatformModule,
     ExtractionModule,
   ],
-  providers: [StorefrontProcessor],
+  providers: [StorefrontProcessor, ListRefreshProcessor],
 })
 export class StorefrontModule {}

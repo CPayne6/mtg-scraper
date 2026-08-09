@@ -19,6 +19,7 @@ import { QueueService } from './queue.service';
     }),
     BullModule.registerQueue(
       { name: QUEUE_NAMES.STOREFRONT_EXTRACTION },
+      { name: QUEUE_NAMES.LIST_REFRESH },
       { name: QUEUE_NAMES.CARD_OPTIMIZATION },
     ),
   ],
