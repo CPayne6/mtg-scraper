@@ -2,6 +2,7 @@ import type { PriceLookupState } from '@/hooks/useListPrices';
 import type { ListHistoryEntry } from '@/hooks/useListEditor';
 import type { ListCardEntry } from '@/api/lists';
 import type { SortBy } from '../SortByMenu';
+import type { ListRefreshItem } from '@/api/lists';
 
 export type CardListPanelProps = {
   entries: ListCardEntry[];
@@ -25,4 +26,9 @@ export type CardListPanelProps = {
   hasMorePrices: boolean;
   isLoadingMorePrices: boolean;
   onLoadMorePrices: () => void;
+  isRefreshing: boolean;
+  refreshProgress: number;
+  refreshItems: ListRefreshItem[];
+  onRefresh: () => void;
+  onDismissRefreshResults: () => void;
 };

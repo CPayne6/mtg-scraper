@@ -57,6 +57,16 @@ export interface ListWithPricesResponse {
   unresolved: string[];
 }
 export type ListCardEntry = CheapestVariant;
+export type ListRefreshItem = {
+  variantId: number;
+  title: string;
+  cardKey?: string;
+  outcome: 'refreshed' | 'price_changed' | 'unavailable' | 'unsupported' | 'unconfirmed';
+  previousPrice: number;
+  price?: number;
+  message?: string;
+};
+export type ListRefreshStatus = { jobId: string; status: 'queued' | 'running' | 'completed' | 'failed'; progress: number; items: ListRefreshItem[]; failedReason?: string };
 
 export interface SelectedOptimizedOffer {
   wantedCardKey: string;
@@ -150,6 +160,15 @@ async function readError(response: Response): Promise<string> {
     const body = JSON.parse(text) as { message?: unknown; error?: unknown };
     if (Array.isArray(body.message)) return body.message.join(', ');
     if (typeof body.message === 'string') return body.message;
+    if (body.message && typeof body.message === 'object') {
+      const message = body.message as { message?: unknown; retryAfterSec?: unknown };
+      if (typeof message.message === 'string') {
+        if (typeof message.retryAfterSec === 'number') {
+          return `${message.message}. Try again in ${Math.ceil(message.retryAfterSec / 60)} minute${message.retryAfterSec > 60 ? 's' : ''}.`;
+        }
+        return message.message;
+      }
+    }
     if (typeof body.error === 'string') return body.error;
   } catch {
     return text;
@@ -200,6 +219,14 @@ export function fetchList(listId: string, signal?: AbortSignal): Promise<ListWit
     `/api/v1/lists/${encodeURIComponent(listId)}`,
     { signal },
   );
+}
+
+export function startListRefresh(listId: string): Promise<{ jobId: string; status: 'queued'; cooldownExpiresAt: string }> {
+  return request(`/api/v1/lists/${encodeURIComponent(listId)}/refresh`, { method: 'POST' });
+}
+
+export function fetchListRefresh(listId: string, jobId: string): Promise<ListRefreshStatus> {
+  return request(`/api/v1/lists/${encodeURIComponent(listId)}/refresh/${encodeURIComponent(jobId)}`);
 }
 
 export function createListOptimization(

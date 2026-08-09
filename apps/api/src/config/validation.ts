@@ -17,4 +17,5 @@ export const validationSchema = Joi.object({
     .uri()
     .default('http://scheduler:5001'),
   ENABLE_DELIVERY_ADDRESS_QUOTES: Joi.boolean().truthy('true').falsy('false').default(false),
+  CART_RESCRAPE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
 });

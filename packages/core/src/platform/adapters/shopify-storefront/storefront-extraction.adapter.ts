@@ -18,12 +18,14 @@ import {
   PRODUCT_CREATED_AT_DESC_QUERY,
   PRODUCTS_BY_CREATED_AT_QUERY,
   PRODUCTS_BY_QUERY,
+  PRODUCTS_BY_IDS_QUERY,
 } from './storefront.queries';
 import type {
   StorefrontProduct,
   CollectionProductsData,
   ProductsQueryData,
   ProductByHandleData,
+  ProductsByIdsData,
 } from './storefront.types';
 
 @Injectable()
@@ -160,6 +162,46 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       isArtSeries: this.isArtSeriesProduct(store, product),
       variants: this.extractVariantsFromProduct(store, product),
     })) };
+  }
+
+  /**
+   * Fetch known products directly, rather than relying on an undocumented
+   * `id:` product-search filter. Numeric database IDs are normalized to the
+   * Storefront global-ID form required by `nodes`.
+   */
+  async fetchProductsByIds(
+    store: Store,
+    productIds: string[],
+  ): Promise<{
+    products: Array<{
+      shopifyProductId: string;
+      handle: string;
+      rawProductTitle: string;
+      updatedAt: Date;
+      isArtSeries: boolean;
+      variants: ExtractedCardVariant[];
+    }>;
+  }> {
+    const ids = [...new Set(productIds)]
+      .slice(0, 250)
+      .map((id) => id.startsWith('gid://') ? id : `gid://shopify/Product/${id}`);
+    if (!ids.length) return { products: [] };
+    const data = await this.storefrontClient.query<ProductsByIdsData>(
+      store,
+      PRODUCTS_BY_IDS_QUERY,
+      { ids },
+    );
+    const products = data.nodes
+      .filter((product): product is StorefrontProduct => Boolean(product?.id && product.handle && product.variants))
+      .map((product) => ({
+        shopifyProductId: product.id.split('/').pop()!,
+        handle: product.handle,
+        rawProductTitle: product.title,
+        updatedAt: new Date(product.updatedAt),
+        isArtSeries: this.isArtSeriesProduct(store, product),
+        variants: this.extractVariantsFromProduct(store, product),
+      }));
+    return { products };
   }
 
   /**

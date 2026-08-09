@@ -175,6 +175,45 @@ export const PRODUCTS_BY_QUERY = `
 `;
 
 /**
+ * Refetch known products by their globally unique Shopify IDs. This is
+ * intentionally not a `products(query:)` search: Storefront's `nodes` query
+ * is the documented direct lookup for up to 250 IDs and has no pagination.
+ */
+export const PRODUCTS_BY_IDS_QUERY = `
+  query ProductsByIds($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Product {
+        id
+        handle
+        title
+        vendor
+        productType
+        descriptionHtml
+        availableForSale
+        updatedAt
+        tags
+        onlineStoreUrl
+        images(first: 10) {
+          edges { node { url altText } }
+        }
+        variants(first: 100) {
+          edges {
+            node {
+              id
+              title
+              sku
+              availableForSale
+              price { amount currencyCode }
+              selectedOptions { name value }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
  * Cursor-paginated products query for the date-bucket strategy.
  *
  * `sortKey: CREATED_AT` matches the bucketing dimension, so cursor pagination

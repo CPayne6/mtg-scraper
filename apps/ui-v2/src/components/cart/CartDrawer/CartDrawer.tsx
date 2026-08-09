@@ -55,7 +55,6 @@ export function CartDrawer() {
 
   const storeKeys = Object.keys(byStore);
   const hasAnyVariant = items.some((item) => item.variant_id);
-
   const goToCheckout = () => {
     if (!hasAnyVariant) {
       enqueueSnackbar(
@@ -100,9 +99,9 @@ export function CartDrawer() {
             {storeKeys.length === 1 ? 'store' : 'stores'}
           </Typography>
         </Box>
-        <IconButton onClick={close} aria-label="Close" size="small">
-          <Close />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton onClick={close} aria-label="Close" size="small"><Close /></IconButton>
+        </Box>
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', px: 2.5, pt: 0, pb: 1.75, minHeight: 0, bgcolor: 'background.default' }}>

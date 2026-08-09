@@ -4,7 +4,7 @@ import { StorefrontPaginationLimitError } from './pagination-limit-error';
 import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { Condition } from '@scoutlgs/shared';
 import type { Store } from '../../../database/store.entity';
-import type { StorefrontProduct, ProductByHandleData, CollectionProductsData, ProductsQueryData } from './storefront.types';
+import type { StorefrontProduct, ProductByHandleData, CollectionProductsData, ProductsQueryData, ProductsByIdsData } from './storefront.types';
 import type { ICardDetailExtractor } from '../shopify/card-detail-extractor.interface';
 
 function createMockStore(overrides: Partial<Store> = {}): Store {
@@ -344,6 +344,30 @@ describe('StorefrontExtractionAdapter', () => {
       }
 
       expect(results).toHaveLength(0);
+    });
+  });
+
+  describe('fetchProductsByIds', () => {
+    it('uses the direct nodes lookup with global IDs and no search filters', async () => {
+      const product = createMockProduct();
+      mockClient.query.mockResolvedValue({ nodes: [product, null] } as ProductsByIdsData);
+
+      const result = await adapter.fetchProductsByIds(createMockStore(), ['111', 'gid://shopify/Product/222', '111']);
+
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      const [, query, variables] = mockClient.query.mock.calls[0];
+      expect(query).toContain('nodes(ids: $ids)');
+      expect(query).not.toContain('products(first:');
+      expect(variables).toEqual({ ids: ['gid://shopify/Product/111', 'gid://shopify/Product/222'] });
+      expect(result.products).toHaveLength(1);
+      expect(result.products[0].shopifyProductId).toBe('111');
+    });
+
+    it('bounds one direct lookup to Shopify\'s 250-ID nodes limit', async () => {
+      mockClient.query.mockResolvedValue({ nodes: [] } as ProductsByIdsData);
+      await adapter.fetchProductsByIds(createMockStore(), Array.from({ length: 251 }, (_, index) => String(index + 1)));
+      const [, , variables] = mockClient.query.mock.calls[0];
+      expect(variables.ids).toHaveLength(250);
     });
   });
 

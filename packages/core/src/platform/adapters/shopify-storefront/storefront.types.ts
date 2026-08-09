@@ -99,3 +99,8 @@ export interface ProductsQueryData {
     pageInfo: PageInfo;
   };
 }
+
+/** `nodes` can contain nulls or other Node implementors; callers keep Products only. */
+export interface ProductsByIdsData {
+  nodes: Array<StorefrontProduct | null>;
+}

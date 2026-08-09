@@ -17,6 +17,7 @@ import {
   CardCart,
   CardList,
   CardListEntry,
+  ShopifyProduct,
 } from '@scoutlgs/core';
 import { AuthModule } from '../auth/auth.module';
 import { CardsController } from './cards/cards.controller';
@@ -29,6 +30,8 @@ import { ListsController } from './lists/lists.controller';
 import { ListsService } from './lists/lists.service';
 import { CardNameResolverService } from './shared/card-name-resolver.service';
 import { DeliveryQuoteService } from './lists/delivery-quote.service';
+import { ListRefreshService } from './lists/list-refresh.service';
+import { ListRescrapePolicy } from './lists/list-rescrape.policy';
 
 @Module({
   imports: [
@@ -36,7 +39,7 @@ import { DeliveryQuoteService } from './lists/delivery-quote.service';
       CardName, CardPrinting, CardListing, CardVariant,
       ScryfallSet, Store,
       TokenName, TokenPrinting, TokenListing, TokenVariant,
-      CardCart, CardList, CardListEntry,
+      CardCart, CardList, CardListEntry, ShopifyProduct,
     ]),
     StoreModule,
     PlatformModule,
@@ -46,6 +49,6 @@ import { DeliveryQuoteService } from './lists/delivery-quote.service';
     CheckoutModule,
   ],
   controllers: [CardsController, TokensController, ListsController],
-  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService],
+  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService, ListRefreshService, ListRescrapePolicy],
 })
 export class V1Module {}
