@@ -11,6 +11,10 @@ import {
   StorefrontBucketJobResult,
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
+  CartProductRefreshJobData,
+  CartProductRefreshJobResult,
+  CartRefreshItemResult,
+  StorefrontKnownOfferRecoveryJobData,
 } from '@scoutlgs/shared';
 import {
   Store,
@@ -18,6 +22,7 @@ import {
   ShopifyProduct,
   UnmatchedCard,
   CardListing,
+  CardVariant,
   ExtractionHttpError,
   PlatformAdapterFactory,
   StorefrontPaginationLimitError,
@@ -53,13 +58,10 @@ const STOREFRONT_JOB_OPTS = {
   backoff: { type: 'exponential' as const, delay: 5000 },
 };
 
-// Cap recursive bucket splitting. F2F's empirical worst case was a single
-// 10-day migration window with >25K products (Shopify catalog import on
-// 2025-01-20/21 brought in ~50K cards at once). Yearly bucket → 6mo → 3mo →
-// 6wk → 3wk → 10d → 5d → 2.5d → ~30hr covers that without abandonment.
-// Hitting 25K at depth 8 means >800K products in a ~30hr window — that's a
-// genuine outlier and surfacing it as an error is the right move.
-const MAX_BUCKET_DEPTH = 8;
+// Storefront's documented nodes(ids:) query accepts up to 250 IDs. Keep all
+// exact-ID refresh paths at that limit so large refreshes do not serialize
+// five times as many network round trips.
+const STOREFRONT_NODES_BATCH_SIZE = 250;
 
 /**
  * Processes one page (250 products) per job.
@@ -82,6 +84,8 @@ export class StorefrontProcessor implements OnModuleInit {
     private readonly unmatchedCardRepository: Repository<UnmatchedCard>,
     @InjectRepository(CardListing)
     private readonly cardListingRepository: Repository<CardListing>,
+    @InjectRepository(CardVariant)
+    private readonly cardVariantRepository: Repository<CardVariant>,
     @InjectQueue(QUEUE_NAMES.STOREFRONT_EXTRACTION)
     private readonly storefrontQueue: Queue,
     private readonly dataSource: DataSource,
@@ -95,6 +99,14 @@ export class StorefrontProcessor implements OnModuleInit {
   async onModuleInit() {
     this.printingMatcher.subscribeToCardDataChanges();
     await this.printingMatcher.warmCaches();
+    // One-time/idempotent backfill for mappings created before card_listing_id
+    // was maintained at the listing-upsert boundary.
+    await this.dataSource.query(
+      `UPDATE shopify_products sp SET card_listing_id = cl.id
+       FROM card_listings cl
+       WHERE sp.card_listing_id IS NULL AND sp.store_id = cl.store_id
+         AND sp.product_url_id = cl.product_url_id`,
+    );
   }
 
   /**
@@ -183,8 +195,9 @@ export class StorefrontProcessor implements OnModuleInit {
    *   - `StorefrontPaginationLimitError` (Shopify's documented 25K cap) →
    *     halves the date range and enqueues two child buckets at depth+1
    *
-   * Cap at MAX_BUCKET_DEPTH so a genuinely pathological store can't recurse
-   * forever — log and abandon at the cap.
+   * Ranges are split until their millisecond timestamp precision is exhausted.
+   * An unsplittable 25K bucket cannot be discovered exhaustively through
+   * Storefront pagination, so known local offers are recovered separately.
    */
   @Process({
     name: JOB_NAMES.STOREFRONT_BUCKET,
@@ -224,9 +237,14 @@ export class StorefrontProcessor implements OnModuleInit {
       nextCursor = result.nextCursor;
     } catch (error) {
       if (error instanceof StorefrontPaginationLimitError) {
-        if (bucketDepth >= MAX_BUCKET_DEPTH) {
+        if (!canSplitDateRange(createdAtStart, createdAtEnd)) {
           this.logger.error(
-            `${store.name}: bucket [${createdAtStart}..${createdAtEnd}) hit 25K at max depth ${bucketDepth} — abandoning`,
+            `${store.name}: INCOMPLETE DISCOVERY: bucket [${createdAtStart}..${createdAtEnd}) hit Shopify's 25K limit at timestamp precision; recovering known offers only`,
+          );
+          await this.storefrontQueue.add(
+            JOB_NAMES.STOREFRONT_KNOWN_OFFER_RECOVERY,
+            { storeId, createdAtStart, createdAtEnd, discoveryRunId } satisfies StorefrontKnownOfferRecoveryJobData,
+            STOREFRONT_JOB_OPTS,
           );
           return {
             storeId,
@@ -237,8 +255,8 @@ export class StorefrontProcessor implements OnModuleInit {
             errors: 0,
             isBucketComplete: false,
             wasSplit: false,
-            success: false,
-            error: 'Max bucket depth exceeded',
+            success: true,
+            error: 'Incomplete discovery: recovered known local offers only',
           };
         }
 
@@ -354,6 +372,48 @@ export class StorefrontProcessor implements OnModuleInit {
   }
 
   /**
+   * Fetches only already-mapped Shopify IDs. This is deliberately a nodes(ids:)
+   * recovery, never a catalog/discovery query: Shopify cannot paginate an
+   * irreducibly dense created_at timestamp bucket past 25K products.
+   */
+  @Process({ name: JOB_NAMES.STOREFRONT_KNOWN_OFFER_RECOVERY, concurrency: 2 })
+  async recoverKnownOffers(job: Job<StorefrontKnownOfferRecoveryJobData>) {
+    const { storeId, createdAtStart, createdAtEnd, discoveryRunId } = job.data;
+    const store = await this.storeRepository.findOne({ where: { id: storeId } });
+    if (!store) throw new Error(`Store ${storeId} not found`);
+    // product_url_id is the durable association. Do not depend on the direct
+    // card_listing_id backfill being complete before recovery starts.
+    const known = await this.dataSource.query<{ shopifyProductId: string; cardListingId: number }[]>(
+      `SELECT sp.shopify_product_id AS "shopifyProductId", cl.id AS "cardListingId"
+       FROM shopify_products sp
+       INNER JOIN card_listings cl ON cl.store_id = sp.store_id
+         AND cl.product_url_id = sp.product_url_id
+       WHERE sp.store_id = $1 AND sp.match_status = 'matched'`,
+      [storeId],
+    );
+    const adapter = this.platformAdapterFactory.getExtractionAdapter(store.platformType!) as StorefrontExtractionAdapter;
+    let recovered = 0;
+    let errors = 0;
+    for (let offset = 0; offset < known.length; offset += STOREFRONT_NODES_BATCH_SIZE) {
+      const batch = known.slice(offset, offset + STOREFRONT_NODES_BATCH_SIZE);
+      try {
+        const { products } = await adapter.fetchProductsByIds(store, batch.map((row) => row.shopifyProductId));
+        const returned = new Set(products.map((product) => product.shopifyProductId));
+        const missingListingIds = batch.filter((row) => !returned.has(row.shopifyProductId)).map((row) => row.cardListingId!);
+        // Only a successful exact-ID response is evidence of absence.
+        if (missingListingIds.length) await this.cardVariantRepository.update({ cardListingId: In(missingListingIds) }, { inStock: false, quantity: 0 });
+        if (products.length) await this.processPage(products, storeId, discoveryRunId);
+        recovered += products.length;
+      } catch (error) {
+        errors++;
+        this.logger.warn(`${store.name}: known-offer recovery batch ${offset} failed; preserved catalog data: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    this.logger.error(`${store.name}: INCOMPLETE DISCOVERY remains for [${createdAtStart}..${createdAtEnd}); recovered ${recovered}/${known.length} known offers, failures=${errors}. Unknown Shopify products cannot be recovered without pagination.`);
+    return { storeId, recovered, known: known.length, errors, success: errors === 0, incompleteDiscovery: true };
+  }
+
+  /**
    * Re-extract unmatched products from Shopify.
    *
    * Loads the store's unmatched product IDs (from shopify_products where
@@ -408,7 +468,7 @@ export class StorefrontProcessor implements OnModuleInit {
     let refetched = 0;
     let errors = 0;
 
-    // Re-fetch in batches via the products(query: "id:X OR id:Y OR ...") API.
+    // Re-fetch known IDs directly through Storefront's nodes(ids:) API.
     // Each batch:
     //   1. Fetch from Shopify first — if this fails, no DB changes
     //   2. Delete the batch's stale unmatched_cards rows
@@ -417,19 +477,16 @@ export class StorefrontProcessor implements OnModuleInit {
     //
     // This ordering limits data loss on failure to a single 50-product batch
     // instead of the entire job's remaining products.
-    const BATCH_SIZE = 50;
+    const BATCH_SIZE = STOREFRONT_NODES_BATCH_SIZE;
     for (let i = 0; i < unmatched.length; i += BATCH_SIZE) {
       const batch = unmatched.slice(i, i + BATCH_SIZE);
-      const idQuery = batch
-        .map((p) => `id:${p.shopifyProductId}`)
-        .join(' OR ');
       const batchProductUrlIds = batch
         .map((p) => p.productUrlId)
         .filter((id): id is number => id != null);
 
       try {
         // 1. Fetch first — pre-commit to nothing if Shopify fails
-        const { products } = await adapter.fetchProductsByQuery(store, idQuery);
+        const { products } = await adapter.fetchProductsByIds(store, batch.map((p) => p.shopifyProductId));
         refetched += products.length;
 
         if (products.length === 0) continue;
@@ -486,6 +543,102 @@ export class StorefrontProcessor implements OnModuleInit {
       errors,
       success: true,
     };
+  }
+
+  /** Re-fetches bounded, known Shopify products for the cart cards only. */
+  @Process({ name: JOB_NAMES.CART_PRODUCT_REFRESH, concurrency: 2 })
+  async refreshCartProducts(job: Job<CartProductRefreshJobData>): Promise<CartProductRefreshJobResult> {
+    // The request service calculates this before enqueueing. Retain the
+    // derived fallback so older queued jobs remain refreshable.
+    const totalProducts = job.data.totalProducts ?? job.data.targets.reduce((total, target) => total + target.products.length, 0);
+    let completedProducts = 0;
+    let lastPublishedProgress = 0;
+    let progressWrite = Promise.resolve();
+    const reportProgress = async (count: number) => {
+      completedProducts += count;
+      const completedPercent = totalProducts === 0 ? 100 : (completedProducts / totalProducts) * 100;
+      // Publish at most once per 5% boundary. This gives the client useful,
+      // stable information while limiting progression writes to 20 per job.
+      const progress = Math.min(95, Math.floor(completedPercent / 5) * 5);
+      if (progress <= lastPublishedProgress) return;
+      lastPublishedProgress = progress;
+      const completedAtWrite = completedProducts;
+      // Store workers complete independently; serialize Redis writes so a
+      // slower earlier batch cannot overwrite a newer percentage.
+      progressWrite = progressWrite.then(async () => {
+        await this.setJobProgress(job, progress);
+        this.logger.log(`cart-product-refresh ${job.id}: ${progress}% (${completedAtWrite}/${totalProducts})`);
+      });
+      await progressWrite;
+    };
+    await this.setJobProgress(job, totalProducts === 0 ? 100 : 0);
+    const outcomes = new Map<number, CartRefreshItemResult>(job.data.snapshot.map((item) => [item.variantId, {
+      variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice,
+      outcome: (!item.storeId || !item.shopifyProductId ? 'unsupported' : 'unconfirmed') as import('@scoutlgs/shared').CartRefreshOutcome,
+    }]));
+
+    // Dispatch every exact-ID batch immediately. StorefrontClient's shared
+    // per-store limiter controls the actual request rate, so this keeps the
+    // worker fully utilized without bypassing Shopify throttle protection.
+    await Promise.all(job.data.targets.map(async (target) => {
+      try {
+        const store = await this.storeRepository.findOne({ where: { id: target.storeId } });
+        if (!store) throw new Error('Store no longer exists');
+        const adapter = this.platformAdapterFactory.getExtractionAdapter(store.platformType!) as StorefrontExtractionAdapter;
+        // Each nodes(ids:) request remains bounded to Shopify's 250-ID limit;
+        // the requests themselves may run in parallel.
+        await Promise.all(Array.from(
+          { length: Math.ceil(target.products.length / STOREFRONT_NODES_BATCH_SIZE) },
+          async (_, index) => {
+          const offset = index * STOREFRONT_NODES_BATCH_SIZE;
+          const batch = target.products.slice(offset, offset + STOREFRONT_NODES_BATCH_SIZE);
+          const batchIds = new Set(batch.map((product) => product.productId));
+          const targetItems = job.data.snapshot.filter((item) => item.storeId === target.storeId && item.shopifyProductId && batchIds.has(item.shopifyProductId));
+          try {
+            const { products } = await adapter.fetchProductsByIds(store, batch.map(({ productId }) => productId));
+            const returned = new Set(products.map((product) => product.shopifyProductId));
+            const missing = batch.filter((product) => !returned.has(product.productId));
+            const missingListingIds = missing.flatMap((product) => product.listingIds);
+            // A confirmed absent product invalidates every locally known offer
+            // for that product, not merely the cart's selected variant.
+            if (missingListingIds.length) await this.cardVariantRepository.update({ cardListingId: In(missingListingIds) }, { inStock: false, quantity: 0 });
+            for (const item of targetItems.filter((item) => !returned.has(item.shopifyProductId!))) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice, outcome: 'unavailable' });
+            const processed = products.length ? await this.processPage(products, store.id) : undefined;
+            if (processed && processed.errors > 0) {
+              for (const item of targetItems.filter((item) => returned.has(item.shopifyProductId!))) {
+                outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice, outcome: 'unconfirmed', message: 'Listing extraction did not complete' });
+              }
+              await reportProgress(batch.length);
+              return;
+            }
+            const refreshed = await this.cardVariantRepository.find({ where: { id: In(targetItems.filter((item) => returned.has(item.shopifyProductId!)).map((item) => item.variantId)) } });
+            const byId = new Map(refreshed.map((variant) => [variant.id, variant]));
+            for (const item of targetItems) {
+              if (!returned.has(item.shopifyProductId!)) continue;
+              const variant = byId.get(item.variantId);
+              if (!variant || !variant.inStock) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice, outcome: 'unavailable' });
+              else outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice, price: Number(variant.price), outcome: Number(variant.price) !== item.previousPrice ? 'price_changed' : 'refreshed' });
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            for (const item of targetItems) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice, outcome: 'unconfirmed', message });
+            this.logger.warn(`cart-product-refresh store ${target.storeId} batch ${offset}: ${message}`);
+          }
+          await reportProgress(batch.length);
+          },
+        ));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const targetItems = job.data.snapshot.filter((item) => item.storeId === target.storeId && item.shopifyProductId);
+        for (const item of targetItems) outcomes.set(item.variantId, { variantId: item.variantId, title: item.title, cardKey: item.cardKey, previousPrice: item.previousPrice, outcome: 'unconfirmed', message });
+        this.logger.warn(`cart-product-refresh store ${target.storeId}: ${message}`);
+        await reportProgress(target.products.length);
+      }
+    }));
+    await progressWrite;
+    await this.setJobProgress(job, 100);
+    this.logger.log(`cart-product-refresh ${job.id}: 100% (${completedProducts}/${totalProducts})`);
+    return { items: [...outcomes.values()], success: true };
   }
 
   // ---------------------------------------------------------------------------
@@ -565,6 +718,7 @@ export class StorefrontProcessor implements OnModuleInit {
       storeId,
       knownProducts.map(({ product }) => product),
     );
+    await this.reconcileShopifyListingMappings(storeId, knownProducts.map(({ productUrlId }) => productUrlId));
 
     // Step 4: New products — full pipeline
     if (newProducts.length > 0) {
@@ -660,6 +814,7 @@ export class StorefrontProcessor implements OnModuleInit {
       if (shopifyInserts.length > 0) {
         await this.bulkUpsertShopifyProducts(storeId, shopifyInserts);
       }
+      await this.reconcileShopifyListingMappings(storeId, [...productUrlMap.values()]);
     }
 
     return {
@@ -785,6 +940,19 @@ export class StorefrontProcessor implements OnModuleInit {
       .execute();
   }
 
+  /** The listing is durable at product-url upsert time; keep the optional
+   * direct mapping in sync for fast lookups while retaining URL fallback. */
+  private async reconcileShopifyListingMappings(storeId: number, productUrlIds: number[]): Promise<void> {
+    if (!productUrlIds.length) return;
+    await this.shopifyProductRepository.query(
+      `UPDATE shopify_products sp SET card_listing_id = cl.id
+       FROM card_listings cl
+       WHERE sp.store_id = $1 AND sp.product_url_id = cl.product_url_id
+         AND cl.store_id = $1 AND sp.product_url_id = ANY($2)`,
+      [storeId, productUrlIds],
+    );
+  }
+
   private async bulkUpdateShopifyProductTitles(
     storeId: number,
     products: ExtractedProduct[],
@@ -871,6 +1039,20 @@ export class StorefrontProcessor implements OnModuleInit {
     });
     return true;
   }
+
+  /** @nestjs/bull workers expose Bull's progress(value), while the queue
+   * client uses BullMQ's updateProgress(value). Support both at this boundary. */
+  private async setJobProgress(job: Job, progress: number): Promise<void> {
+    const queueJob = job as unknown as {
+      updateProgress?: (value: number) => Promise<void>;
+      progress?: (value: number) => Promise<void>;
+    };
+    if (typeof queueJob.updateProgress === 'function') {
+      await queueJob.updateProgress(progress);
+    } else if (typeof queueJob.progress === 'function') {
+      await queueJob.progress(progress);
+    }
+  }
 }
 
 /**
@@ -916,4 +1098,9 @@ export function halveDateRange(
     { start, end: mid },
     { start: mid, end },
   ];
+}
+
+/** Shopify's ISO filters are millisecond-precise; do not create empty ranges. */
+export function canSplitDateRange(start: string, end: string): boolean {
+  return new Date(end).getTime() - new Date(start).getTime() > 1;
 }

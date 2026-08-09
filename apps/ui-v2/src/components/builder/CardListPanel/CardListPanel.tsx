@@ -2,11 +2,17 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
+import Badge from '@mui/material/Badge';
+import Popover from '@mui/material/Popover';
+import Tooltip from '@mui/material/Tooltip';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
   Add as AddIcon,
   AddShoppingCart,
   CheckBox,
   CheckBoxOutlineBlank,
+  Refresh,
 } from '@mui/icons-material';
 import { CardListRow } from '../CardListRow';
 import { SortByMenu } from '../SortByMenu';
@@ -57,11 +63,17 @@ export function CardListPanel({
   hasMorePrices,
   isLoadingMorePrices,
   onLoadMorePrices,
+  isRefreshing,
+  refreshProgress,
+  refreshItems,
+  onRefresh,
+  onDismissRefreshResults,
 }: CardListPanelProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const [artScrollRoot, setArtScrollRoot] = useState<HTMLDivElement | null>(null);
+  const [refreshAnchor, setRefreshAnchor] = useState<HTMLElement | null>(null);
   const addAnchorRef = useRef<HTMLButtonElement | null>(null);
   const historyAnchorRef = useRef<HTMLButtonElement | null>(null);
 
@@ -76,6 +88,16 @@ export function CardListPanel({
     [entries, sortBy, results],
   );
   const bestCardsDisabled = !canAddBestCards || isAddingBestCards;
+  const notableRefreshItems = useMemo(() => {
+    const result = new Map<string, typeof refreshItems[number]>();
+    const rank = { unavailable: 4, price_changed: 3, unconfirmed: 2, unsupported: 1 } as const;
+    for (const item of refreshItems.filter((candidate) => candidate.outcome !== 'refreshed')) {
+      const key = item.cardKey ?? item.title;
+      const current = result.get(key);
+      if (!current || rank[item.outcome as keyof typeof rank] > rank[current.outcome as keyof typeof rank]) result.set(key, item);
+    }
+    return [...result.values()];
+  }, [refreshItems]);
   const visibleEntries = needsAttentionOnly
     ? sortedEntries.filter((entry) => !inCartByName(entry.name))
     : sortedEntries;
@@ -104,6 +126,13 @@ export function CardListPanel({
             </Box>{' '}
             {entries.length === 1 ? 'card' : 'cards'}
           </Box>
+          <Tooltip title={isRefreshing ? `Refreshing list: ${refreshProgress}%` : notableRefreshItems.length ? 'View refresh details' : 'Refresh all known store offers for this list'}>
+            <Badge badgeContent={notableRefreshItems.length} color="warning" invisible={!notableRefreshItems.length} overlap="circular">
+              <IconButton size="small" aria-label={notableRefreshItems.length ? 'View refresh details' : 'Refresh card list'} disabled={isRefreshing || entries.length === 0} onClick={(event) => notableRefreshItems.length ? setRefreshAnchor(event.currentTarget) : onRefresh()}>
+                {isRefreshing ? refreshProgress > 0 ? <CircularProgress variant="determinate" value={refreshProgress} size={24} sx={{ '& .MuiCircularProgress-circle': { transition: 'stroke-dashoffset 1.5s ease-out' } }} /> : <CircularProgress size={24} /> : <Refresh />}
+              </IconButton>
+            </Badge>
+          </Tooltip>
           <Box
             sx={{
               ml: 'auto',
@@ -202,6 +231,13 @@ export function CardListPanel({
         onAdd={onAddCard}
         existingNames={existingNames}
       />
+      <Popover open={Boolean(refreshAnchor)} anchorEl={refreshAnchor} onClose={() => setRefreshAnchor(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }} transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Box sx={{ p: 2, maxWidth: 320 }}>
+          <Typography sx={{ fontWeight: 700, mb: 1 }}>Refresh details</Typography>
+          {notableRefreshItems.map((item) => <Typography key={item.variantId} variant="body2" sx={{ mb: 0.75 }}>{item.title}: {item.outcome === 'price_changed' ? `CA$${item.previousPrice.toFixed(2)} → CA$${(item.price ?? item.previousPrice).toFixed(2)}` : item.outcome === 'unavailable' ? 'unavailable' : item.outcome === 'unsupported' ? 'not mapped to a refreshable Shopify product yet' : 'could not be confirmed'}</Typography>)}
+          <Typography component="button" onClick={() => { onDismissRefreshResults(); setRefreshAnchor(null); }} sx={{ border: 0, bgcolor: 'transparent', color: 'primary.main', cursor: 'pointer', p: 0 }}>Dismiss</Typography>
+        </Box>
+      </Popover>
 
       {/* Scrollable list */}
       <Box ref={setArtScrollRoot} sx={listSx} onScroll={handleListScroll}>

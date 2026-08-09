@@ -119,7 +119,6 @@ export function clearCart(signal?: AbortSignal): Promise<CartResponse> {
     signal,
   });
 }
-
 // X-Requested-With is the CSRF gate enforced by apps/api -- browsers preflight
 // it on cross-origin requests, so a malicious form POST cannot set it. Setting
 // it explicitly here keeps the gate one source-control hop away from the

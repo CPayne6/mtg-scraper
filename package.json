@@ -15,6 +15,7 @@
     "dev:ps": "docker compose -f docker-compose.dev.yml ps",
     "dev:logs": "docker compose -f docker-compose.dev.yml logs -f",
     "seed:prod:scryfall": "node scripts/seed-production-scryfall.mjs",
+    "seed:prod:shopify-mappings": "node scripts/seed-production-shopify-mappings.mjs",
     "migrate:local": "docker compose -f docker-compose.dev.yml exec -T api pnpm migration:run && docker compose -f docker-compose.dev.yml exec -T auth pnpm migration:run",
     "sync": "node scripts/sync-production-card-data.mjs",
     "sync:prod": "node scripts/sync-production-card-data.mjs",

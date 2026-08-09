@@ -22,6 +22,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { fetchCardById } from '@/api/cards';
 import { getDeliveryAddress, saveDeliveryAddress } from '@/api/auth';
 import { createListOptimization, fetchDeliveryOptions, fetchListOptimizationStatus, type DeliveryOptionsResponse, type ListOptimizationOption } from '@/api/lists';
+import { useListRefresh } from '@/components/lists/useListRefresh';
 import { useLists } from '@/components/lists/ListsContext';
 import {
   useCart,
@@ -155,6 +156,8 @@ function BuilderRoute() {
   const [detailedResults, setDetailedResults] = useState<
     Record<string, PriceLookupState>
   >({});
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const { isRefreshing, refreshProgress, refreshItems, refreshList, dismissRefreshResults } = useListRefresh(listId, entries.length > 0, () => setRefreshNonce((value) => value + 1));
   const results = detailedResults;
   const loadedPriceCount = useMemo(
     () =>
@@ -197,9 +200,19 @@ function BuilderRoute() {
     [],
   );
   const [isAddingBestCards, setIsAddingBestCards] = useState(false);
+  const [hasDismissedPrintingGuidance, setHasDismissedPrintingGuidance] = useLocalStorage(
+    'scoutlgs:builder:printing-guidance-dismissed',
+    false,
+  );
+  const [printingGuidanceOpen, setPrintingGuidanceOpen] = useState(() => !hasDismissedPrintingGuidance);
+  const [hidePrintingGuidance, setHidePrintingGuidance] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliverySession, setDeliverySession] = useState(0);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const dismissPrintingGuidance = useCallback(() => {
+    if (hidePrintingGuidance) setHasDismissedPrintingGuidance(true);
+    setPrintingGuidanceOpen(false);
+  }, [hidePrintingGuidance, setHasDismissedPrintingGuidance]);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryOptionsResponse | null>(null);
   const [selectedDeliveryMethods, setSelectedDeliveryMethods] = useState<Record<string, string>>({});
   const [pendingOptimization, setPendingOptimization] = useState<ListOptimizationOption | null>(null);
@@ -404,7 +417,7 @@ function BuilderRoute() {
       });
 
     return () => controller.abort();
-  }, [selectedEntry, selectedName]);
+  }, [selectedEntry, selectedName, refreshNonce]);
 
   const canAddBestCards =
     entries.length > 0 && selectedStores.length > 0 && !isAddingBestCards && !hasPendingListEntry;
@@ -888,6 +901,11 @@ function BuilderRoute() {
           hasMorePrices={false}
           isLoadingMorePrices={false}
           onLoadMorePrices={() => undefined}
+          isRefreshing={isRefreshing}
+          refreshProgress={refreshProgress}
+          refreshItems={refreshItems}
+          onRefresh={refreshList}
+          onDismissRefreshResults={dismissRefreshResults}
         />
       </Box>
       {cartCount > 0 && (
@@ -906,6 +924,22 @@ function BuilderRoute() {
           <Button variant="contained" onClick={openCart} sx={{ minHeight: 44, whiteSpace: 'nowrap' }}>View cart</Button>
         </Box>
       )}
+      <Dialog open={printingGuidanceOpen} onClose={dismissPrintingGuidance} fullWidth maxWidth="xs" aria-labelledby="printing-guidance-title">
+        <DialogTitle id="printing-guidance-title" sx={{ fontSize: '1.5rem', fontWeight: 700 }}>Choose printings first</DialogTitle>
+        <DialogContent>
+          <Box sx={{ color: 'text.secondary' }}>
+            If a specific printing matters to you, add that printing first. Then use Fill Best Cards to complete the rest of your list.
+          </Box>
+          <FormControlLabel
+            sx={{ mt: 1.5, '& .MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
+            control={<Checkbox checked={hidePrintingGuidance} onChange={(event) => setHidePrintingGuidance(event.target.checked)} />}
+            label="Don't show this again"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={dismissPrintingGuidance}>Got it</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={Boolean(previewOffer)} onClose={() => setPreviewOffer(null)} fullScreen aria-labelledby="card-art-preview-title">
         <Box sx={{ minHeight: '100%', bgcolor: '#111', color: '#fff', display: 'flex', flexDirection: 'column' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1 }}>

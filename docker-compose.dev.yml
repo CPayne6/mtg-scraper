@@ -222,6 +222,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_HOST=postgres
+      # Keep refresh progress observable in the local worker logs.
+      - LOG_LEVEL=log,warn,error
     volumes:
       # Mount source code for hot reload
       - ./apps/scraper/src:/app/apps/scraper/src:delegated

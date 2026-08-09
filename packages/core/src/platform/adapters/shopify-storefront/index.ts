@@ -9,6 +9,7 @@ export type {
   CollectionProductsData,
   ProductByHandleData,
   ProductsQueryData,
+  ProductsByIdsData,
   PageInfo,
 } from './storefront.types';
 export {
@@ -18,4 +19,5 @@ export {
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
   PRODUCTS_BY_QUERY,
+  PRODUCTS_BY_IDS_QUERY,
 } from './storefront.queries';
