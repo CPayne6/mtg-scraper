@@ -43,18 +43,18 @@ export function useListRefresh(listId: string, hasCards: boolean, onCompleted: (
       const { jobId } = await startListRefresh(listId);
       const deadline = Date.now() + POLL_TIMEOUT_MS;
       let status: ListRefreshStatus | null = null;
-      let notifiedLongRunning = false;
-      while (!status) {
+      while (!status && Date.now() < deadline) {
         const candidate = await fetchListRefresh(listId, jobId);
         setRefreshProgress(candidate.progress);
         if (!pending(candidate)) { status = candidate; break; }
-        if (!notifiedLongRunning && Date.now() >= deadline) {
-          notifiedLongRunning = true;
-          enqueueSnackbar('Card list refresh is still running. Your list remains usable.', { variant: 'info' });
-        }
-        await new Promise<void>((resolve) => { timeoutRef.current = window.setTimeout(resolve, POLL_INTERVAL_MS); });
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        await new Promise<void>((resolve) => { timeoutRef.current = window.setTimeout(resolve, Math.min(POLL_INTERVAL_MS, remaining)); });
       }
-      if (!status) return;
+      if (!status) {
+        enqueueSnackbar('Card list refresh is still running. You can check again later.', { variant: 'info' });
+        return;
+      }
       // Keep the control mounted long enough for its final stroke animation.
       if (status.status === 'completed') {
         await new Promise<void>((resolve) => { timeoutRef.current = window.setTimeout(resolve, PROGRESS_TRANSITION_MS); });
