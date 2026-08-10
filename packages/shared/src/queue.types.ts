@@ -80,6 +80,8 @@ export interface ReextractUnmatchedJobData {
   storeId: number;
   /** Max products to re-fetch in this job. Default 5000. */
   limit?: number;
+  /** Limit retries to products extracted from these set codes. */
+  setCodes?: string[];
 }
 
 export interface ReextractUnmatchedJobResult {

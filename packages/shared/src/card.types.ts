@@ -59,6 +59,9 @@ export interface PaginationMeta {
 }
 
 export interface CardSearchResponse {
+  // Internal `card_names.id`. Use this when persisting a card to a saved list;
+  // names are display data and may contain punctuation or printing suffixes.
+  cardNameId?: number;
   cardName: string;
   stores: StoreInfo[];
   priceStats: PriceStats;

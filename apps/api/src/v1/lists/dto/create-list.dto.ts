@@ -7,6 +7,8 @@ import {
   MinLength,
   MaxLength,
   IsIn,
+  IsInt,
+  ValidateIf,
 } from 'class-validator';
 import type { CardListVisibility } from '@scoutlgs/core';
 
@@ -16,11 +18,19 @@ export class CreateListDto {
   @MaxLength(100)
   name: string;
 
+  @ValidateIf((dto: CreateListDto) => !dto.cardNameIds?.length)
   @IsArray()
   @IsString({ each: true })
   @ArrayMinSize(1)
   @ArrayMaxSize(150)
-  cards: string[];
+  cards?: string[];
+
+  @ValidateIf((dto: CreateListDto) => !dto.cards?.length)
+  @IsArray()
+  @IsInt({ each: true })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(150)
+  cardNameIds?: number[];
 
   @IsOptional()
   @IsString()

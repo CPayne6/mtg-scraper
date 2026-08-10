@@ -10,6 +10,7 @@ import { useSnackbar } from 'notistack';
 import { useAuth } from '@/components/auth/AuthContext';
 import {
   createList as apiCreateList,
+  addCardToListById as apiAddCardToListById,
   deleteList as apiDeleteList,
   fetchList,
   fetchLists,
@@ -125,8 +126,8 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const save = useCallback(
-    async (name: string, cards: string[]): Promise<string | null> => {
-      if (cards.length === 0) {
+    async (name: string, cards: string[], cardNameIds?: number[]): Promise<string | null> => {
+      if (cards.length === 0 && (!cardNameIds || cardNameIds.length === 0)) {
         enqueueSnackbar("Can't create an empty list", { variant: 'warning' });
         return null;
       }
@@ -144,7 +145,10 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
       try {
-        const created = await apiCreateList({ name, cards });
+        const created = await apiCreateList({
+          name,
+          ...(cardNameIds?.length ? { cardNameIds } : { cards }),
+        });
         const full = await fetchList(created.id);
         const newList: ServerList = {
           id: full.id,
@@ -254,6 +258,24 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     [enqueueSnackbar, lists, replaceCardsForList],
   );
 
+  const addCardToListById = useCallback(
+    async (id: string, cardNameId: number): Promise<boolean> => {
+      const current = lists.find((l) => l.id === id);
+      if (!current) return false;
+      try {
+        await apiAddCardToListById(id, cardNameId);
+        const full = await fetchList(id);
+        setLists((all) => all.map((l) => (l.id === id ? { ...l, cards: full.cards } : l)));
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to add card to list';
+        enqueueSnackbar(msg, { variant: 'error' });
+        return false;
+      }
+    },
+    [enqueueSnackbar, lists],
+  );
+
   const removeCardFromList = useCallback(
     async (id: string, cardName: string): Promise<void> => {
       const current = lists.find((l) => l.id === id);
@@ -302,6 +324,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       rename,
       remove,
       addCardToList,
+      addCardToListById,
       removeCardFromList,
     }),
     [
@@ -317,6 +340,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
       rename,
       remove,
       addCardToList,
+      addCardToListById,
       removeCardFromList,
     ],
   );

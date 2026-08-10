@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import type { CardWithStore } from '@scoutlgs/shared';
+import { PUBSUB_CHANNELS, type CardWithStore } from '@scoutlgs/shared';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 
@@ -274,6 +274,11 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     this.pmessageHandler = null;
 
     this.logger.log('Cache service shutdown complete');
+  }
+
+  /** Tell scraper workers to flush and re-warm their card matcher caches. */
+  async publishCardDataChanged(scope: string): Promise<void> {
+    await this.redis.publish(PUBSUB_CHANNELS.CARD_DATA_CHANGED, scope);
   }
 
   // =====================================

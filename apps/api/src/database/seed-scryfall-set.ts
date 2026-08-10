@@ -32,6 +32,11 @@ const TOKEN_LAYOUTS = new Set([
   'art_series',
 ]);
 
+const SCRYFALL_HEADERS = {
+  'User-Agent': 'ScoutLGS/1.0 (https://github.com/CPayne6/mtg-scraper)',
+  Accept: 'application/json',
+};
+
 function parseTypeLine(typeLine: string): { supertype: string; cardType: string; subtypes: string } {
   const [typesPart, subtypesPart] = typeLine.split(/\s*—\s*/);
   const subtypes = subtypesPart?.trim() ?? '';
@@ -84,7 +89,7 @@ async function seedSet(setCode: string) {
       // Scryfall rate limit: 50-100ms between requests
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: SCRYFALL_HEADERS });
       if (!res.ok) {
         if (res.status === 404) {
           console.log(`No cards found for set: ${setCode}`);
@@ -149,41 +154,49 @@ async function seedSet(setCode: string) {
       console.log(`Upserted ${result.rowCount} card names`);
     }
 
-    // Phase 2: Upsert printings
+    // Phase 2: Ensure the set exists before inserting printings. The live
+    // schema stores a set foreign key rather than a denormalized set code.
+    const setName = playableCards[0]?.set_name;
+    if (setName) {
+      await client.query(
+        `INSERT INTO sets (code, name) VALUES ($1, $2)
+         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name`,
+        [setCode.toLowerCase(), setName],
+      );
+    }
+
+    // Phase 3: Upsert printings
     if (playableCards.length > 0) {
       const values: any[] = [];
       const placeholders = playableCards.map((card, idx) => {
         const imageUri =
           card.image_uris?.normal || card.image_uris?.small || null;
-        const offset = idx * 9;
+        const offset = idx * 7;
         values.push(
           card.id,
           card.oracle_id,
           card.set,
-          card.set_name,
           card.collector_number,
           card.rarity || null,
           imageUri,
           card.layout,
-          card.digital || false,
         );
-        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`;
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`;
       });
 
       const result = await client.query(
         `
-        INSERT INTO card_printings (card_name_id, scryfall_id, set_code, set_name, collector_number, rarity, image_uri, layout, digital)
-        SELECT cn.id, v.scryfall_id, v.set_code, v.set_name, v.collector_number, v.rarity, v.image_uri, v.layout, v.digital
-        FROM (VALUES ${placeholders.join(', ')}) AS v(scryfall_id, oracle_id, set_code, set_name, collector_number, rarity, image_uri, layout, digital)
+        INSERT INTO card_printings (card_name_id, scryfall_id, set_id, collector_number, rarity, image_uri, layout)
+        SELECT cn.id, v.scryfall_id::uuid, s.id, v.collector_number, v.rarity, v.image_uri, v.layout
+        FROM (VALUES ${placeholders.join(', ')}) AS v(scryfall_id, oracle_id, set_code, collector_number, rarity, image_uri, layout)
         JOIN card_names cn ON cn.oracle_id = v.oracle_id::uuid
+        JOIN sets s ON s.code = v.set_code
         ON CONFLICT (scryfall_id) DO UPDATE SET
-          set_code = EXCLUDED.set_code,
-          set_name = EXCLUDED.set_name,
+          set_id = EXCLUDED.set_id,
           collector_number = EXCLUDED.collector_number,
           rarity = EXCLUDED.rarity,
           image_uri = EXCLUDED.image_uri,
           layout = EXCLUDED.layout,
-          digital = EXCLUDED.digital,
           updated_at = NOW()
       `,
         values,
@@ -191,7 +204,7 @@ async function seedSet(setCode: string) {
       console.log(`Upserted ${result.rowCount} printings`);
     }
 
-    // Phase 3: Upsert token names
+    // Phase 4: Upsert token names
     if (tokenCards.length > 0) {
       const tokenOracleMap = new Map<string, any>();
       for (const card of tokenCards) {
@@ -269,7 +282,7 @@ async function seedSet(setCode: string) {
       const tokenResult = await client.query(
         `
         INSERT INTO token_printings (token_name_id, scryfall_id, set_id, collector_number, rarity, image_uri, layout)
-        SELECT tn.id, v.scryfall_id, s.id, v.collector_number, v.rarity, v.image_uri, v.layout
+        SELECT tn.id, v.scryfall_id::uuid, s.id, v.collector_number, v.rarity, v.image_uri, v.layout
         FROM (VALUES ${tokenPlaceholders.join(', ')}) AS v(scryfall_id, oracle_id, set_code, collector_number, rarity, image_uri, layout)
         JOIN token_names tn ON tn.oracle_id = v.oracle_id::uuid
         JOIN sets s ON s.code = v.set_code
@@ -287,12 +300,12 @@ async function seedSet(setCode: string) {
     }
 
     const printingCount = await client.query(
-      `SELECT COUNT(*) FROM card_printings WHERE set_code = $1`,
-      [setCode],
+      `SELECT COUNT(*) FROM card_printings cp JOIN sets s ON s.id = cp.set_id WHERE s.code = $1`,
+      [setCode.toLowerCase()],
     );
     const tokenPrintingCount = await client.query(
       `SELECT COUNT(*) FROM token_printings tp JOIN sets s ON s.id = tp.set_id WHERE s.code = $1`,
-      [setCode],
+      [setCode.toLowerCase()],
     );
     console.log(
       `\nSet ${setCode} complete: ${printingCount.rows[0].count} printings, ${tokenPrintingCount.rows[0].count} token printings`,

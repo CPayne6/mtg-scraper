@@ -20,7 +20,6 @@ import type { CardSearchResponse, StoreInfo } from '@scoutlgs/shared';
 import { fetchCard } from '@/api/cards';
 import { FiltersSidebar } from '@/components/results/FiltersSidebar';
 import { ProductTile } from '@/components/results/ProductTile';
-import { StaleNotice } from '@/components/results/StaleNotice';
 import { DEFAULT_STORE_KEYS, STORE_FACETS } from '@/data/sample';
 import { useLists } from '@/components/lists/ListsContext';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -56,7 +55,7 @@ function CardRoute() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const { push: pushRecent } = useRecentSearches();
-  const { lists, save, addCardToList, canCreateList } = useLists();
+  const { lists, save, addCardToListById, canCreateList } = useLists();
   const { enqueueSnackbar } = useSnackbar();
 
   const [defaultStoreKeys] = useLocalStorage<string[]>(
@@ -164,8 +163,13 @@ function CardRoute() {
 
   const handleAddToList = async (listId: string, listName: string) => {
     setAddMenuAnchor(null);
-    await addCardToList(listId, decoded);
-    enqueueSnackbar(`Added "${decoded}" to ${listName}`, { variant: 'success' });
+    const cardNameId = response?.cardNameId;
+    if (!cardNameId) {
+      enqueueSnackbar('This card is not available to save yet', { variant: 'warning' });
+      return;
+    }
+    const added = await addCardToListById(listId, cardNameId);
+    if (added) enqueueSnackbar(`Added "${response?.cardName ?? decoded}" to ${listName}`, { variant: 'success' });
   };
 
   const handleCreateList = async () => {
@@ -180,7 +184,12 @@ function CardRoute() {
       enqueueSnackbar('Name your card list before continuing', { variant: 'warning' });
       return;
     }
-    const id = await save(listName, [decoded]);
+    const cardNameId = response?.cardNameId;
+    if (!cardNameId) {
+      enqueueSnackbar('This card is not available to save yet', { variant: 'warning' });
+      return;
+    }
+    const id = await save(listName, [], [cardNameId]);
     if (!id) return;
     setCreateListOpen(false);
     enqueueSnackbar(`Created "${listName}"`, { variant: 'success' });
@@ -301,9 +310,7 @@ function CardRoute() {
           >
             {error}
           </Alert>
-        ) : (
-          <StaleNotice />
-        )}
+        ) : null}
       </Stack>
 
       <Box
