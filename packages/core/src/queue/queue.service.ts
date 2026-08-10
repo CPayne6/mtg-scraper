@@ -92,7 +92,7 @@ export class QueueService {
    * without re-fetching the entire catalog.
    */
   async enqueueReextractUnmatchedJob(
-    opts: { storeId: number; limit?: number },
+    opts: { storeId: number; limit?: number; setCodes?: string[]; delayMs?: number },
   ): Promise<void> {
     try {
       await this.storefrontExtractionQueue.add(
@@ -100,6 +100,7 @@ export class QueueService {
         opts satisfies ReextractUnmatchedJobData,
         {
           priority: 1,
+          delay: opts.delayMs,
           removeOnComplete: 50,
           removeOnFail: 100,
           attempts: 2,

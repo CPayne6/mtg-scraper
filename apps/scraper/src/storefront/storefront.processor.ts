@@ -460,7 +460,7 @@ export class StorefrontProcessor implements OnModuleInit {
   async reextractUnmatched(
     job: Job<ReextractUnmatchedJobData>,
   ): Promise<ReextractUnmatchedJobResult> {
-    const { storeId, limit = 5000 } = job.data;
+    const { storeId, limit = 5000, setCodes } = job.data;
 
     const store = await this.storeRepository.findOne({ where: { id: storeId } });
     if (!store) throw new Error(`Store ${storeId} not found`);
@@ -470,14 +470,27 @@ export class StorefrontProcessor implements OnModuleInit {
     ) as StorefrontExtractionAdapter;
 
     // Pull the unmatched Shopify product IDs for this store
-    const unmatched = await this.shopifyProductRepository.find({
-      where: { storeId, matchStatus: 'unmatched' },
-      select: ['shopifyProductId', 'productUrlId'],
-      take: limit,
-    });
+    const normalizedSetCodes = setCodes?.map((code) => code.toLowerCase());
+    const unmatched: Array<{ shopifyProductId: string; productUrlId: number | null }> = normalizedSetCodes?.length
+      ? (await this.dataSource.query<Array<{ shopify_product_id: string; product_url_id: number | null }>>(
+        `SELECT DISTINCT sp.shopify_product_id, sp.product_url_id
+         FROM shopify_products sp
+         JOIN unmatched_cards uc
+           ON uc.store_id = sp.store_id AND uc.product_url_id = sp.product_url_id
+         WHERE sp.store_id = $1
+           AND sp.match_status = 'unmatched'
+           AND LOWER(uc.set_code) = ANY($2::text[])
+         LIMIT $3`,
+        [storeId, normalizedSetCodes, limit],
+      )).map((row) => ({ shopifyProductId: row.shopify_product_id, productUrlId: row.product_url_id }))
+      : await this.shopifyProductRepository.find({
+        where: { storeId, matchStatus: 'unmatched' },
+        select: ['shopifyProductId', 'productUrlId'],
+        take: limit,
+      });
 
     this.logger.warn(
-      `reextract-unmatched: ${store.name} has ${unmatched.length} unmatched products to re-fetch`,
+      `reextract-unmatched: ${store.name} has ${unmatched.length} unmatched products to re-fetch${normalizedSetCodes?.length ? ` for ${normalizedSetCodes.join(', ')}` : ''}`,
     );
 
     if (unmatched.length === 0) {
