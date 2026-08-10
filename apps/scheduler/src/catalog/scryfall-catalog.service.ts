@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { CacheService, QueueService } from '@scoutlgs/core';
 
 const PLAYABLE_LAYOUTS = new Set([
   'normal', 'split', 'flip', 'transform', 'modal_dfc', 'meld', 'leveler',
@@ -27,7 +28,11 @@ function normalizeName(name: string): string {
 export class ScryfallCatalogService {
   private readonly logger = new Logger(ScryfallCatalogService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly queueService: QueueService,
+    private readonly cacheService: CacheService,
+  ) {}
 
   async syncMissingSets(): Promise<string[]> {
     const response = await fetch('https://api.scryfall.com/sets', { headers: SCRYFALL_HEADERS });
@@ -42,9 +47,38 @@ export class ScryfallCatalogService {
     const missing = candidates.filter((set) => !trackedCodes.has(set.code.toLowerCase()));
 
     for (const set of missing) await this.importSet(set);
-    if (missing.length) this.logger.log(`Imported ${missing.length} new Scryfall set(s): ${missing.map((set) => set.code).join(', ')}`);
+    if (missing.length) {
+      const setCodes = missing.map((set) => set.code.toLowerCase());
+      // Scrapers rebuild their in-memory name, set, and printing caches on
+      // this event, before they consume the targeted re-match jobs below.
+      await this.cacheService.publishCardDataChanged(`sets:${setCodes.join(',')}`);
+      await this.queueUnmatchedRematches(setCodes);
+      this.logger.log(
+        `Imported ${missing.length} new Scryfall set(s): ${setCodes.join(', ')}; queued unmatched-card re-matches`,
+      );
+    }
     else this.logger.log('Scryfall set check found no new sets');
     return missing.map((set) => set.code);
+  }
+
+  private async queueUnmatchedRematches(setCodes: string[]): Promise<void> {
+    const stores = await this.dataSource.query<Array<{ id: number }>>(
+      `SELECT DISTINCT s.id
+       FROM stores s
+       JOIN unmatched_cards uc ON uc.store_id = s.id
+       WHERE s.platform_type = 'shopify_storefront'
+         AND LOWER(uc.set_code) = ANY($1::text[])`,
+      [setCodes],
+    );
+    await Promise.all(stores.map((store) =>
+      this.queueService.enqueueReextractUnmatchedJob({
+        storeId: Number(store.id),
+        setCodes,
+        // Give Redis subscribers time to finish rebuilding their caches.
+        delayMs: 10_000,
+      }),
+    ));
+    this.logger.log(`Queued unmatched-card re-matches for ${stores.length} store(s)`);
   }
 
   private async importSet(set: ScryfallSet): Promise<void> {
