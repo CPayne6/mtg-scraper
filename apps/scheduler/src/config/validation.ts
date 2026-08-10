@@ -16,5 +16,7 @@ export const validationSchema = Joi.object({
   CART_CLEANUP_ENABLED: Joi.string().default('true'),
   CART_CLEANUP_CRON_TIME: Joi.string().default('0 3 * * *'),
   CART_ANONYMOUS_RETENTION_DAYS: Joi.number().default(30),
+  SCRYFALL_CATALOG_SYNC_ENABLED: Joi.string().default('true'),
+  SCRYFALL_CATALOG_SYNC_CRON_TIME: Joi.string().default('0 0 * * *'),
   SCHEDULE_TIMEZONE: Joi.string().default('America/Toronto'),
 });

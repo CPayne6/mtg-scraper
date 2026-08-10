@@ -2,9 +2,8 @@ import { Client } from 'pg';
 import { from as copyFrom } from 'pg-copy-streams';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { parser } from 'stream-json';
-import { streamArray } from 'stream-json/streamers/StreamArray';
-import { chain } from 'stream-chain';
+import { createGunzip } from 'zlib';
+import { createInterface } from 'readline';
 import Redis from 'ioredis';
 import { PUBSUB_CHANNELS } from '@scoutlgs/shared';
 
@@ -104,8 +103,20 @@ async function getDownloadUrl(bulkType: string): Promise<string> {
   const res = await fetch(`https://api.scryfall.com/bulk-data/${bulkType}`, { headers: SCRYFALL_HEADERS });
   if (!res.ok)
     throw new Error(`Failed to fetch bulk data info: ${res.status}`);
-  const data = (await res.json()) as { download_uri: string };
-  return data.download_uri;
+  const data = (await res.json()) as { download_uri?: string; jsonl_download_uri?: string };
+  const downloadUrl = data.jsonl_download_uri ?? data.download_uri;
+  if (!downloadUrl) throw new Error(`Scryfall did not provide a download URL for ${bulkType}`);
+  return downloadUrl;
+}
+
+async function* readScryfallCards(url: string): AsyncGenerator<any> {
+  const response = await fetch(url, { headers: SCRYFALL_HEADERS });
+  if (!response.ok || !response.body) throw new Error(`Failed to download Scryfall bulk data (${response.status})`);
+  const input = Readable.fromWeb(response.body as any);
+  const lines = createInterface({ input: url.endsWith('.gz') ? input.pipe(createGunzip()) : input, crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (line.trim()) yield JSON.parse(line);
+  }
 }
 
 async function seedScryfall() {
@@ -138,19 +149,9 @@ async function seedScryfall() {
 
     // Stream and collect oracle cards
     const oracleCards: any[] = [];
-    const oracleRes = await fetch(oracleUrl, { headers: SCRYFALL_HEADERS });
-    if (!oracleRes.ok || !oracleRes.body)
-      throw new Error('Failed to download oracle cards');
-
-    const oracleStream = chain([
-      Readable.fromWeb(oracleRes.body as any),
-      parser(),
-      streamArray(),
-    ]);
-
     const oracleTokens: any[] = [];
 
-    for await (const { value: card } of oracleStream) {
+    for await (const card of readScryfallCards(oracleUrl)) {
       if (PLAYABLE_LAYOUTS.has(card.layout)) {
         oracleCards.push({
           oracle_id: card.oracle_id,
@@ -312,17 +313,7 @@ async function seedScryfall() {
     const printings: any[] = [];
     const tokenPrintings: any[] = [];
 
-    const defaultRes = await fetch(defaultUrl);
-    if (!defaultRes.ok || !defaultRes.body)
-      throw new Error('Failed to download default cards');
-
-    const defaultStream = chain([
-      Readable.fromWeb(defaultRes.body as any),
-      parser(),
-      streamArray(),
-    ]);
-
-    for await (const { value: card } of defaultStream) {
+    for await (const card of readScryfallCards(defaultUrl)) {
       if (!card.oracle_id) continue;
       if (card.digital) continue; // Skip digital-only printings
 
@@ -435,16 +426,19 @@ async function seedScryfall() {
     const printingResult = await client.query(`
       INSERT INTO card_printings (card_name_id, scryfall_id, set_id, collector_number, rarity, image_uri, layout)
       SELECT cn.id, sp.scryfall_id, s.id, sp.collector_number, sp.rarity, sp.image_uri, sp.layout
-      FROM staging_printings sp
+      FROM (
+        SELECT DISTINCT ON (set_code, collector_number) *
+        FROM staging_printings
+        ORDER BY set_code, collector_number, scryfall_id
+      ) sp
       JOIN card_names cn ON cn.oracle_id = sp.oracle_id
       JOIN sets s ON s.code = sp.set_code
-      ON CONFLICT (scryfall_id) DO UPDATE SET
-        set_id = EXCLUDED.set_id,
-        collector_number = EXCLUDED.collector_number,
-        rarity = EXCLUDED.rarity,
-        image_uri = EXCLUDED.image_uri,
-        layout = EXCLUDED.layout,
-        updated_at = NOW()
+      WHERE NOT EXISTS (
+        SELECT 1 FROM card_printings existing
+        WHERE existing.scryfall_id = sp.scryfall_id
+           OR (existing.set_id = s.id AND existing.collector_number = sp.collector_number)
+      )
+      ON CONFLICT DO NOTHING
     `);
     console.log(`Upserted ${printingResult.rowCount} printings`);
 
@@ -492,16 +486,19 @@ async function seedScryfall() {
       const tokenPrintingResult = await client.query(`
         INSERT INTO token_printings (token_name_id, scryfall_id, set_id, collector_number, rarity, image_uri, layout)
         SELECT tn.id, sp.scryfall_id, s.id, sp.collector_number, sp.rarity, sp.image_uri, sp.layout
-        FROM staging_token_printings sp
+        FROM (
+          SELECT DISTINCT ON (set_code, collector_number) *
+          FROM staging_token_printings
+          ORDER BY set_code, collector_number, scryfall_id
+        ) sp
         JOIN token_names tn ON tn.oracle_id = sp.oracle_id
         JOIN sets s ON s.code = sp.set_code
-        ON CONFLICT (scryfall_id) DO UPDATE SET
-          set_id = EXCLUDED.set_id,
-          collector_number = EXCLUDED.collector_number,
-          rarity = EXCLUDED.rarity,
-          image_uri = EXCLUDED.image_uri,
-          layout = EXCLUDED.layout,
-          updated_at = NOW()
+        WHERE NOT EXISTS (
+          SELECT 1 FROM token_printings existing
+          WHERE existing.scryfall_id = sp.scryfall_id
+             OR (existing.set_id = s.id AND existing.collector_number = sp.collector_number)
+        )
+        ON CONFLICT DO NOTHING
       `);
       console.log(`Upserted ${tokenPrintingResult.rowCount} token printings`);
 

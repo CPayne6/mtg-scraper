@@ -252,9 +252,12 @@ export class ListsService {
       );
     }
 
-    // Resolve card names
-    const { resolved, unresolved } =
-      await this.cardNameResolver.resolveCardNames(dto.cards);
+    // IDs are already canonical and avoid treating punctuation in a display
+    // name as part of a fuzzy/printing-name lookup.
+    const suppliedIds = dto.cardNameIds ?? [];
+    const { resolved, unresolved } = suppliedIds.length > 0
+      ? await this.resolveCardNameIds(suppliedIds)
+      : await this.cardNameResolver.resolveCardNames(dto.cards ?? []);
 
     // Create list
     const cardList = new CardList();
@@ -496,6 +499,49 @@ export class ListsService {
       `SELECT cn.name AS card_name, cn.color_identity FROM card_list_entries e JOIN card_names cn ON cn.id = e.card_name_id WHERE e.card_list_id = $1 ORDER BY e.position ASC`, [list.id],
     );
     return { cardCount: resolved.length, cards: canonicalCards.map((card) => ({ cardName: card.card_name, colorIdentity: card.color_identity })), warnings };
+  }
+
+  async addCardById(
+    listUuid: string,
+    ownerPrincipalUuid: string,
+    cardNameId: number,
+  ): Promise<{ cardNameId: number; cardName: string }> {
+    const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
+    const [cardName] = await this.entityManager.query<
+      Array<{ id: number; name: string }>
+    >('SELECT id, name FROM card_names WHERE id = $1', [cardNameId]);
+    if (!cardName) throw new NotFoundException('Card not found');
+
+    const [{ position }] = await this.entityManager.query<Array<{ position: number }>>(
+      'SELECT COALESCE(MAX(position), 0) + 1 AS position FROM card_list_entries WHERE card_list_id = $1',
+      [list.id],
+    );
+    await this.cardListEntryRepository.save(this.cardListEntryRepository.create({
+      cardListId: list.id,
+      cardNameId: cardName.id,
+      position: Number(position),
+    }));
+    await this.cardListRepository.update(list.id, { expiresAt: this.expiresAt() });
+    return { cardNameId: cardName.id, cardName: cardName.name };
+  }
+
+  private async resolveCardNameIds(cardNameIds: number[]): Promise<{
+    resolved: Array<{ input: string; cardNameId: number; resolvedName: string; fuzzy: boolean }>;
+    unresolved: string[];
+  }> {
+    const rows = await this.entityManager.query<Array<{ id: number; name: string }>>(
+      'SELECT id, name FROM card_names WHERE id = ANY($1::int[])',
+      [cardNameIds],
+    );
+    const namesById = new Map(rows.map((row) => [Number(row.id), row.name]));
+    const resolved = cardNameIds.flatMap((id) => {
+      const name = namesById.get(id);
+      return name ? [{ input: name, cardNameId: id, resolvedName: name, fuzzy: false }] : [];
+    });
+    const unresolved = cardNameIds
+      .filter((id) => !namesById.has(id))
+      .map((id) => `Card ID ${id}`);
+    return { resolved, unresolved };
   }
 
   async deleteList(

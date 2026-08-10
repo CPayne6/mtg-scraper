@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   HttpException,
+  ParseIntPipe,
   UsePipes,
   ValidationPipe,
   UseGuards,
@@ -177,6 +178,16 @@ export class ListsController {
       principal.principalUuid,
       dto.cards,
     );
+  }
+
+  @Post(':listId/cards/:cardNameId')
+  @UseGuards(PrincipalGuard)
+  async addCardById(
+    @Param('listId') listId: string,
+    @Param('cardNameId', ParseIntPipe) cardNameId: number,
+    @CurrentPrincipal() principal: PrincipalContext,
+  ) {
+    return this.listsService.addCardById(listId, principal.principalUuid, cardNameId);
   }
 
   @Put(':listId/name')

@@ -133,7 +133,8 @@ export interface CreateListResponse {
 
 export interface CreateListInput {
   name: string;
-  cards: string[];
+  cards?: string[];
+  cardNameIds?: number[];
   filterStores?: string;
   filterConditions?: string;
   filterSetCode?: string;
@@ -282,6 +283,16 @@ export function replaceListCards(
       method: 'PUT',
       body: JSON.stringify({ cards }),
     },
+  );
+}
+
+export function addCardToListById(
+  listId: string,
+  cardNameId: number,
+): Promise<{ cardNameId: number; cardName: string }> {
+  return request<{ cardNameId: number; cardName: string }>(
+    `/api/v1/lists/${encodeURIComponent(listId)}/cards/${encodeURIComponent(String(cardNameId))}`,
+    { method: 'POST' },
   );
 }
 
