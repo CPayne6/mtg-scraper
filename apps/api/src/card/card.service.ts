@@ -23,9 +23,30 @@ export class CardService {
 
   async getCardByOracleId(oracleId: string, requestedName: string): Promise<CardSearchResponse> {
     this.logger.debug(`Querying database for oracle ID: ${oracleId}`);
-    const cardNameRecord = await this.cardNameRepository.findOne({
+    let cardNameRecord = await this.cardNameRepository.findOne({
       where: { oracleId },
     });
+
+    // The UI has already resolved this oracle ID with Scryfall.  Create a
+    // local card-name record when the bulk seed has not caught up yet, so a
+    // newly released card can still be searched and saved to a list.
+    if (!cardNameRecord) {
+      const normalizedName = this.normalizeCardName(requestedName);
+      cardNameRecord = await this.cardNameRepository.findOne({
+        where: { normalizedName },
+      });
+      if (cardNameRecord) {
+        cardNameRecord.oracleId = oracleId;
+      } else {
+        cardNameRecord = this.cardNameRepository.create({
+          oracleId,
+          name: requestedName,
+          normalizedName,
+          colorIdentity: null,
+        });
+      }
+      cardNameRecord = await this.cardNameRepository.save(cardNameRecord);
+    }
     return this.getCardFromRecord(cardNameRecord, requestedName);
   }
 
@@ -107,7 +128,16 @@ export class CardService {
     const allStores = await this.storeService.findAllActive();
     const storesInfo = allStores.filter((s) => storesWithCards.has(s.id));
 
-    return this.buildResponse(cardNameRecord.name, cardResults, [], storesInfo);
+    return this.buildResponse(cardNameRecord.id, cardNameRecord.name, cardResults, [], storesInfo);
+  }
+
+  private normalizeCardName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[‘’]/g, "'")
+      .replace(/[“”]/g, '"');
   }
 
   /**
@@ -124,6 +154,7 @@ export class CardService {
   }
 
   private buildResponse(
+    cardNameId: number,
     cardName: string,
     cards: CardWithStore[],
     storeErrors: Array<{ storeName: string; error: string }>,
@@ -172,6 +203,7 @@ export class CardService {
     };
 
     return {
+      cardNameId,
       cardName,
       stores,
       priceStats,

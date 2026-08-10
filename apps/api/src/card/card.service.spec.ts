@@ -25,6 +25,8 @@ describe('CardService', () => {
 
     cardNameRepository = {
       findOne: vi.fn(),
+      create: vi.fn((record) => record),
+      save: vi.fn((record) => Promise.resolve({ id: 99, ...record })),
     };
 
     cardPrintingRepository = {};
@@ -52,14 +54,19 @@ describe('CardService', () => {
   });
 
   describe('getCardByOracleId', () => {
-    it('should return empty response when card name not found', async () => {
+    it('creates a local record when an oracle-resolved card has not been seeded', async () => {
       cardNameRepository.findOne.mockResolvedValue(null);
 
       const result = await service.getCardByOracleId('11111111-1111-4111-8111-111111111111', 'Nonexistent Card');
 
       expect(result.cardName).toBe('Nonexistent Card');
+      expect(result.cardNameId).toBe(99);
       expect(result.results).toEqual([]);
       expect(result.priceStats.count).toBe(0);
+      expect(cardNameRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'Nonexistent Card',
+        normalizedName: 'nonexistent card',
+      }));
     });
 
     it('should return listings from database when card name exists', async () => {

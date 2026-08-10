@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MaxLength, Matches, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsUUID } from 'class-validator';
 
 export class GetCardDto {
   @IsUUID()
@@ -7,8 +7,5 @@ export class GetCardDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Matches(/^[a-zA-Z0-9\s,'-/&!]+$/, {
-    message: 'Card name contains invalid characters'
-  })
   cardName: string;
 }

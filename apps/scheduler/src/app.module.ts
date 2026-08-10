@@ -8,6 +8,7 @@ import { ManualModule } from './manual/manual.module';
 import { ExtractionOrchestratorModule } from './extraction/extraction-orchestrator.module';
 import { getDatabaseConfig } from '@scoutlgs/core';
 import { CartCleanupModule } from './cart-cleanup/cart-cleanup.module';
+import { ScryfallCatalogModule } from './catalog/scryfall-catalog.module';
 
 @Module({
   imports: [
@@ -47,6 +48,9 @@ import { CartCleanupModule } from './cart-cleanup/cart-cleanup.module';
 
     // Long-term cart retention cleanup
     CartCleanupModule,
+
+    // Daily Scryfall catalog synchronization for newly released sets.
+    ScryfallCatalogModule,
 
     // API to access scheduler status
     ManualModule

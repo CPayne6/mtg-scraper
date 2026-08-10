@@ -44,4 +44,10 @@ export default () => ({
       10,
     ),
   },
+  scryfallCatalog: {
+    enabled: process.env.SCRYFALL_CATALOG_SYNC_ENABLED !== 'false',
+    // Run before the nightly extraction so new card names are available when
+    // storefront products are matched.
+    cronTime: process.env.SCRYFALL_CATALOG_SYNC_CRON_TIME ?? '0 0 * * *',
+  },
 });

@@ -17,9 +17,10 @@ export type ListsContextValue = {
   error: string | null;
   get: (id: string) => string[];
   getList: (id: string) => ServerList | undefined;
-  save: (name: string, cards: string[]) => Promise<string | null>;
+  save: (name: string, cards: string[], cardNameIds?: number[]) => Promise<string | null>;
   rename: (id: string, newName: string) => Promise<string | null>;
   remove: (id: string) => Promise<void>;
   addCardToList: (id: string, cardName: string) => Promise<boolean>;
+  addCardToListById: (id: string, cardNameId: number) => Promise<boolean>;
   removeCardFromList: (id: string, cardName: string) => Promise<void>;
 };
