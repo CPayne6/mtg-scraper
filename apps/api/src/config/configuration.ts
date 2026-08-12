@@ -17,6 +17,10 @@ export default () => ({
   delivery: {
     addressQuotesEnabled: process.env.ENABLE_DELIVERY_ADDRESS_QUOTES === 'true',
   },
+  deckImport: {
+    moxfieldEndpoint: process.env.MOXFIELD_IMPORT_ENDPOINT,
+    moxfieldCredential: process.env.MOXFIELD_IMPORT_CREDENTIAL,
+  },
   // V2 Scraping: Use database-first approach instead of cache-first
   useDatabaseFirst: process.env.USE_DATABASE_FIRST === 'true',
 });

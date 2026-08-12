@@ -34,6 +34,8 @@ import type { Response } from 'express';
 import { CheckoutRateLimiterService } from '../checkout/checkout-rate-limiter.service';
 import { hashIp } from '../checkout/ip-hash.util';
 import { ConfigService } from '@nestjs/config';
+import { ImportPreviewDto } from './dto/import-preview.dto';
+import { DeckImportService } from './deck-import.service';
 
 @Controller('lists')
 export class ListsController {
@@ -41,6 +43,7 @@ export class ListsController {
     private readonly listsService: ListsService,
     @Optional() private readonly quoteRateLimiter?: CheckoutRateLimiterService,
     @Optional() private readonly configService?: ConfigService,
+    @Optional() private readonly deckImportService?: DeckImportService,
   ) {}
 
   @Post()
@@ -56,6 +59,15 @@ export class ListsController {
       principal.principalUuid,
       principal.kind,
     );
+  }
+
+  @Post('import-preview')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PrincipalGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async importPreview(@Body() dto: ImportPreviewDto, @CurrentPrincipal() principal: PrincipalContext) {
+    if (!this.deckImportService) throw new HttpException('Deck import is unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+    return this.deckImportService.preview(dto.url, principal.principalUuid);
   }
 
   @Get()

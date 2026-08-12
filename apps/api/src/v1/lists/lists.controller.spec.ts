@@ -11,6 +11,7 @@ import type { PrincipalContext } from '../../auth/principal.types';
 import { PrincipalGuard } from '../../auth/principal.guard';
 import { OptionalPrincipalGuard } from '../../auth/optional-principal.guard';
 import { PrincipalJwtService } from '../../auth/principal-jwt.service';
+import { DeckImportService } from './deck-import.service';
 
 const LIST_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const PRINCIPAL_UUID = '11111111-1111-1111-1111-111111111111';
@@ -63,6 +64,7 @@ describe('ListsController', () => {
       updateName: vi.fn(),
       replaceCards: vi.fn(),
       deleteList: vi.fn(),
+      preview: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -72,6 +74,7 @@ describe('ListsController', () => {
         { provide: PrincipalJwtService, useValue: { verifyRequest: vi.fn() } },
         { provide: PrincipalGuard, useValue: { canActivate: vi.fn() } },
         { provide: OptionalPrincipalGuard, useValue: { canActivate: vi.fn() } },
+        { provide: DeckImportService, useValue: { preview: mockListsService.preview } },
       ],
     }).compile();
 
@@ -94,6 +97,16 @@ describe('ListsController', () => {
         'anonymous',
       );
       expect(result).toEqual(mockCreateResponse);
+    });
+  });
+
+  describe('POST /v1/lists/import-preview', () => {
+    it('returns a preview without creating a list', async () => {
+      const preview = { provider: 'Archidekt', sourceUrl: 'https://archidekt.com/decks/1', name: 'Deck', sections: [], warnings: [] };
+      listsService.preview.mockResolvedValue(preview);
+      await expect(controller.importPreview({ url: 'https://archidekt.com/decks/1' }, PRINCIPAL)).resolves.toEqual(preview);
+      expect(listsService.preview).toHaveBeenCalledWith('https://archidekt.com/decks/1', PRINCIPAL_UUID);
+      expect(listsService.createList).not.toHaveBeenCalled();
     });
   });
 

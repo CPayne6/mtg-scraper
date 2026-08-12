@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
@@ -8,6 +8,8 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { Search as SearchIcon } from '@mui/icons-material';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import { useSnackbar } from 'notistack';
 import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
 import { ProductTile } from '@/components/results/ProductTile';
@@ -17,6 +19,7 @@ import { useRecentSearches } from '@/hooks/useRecentSearches';
 import { parseDeckList } from '@/utils/parseDeckList';
 import { slugifyName } from '@/utils/slugify';
 import { fetchScryfallCard, type ScryfallCardOption } from '@/api/cards';
+import { previewDeckImport, type DeckImportPreview } from '@/api/lists';
 
 type HomeSearch = { mode?: 'card' | 'deck' };
 
@@ -37,6 +40,13 @@ function HomeRoute() {
   const [cardName, setCardName] = useState('');
   const [listName, setListName] = useState('');
   const [deckText, setDeckText] = useState('');
+  const [deckUrl, setDeckUrl] = useState('');
+  const [importPreview, setImportPreview] = useState<DeckImportPreview | null>(null);
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
+  const [ignoreBasicLands, setIgnoreBasicLands] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  const previewCards = useMemo(() => importPreview?.sections.filter((section) => selectedSections.includes(section.id)).flatMap((section) => section.cards.flatMap((card) => Array.from({ length: card.quantity }, () => `${card.name}${card.setCode ? ` [${card.setCode}]` : ''}`))) ?? [], [importPreview, selectedSections]);
 
   const handleScoutCard = async (card: ScryfallCardOption | string) => {
     const resolved = typeof card === 'string' ? await fetchScryfallCard(card) : card;
@@ -67,6 +77,25 @@ function HomeRoute() {
       to: '/build/$listId/$slug',
       params: { listId: id, slug: slugifyName(trimmedListName) },
     });
+  };
+
+  const handleImportPreview = async () => {
+    if (!deckUrl.trim()) return enqueueSnackbar('Paste a supported deck link first', { variant: 'warning' });
+    setImporting(true);
+    try {
+      const preview = await previewDeckImport(deckUrl.trim());
+      setImportPreview(preview); setListName(preview.name); setSelectedSections(preview.sections.filter((section) => section.selectedByDefault).map((section) => section.id));
+    } catch (error) { enqueueSnackbar(error instanceof Error ? error.message : 'Could not import that link', { variant: 'error' }); }
+    finally { setImporting(false); }
+  };
+
+  const handleImportedDeck = async () => {
+    const name = listName.trim();
+    const cards = ignoreBasicLands ? previewCards.filter((card) => !/^(Plains|Island|Swamp|Mountain|Forest)( \[[^\]]+\])?$/i.test(card)) : previewCards;
+    if (!name) return enqueueSnackbar('Name your card list before continuing', { variant: 'warning' });
+    if (!cards.length) return enqueueSnackbar('Select at least one non-basic card', { variant: 'warning' });
+    if (cards.length > 150) return enqueueSnackbar('Selected sections contain more than the 150-card limit', { variant: 'warning' });
+    const id = await save(name, cards); if (id) navigate({ to: '/build/$listId/$slug', params: { listId: id, slug: slugifyName(name) } });
   };
 
   return (
@@ -185,6 +214,17 @@ function HomeRoute() {
           </>
         ) : (
           <>
+            <TextField fullWidth label="Import from deck link" placeholder="Archidekt, Deckstats, MTGGoldfish, or Moxfield" value={deckUrl} onChange={(e) => setDeckUrl(e.target.value)} sx={{ mb: 1 }} />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}><Button variant="outlined" onClick={() => void handleImportPreview()} disabled={importing || !canCreateList}>{importing ? 'Importing…' : 'Import link'}</Button></Box>
+            {importPreview && (
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
+                <Typography variant="subtitle1">Preview from {importPreview.provider}</Typography>
+                {importPreview.warnings.map((warning) => <Typography key={warning} variant="body2" color="warning.main">{warning}</Typography>)}
+                {importPreview.sections.map((section) => <FormControlLabel key={section.id} control={<Checkbox checked={selectedSections.includes(section.id)} onChange={(event) => setSelectedSections((previous) => event.target.checked ? [...previous, section.id] : previous.filter((id) => id !== section.id))} />} label={`${section.label} (${section.cards.reduce((total, card) => total + card.quantity, 0)} cards)`} />)}
+                <FormControlLabel control={<Checkbox checked={ignoreBasicLands} onChange={(event) => setIgnoreBasicLands(event.target.checked)} />} label="Ignore basic lands" />
+                <Typography variant="body2" color={previewCards.length > 150 ? 'error.main' : 'text.secondary'}>{previewCards.length} selected cards{previewCards.length > 150 ? ' — exceeds the 150-card limit' : ''}</Typography>
+              </Paper>
+            )}
             <TextField
               fullWidth
               label="List name"
@@ -237,6 +277,7 @@ function HomeRoute() {
               >
                 Continue
               </Button>
+              {importPreview && <Button variant="contained" size="large" color="primary" disabled={!canCreateList || previewCards.length > 150} onClick={() => void handleImportedDeck()}>Create imported list</Button>}
             </Box>
           </>
         )}

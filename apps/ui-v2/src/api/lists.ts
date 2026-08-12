@@ -129,6 +129,14 @@ export interface CreateListInput {
   filterSetCode?: string;
 }
 
+export type DeckImportSection = {
+  id: 'mainboard' | 'commander' | 'companion' | 'sideboard' | 'maybeboard';
+  label: string;
+  selectedByDefault: boolean;
+  cards: Array<{ name: string; quantity: number; setCode?: string }>;
+};
+export interface DeckImportPreview { provider: string; sourceUrl: string; name: string; sections: DeckImportSection[]; warnings: string[] }
+
 export interface ReplaceCardsResponse {
   cardCount: number;
   cards: Array<{ cardName: string; colorIdentity: string | null }>;
@@ -242,6 +250,12 @@ export function createList(input: CreateListInput): Promise<CreateListResponse> 
   return request<CreateListResponse>('/api/v1/lists', {
     method: 'POST',
     body: JSON.stringify(input),
+  });
+}
+
+export function previewDeckImport(url: string): Promise<DeckImportPreview> {
+  return request<DeckImportPreview>('/api/v1/lists/import-preview', {
+    method: 'POST', body: JSON.stringify({ url }),
   });
 }
 

@@ -102,9 +102,11 @@ services:
       - AUTH_JWT_ISSUER=scoutlgs-auth
       - AUTH_JWT_AUDIENCE=scoutlgs-api
       - SCHEDULER_INTERNAL_URL=http://scheduler:5001
+      - MOXFIELD_IMPORT_ENDPOINT=${MOXFIELD_IMPORT_ENDPOINT:-}
     secrets:
       - api_frontend_url
       - api_database_password
+      - api_moxfield_import_credential
     networks:
       - redis-network
       - postgres-network
@@ -408,6 +410,9 @@ secrets:
   cloudflare_tunnel_token:
     external: true
     name: cloudflare_tunnel_token
+  api_moxfield_import_credential:
+    external: true
+    name: api_moxfield_import_credential
 
   # API secrets
   api_frontend_url:

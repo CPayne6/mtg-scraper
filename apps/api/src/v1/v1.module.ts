@@ -29,6 +29,7 @@ import { ListsController } from './lists/lists.controller';
 import { ListsService } from './lists/lists.service';
 import { CardNameResolverService } from './shared/card-name-resolver.service';
 import { DeliveryQuoteService } from './lists/delivery-quote.service';
+import { DeckImportService } from './lists/deck-import.service';
 
 @Module({
   imports: [
@@ -46,6 +47,6 @@ import { DeliveryQuoteService } from './lists/delivery-quote.service';
     CheckoutModule,
   ],
   controllers: [CardsController, TokensController, ListsController],
-  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService],
+  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService, DeckImportService],
 })
 export class V1Module {}
