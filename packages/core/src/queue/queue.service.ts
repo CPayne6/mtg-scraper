@@ -6,6 +6,7 @@ import {
   JOB_NAMES,
   StorefrontPlanJobData,
   ReextractUnmatchedJobData,
+  MoxfieldDeckImportJobData,
 } from '@scoutlgs/shared';
 
 @Injectable()
@@ -23,11 +24,28 @@ export class QueueService {
     >,
     @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
     private readonly cardOptimizationQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.MOXFIELD_DECK_IMPORT)
+    private readonly moxfieldDeckImportQueue: Queue<MoxfieldDeckImportJobData>,
   ) {
     this.queues = new Map<string, Queue>([
       [QUEUE_NAMES.STOREFRONT_EXTRACTION, this.storefrontExtractionQueue],
       [QUEUE_NAMES.CARD_OPTIMIZATION, this.cardOptimizationQueue],
+      [QUEUE_NAMES.MOXFIELD_DECK_IMPORT, this.moxfieldDeckImportQueue],
     ]);
+  }
+
+  /** Queue a public Moxfield deck fetch for the dedicated browser worker. */
+  async enqueueMoxfieldDeckImport(deckId: string): Promise<string> {
+    const job = await this.moxfieldDeckImportQueue.add(
+      JOB_NAMES.MOXFIELD_DECK_IMPORT,
+      { deckId, enqueuedAt: Date.now() },
+      {
+        attempts: 1,
+        removeOnComplete: { age: 600, count: 100 },
+        removeOnFail: { age: 3600, count: 100 },
+      },
+    );
+    return String(job.id);
   }
 
   private getQueueByName(queueName: string): Queue {

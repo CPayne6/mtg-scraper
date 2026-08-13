@@ -130,6 +130,7 @@ jobs:
             apps/scraper/dist
             apps/scheduler/dist
             apps/optimizer/dist
+            apps/moxfield-importer/dist
             packages/core/dist
             packages/shared/dist
           key: ${{ runner.os }}-build-${{ github.sha }}
@@ -146,6 +147,7 @@ jobs:
             apps/scraper/dist
             apps/scheduler/dist
             apps/optimizer/dist
+            apps/moxfield-importer/dist
             packages/core/dist
             packages/shared/dist
           retention-days: 7
@@ -176,6 +178,8 @@ jobs:
             dockerfile: apps/scheduler/Dockerfile
           - name: optimizer
             dockerfile: apps/optimizer/Dockerfile
+          - name: moxfield-importer
+            dockerfile: apps/moxfield-importer/Dockerfile
 
     steps:
       - name: Checkout code

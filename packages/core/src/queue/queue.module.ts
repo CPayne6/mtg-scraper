@@ -20,6 +20,7 @@ import { QueueService } from './queue.service';
     BullModule.registerQueue(
       { name: QUEUE_NAMES.STOREFRONT_EXTRACTION },
       { name: QUEUE_NAMES.CARD_OPTIMIZATION },
+      { name: QUEUE_NAMES.MOXFIELD_DECK_IMPORT },
     ),
   ],
   providers: [QueueService],

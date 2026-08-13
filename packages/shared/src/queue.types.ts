@@ -1,6 +1,7 @@
 export const QUEUE_NAMES = {
   STOREFRONT_EXTRACTION: 'storefront-extraction',
   CARD_OPTIMIZATION: 'card-optimization',
+  MOXFIELD_DECK_IMPORT: 'moxfield-deck-import',
 } as const;
 
 export const PUBSUB_CHANNELS = {
@@ -9,6 +10,7 @@ export const PUBSUB_CHANNELS = {
 
 export const JOB_NAMES = {
   CARD_OPTIMIZATION: 'optimize-card-list',
+  MOXFIELD_DECK_IMPORT: 'fetch-moxfield-deck',
   /**
    * Per-store plan job: probes the store's `created_at` range and fans out
    * one bucket job per year. Replaces the legacy id-based bootstrap.
@@ -29,6 +31,21 @@ export const JOB_NAMES = {
    */
   REEXTRACT_UNMATCHED: 'reextract-unmatched',
 } as const;
+
+/**
+ * Contains only the public deck identifier. The browser worker must construct
+ * the Moxfield URL itself and must never navigate to a submitted URL.
+ */
+export interface MoxfieldDeckImportJobData {
+  deckId: string;
+  enqueuedAt: number;
+}
+
+export interface MoxfieldDeckImportJobResult {
+  provider: 'moxfield';
+  /** The validated upstream JSON is returned to the API through Bull's job result. */
+  deck: unknown;
+}
 
 export interface CardOptimizationJobData {
   listId: number;

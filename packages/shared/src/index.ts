@@ -17,5 +17,7 @@ export type {
   ReextractUnmatchedJobData,
   ReextractUnmatchedJobResult,
   CardOptimizationJobData,
+  MoxfieldDeckImportJobData,
+  MoxfieldDeckImportJobResult,
 } from './queue.types';
 export { QUEUE_NAMES, JOB_NAMES, PUBSUB_CHANNELS } from './queue.types';
