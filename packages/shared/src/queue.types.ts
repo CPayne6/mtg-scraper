@@ -82,6 +82,12 @@ export interface ReextractUnmatchedJobData {
   limit?: number;
   /** Limit retries to products extracted from these set codes. */
   setCodes?: string[];
+  /**
+   * Also retry products whose card name matched but whose printing did not.
+   * This is used after importing new Scryfall sets: those rows are not in
+   * unmatched_cards, so a normal unmatched-only retry would miss them.
+   */
+  rematchMissingPrintings?: boolean;
 }
 
 export interface ReextractUnmatchedJobResult {
