@@ -32,6 +32,7 @@ import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import type { DeliveryOptionsDto } from './dto/delivery-options.dto';
 import { DeliveryQuoteService } from './delivery-quote.service';
+import { isBasicLandName } from './list-refresh.service';
 
 const MAX_LISTS_PER_ANONYMOUS_OWNER = 3;
 const MAX_LISTS_PER_USER_OWNER = 6;
@@ -255,9 +256,16 @@ export class ListsService {
     // IDs are already canonical and avoid treating punctuation in a display
     // name as part of a fuzzy/printing-name lookup.
     const suppliedIds = dto.cardNameIds ?? [];
-    const { resolved, unresolved } = suppliedIds.length > 0
+    const resolution = suppliedIds.length > 0
       ? await this.resolveCardNameIds(suppliedIds)
       : await this.cardNameResolver.resolveCardNames(dto.cards ?? []);
+    const skippedBasicLands = dto.ignoreBasicLands
+      ? resolution.resolved.filter((card) => isBasicLandName(card.resolvedName))
+      : [];
+    const resolved = dto.ignoreBasicLands
+      ? resolution.resolved.filter((card) => !isBasicLandName(card.resolvedName))
+      : resolution.resolved;
+    const { unresolved } = resolution;
 
     // Create list
     const cardList = new CardList();
@@ -290,6 +298,9 @@ export class ListsService {
     }
     for (const name of unresolved) {
       warnings.push(`"${name}" could not be found`);
+    }
+    if (skippedBasicLands.length > 0) {
+      warnings.push(`Ignored ${skippedBasicLands.length} basic ${skippedBasicLands.length === 1 ? 'land' : 'lands'}`);
     }
 
     return {

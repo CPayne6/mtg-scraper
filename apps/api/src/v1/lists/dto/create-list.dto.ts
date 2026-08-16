@@ -8,6 +8,7 @@ import {
   MaxLength,
   IsIn,
   IsInt,
+  IsBoolean,
   ValidateIf,
 } from 'class-validator';
 import type { CardListVisibility } from '@scoutlgs/core';
@@ -44,6 +45,10 @@ export class CreateListDto {
   @IsString()
   @MaxLength(10)
   filterSetCode?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  ignoreBasicLands?: boolean;
 
   @IsOptional()
   @IsIn(['private', 'unlisted', 'public'])
