@@ -7,6 +7,8 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { SkryfallAutocomplete } from '@/components/search/SkryfallAutocomplete';
@@ -37,6 +39,7 @@ function HomeRoute() {
   const [cardName, setCardName] = useState('');
   const [listName, setListName] = useState('');
   const [deckText, setDeckText] = useState('');
+  const [ignoreBasicLands, setIgnoreBasicLands] = useState(false);
 
   const handleScoutCard = async (card: ScryfallCardOption | string) => {
     const resolved = typeof card === 'string' ? await fetchScryfallCard(card) : card;
@@ -61,7 +64,7 @@ function HomeRoute() {
       enqueueSnackbar("Couldn't find any cards in that list", { variant: 'warning' });
       return;
     }
-    const id = await save(trimmedListName, cards);
+    const id = await save(trimmedListName, cards, undefined, ignoreBasicLands);
     if (!id) return;
     navigate({
       to: '/build/$listId/$slug',
@@ -210,6 +213,16 @@ function HomeRoute() {
                   },
                 },
               }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={ignoreBasicLands}
+                  onChange={(event) => setIgnoreBasicLands(event.target.checked)}
+                />
+              }
+              label="Ignore basic lands"
+              sx={{ mt: 0.5, mb: 0.5 }}
             />
             <Box
               sx={{
