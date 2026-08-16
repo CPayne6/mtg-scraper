@@ -234,7 +234,6 @@ function HomeRoute() {
                 flexWrap: 'wrap',
               }}
             >
-              <Tip>Paste a Commander list — Arena, MTGO, or plain. We'll figure out the format.</Tip>
               {!canCreateList && (
                 <Tip>
                   You have reached the {listLimit} card list limit. Delete a list
