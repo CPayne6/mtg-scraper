@@ -460,7 +460,7 @@ export class StorefrontProcessor implements OnModuleInit {
   async reextractUnmatched(
     job: Job<ReextractUnmatchedJobData>,
   ): Promise<ReextractUnmatchedJobResult> {
-    const { storeId, limit = 5000, setCodes } = job.data;
+    const { storeId, limit = 5000, setCodes, rematchMissingPrintings = false } = job.data;
 
     const store = await this.storeRepository.findOne({ where: { id: storeId } });
     if (!store) throw new Error(`Store ${storeId} not found`);
@@ -469,19 +469,27 @@ export class StorefrontProcessor implements OnModuleInit {
       store.platformType!,
     ) as StorefrontExtractionAdapter;
 
-    // Pull the unmatched Shopify product IDs for this store
+    // Pull the unmatched Shopify product IDs for this store. When a new set
+    // was just imported, include existing name-matched listings that lack a
+    // printing too: they were never written to unmatched_cards, even though
+    // they need the new printing catalog to be matched again.
     const normalizedSetCodes = setCodes?.map((code) => code.toLowerCase());
     const unmatched: Array<{ shopifyProductId: string; productUrlId: number | null }> = normalizedSetCodes?.length
       ? (await this.dataSource.query<Array<{ shopify_product_id: string; product_url_id: number | null }>>(
         `SELECT DISTINCT sp.shopify_product_id, sp.product_url_id
          FROM shopify_products sp
-         JOIN unmatched_cards uc
+         LEFT JOIN unmatched_cards uc
            ON uc.store_id = sp.store_id AND uc.product_url_id = sp.product_url_id
+         LEFT JOIN card_listings cl
+           ON cl.id = sp.card_listing_id
+           OR (cl.store_id = sp.store_id AND cl.product_url_id = sp.product_url_id)
          WHERE sp.store_id = $1
-           AND sp.match_status = 'unmatched'
-           AND LOWER(uc.set_code) = ANY($2::text[])
+           AND (
+             (sp.match_status = 'unmatched' AND LOWER(uc.set_code) = ANY($2::text[]))
+             OR ($4::boolean = TRUE AND sp.card_listing_id IS NOT NULL AND cl.card_printing_id IS NULL)
+           )
          LIMIT $3`,
-        [storeId, normalizedSetCodes, limit],
+        [storeId, normalizedSetCodes, limit, rematchMissingPrintings],
       )).map((row) => ({ shopifyProductId: row.shopify_product_id, productUrlId: row.product_url_id }))
       : await this.shopifyProductRepository.find({
         where: { storeId, matchStatus: 'unmatched' },
@@ -490,7 +498,7 @@ export class StorefrontProcessor implements OnModuleInit {
       });
 
     this.logger.warn(
-      `reextract-unmatched: ${store.name} has ${unmatched.length} unmatched products to re-fetch${normalizedSetCodes?.length ? ` for ${normalizedSetCodes.join(', ')}` : ''}`,
+      `reextract-unmatched: ${store.name} has ${unmatched.length} products to re-fetch${normalizedSetCodes?.length ? ` for ${normalizedSetCodes.join(', ')}` : ''}${rematchMissingPrintings ? ' (including missing printings)' : ''}`,
     );
 
     if (unmatched.length === 0) {
@@ -541,7 +549,12 @@ export class StorefrontProcessor implements OnModuleInit {
         }
 
         // 3. Process: writes the fresh extraction's view to the DB
-        await this.processPage(products, store.id);
+        await this.processPage(
+          products,
+          store.id,
+          undefined,
+          rematchMissingPrintings ? new Set(batch.map((product) => product.shopifyProductId)) : undefined,
+        );
       } catch (error) {
         // If Shopify throttled us, reschedule the whole job for after
         // the cooldown and stop processing the rest of the batches.
@@ -692,6 +705,7 @@ export class StorefrontProcessor implements OnModuleInit {
     products: ExtractedProduct[],
     storeId: number,
     discoveryRunId?: number,
+    forceRematchShopifyProductIds?: ReadonlySet<string>,
   ): Promise<{ processed: number; cards: number; errors: number }> {
     const artSeriesProducts = products.filter((product) => product.isArtSeries);
     const cardProducts = products.filter((product) => !product.isArtSeries);
@@ -722,7 +736,11 @@ export class StorefrontProcessor implements OnModuleInit {
 
     for (const product of cardProducts) {
       const existing = existingMap.get(product.shopifyProductId);
-      if (existing?.productUrlId && existing.matchStatus === 'matched') {
+      if (
+        existing?.productUrlId &&
+        existing.matchStatus === 'matched' &&
+        !forceRematchShopifyProductIds?.has(product.shopifyProductId)
+      ) {
         knownProducts.push({
           product,
           productUrlId: existing.productUrlId,

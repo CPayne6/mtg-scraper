@@ -65,15 +65,24 @@ export class ScryfallCatalogService {
     const stores = await this.dataSource.query<Array<{ id: number }>>(
       `SELECT DISTINCT s.id
        FROM stores s
-       JOIN unmatched_cards uc ON uc.store_id = s.id
+       JOIN shopify_products sp ON sp.store_id = s.id
+       LEFT JOIN unmatched_cards uc
+         ON uc.store_id = sp.store_id AND uc.product_url_id = sp.product_url_id
+       LEFT JOIN card_listings cl
+         ON cl.id = sp.card_listing_id
+         OR (cl.store_id = sp.store_id AND cl.product_url_id = sp.product_url_id)
        WHERE s.platform_type = 'shopify_storefront'
-         AND LOWER(uc.set_code) = ANY($1::text[])`,
+         AND (
+           LOWER(uc.set_code) = ANY($1::text[])
+           OR (sp.card_listing_id IS NOT NULL AND cl.card_printing_id IS NULL)
+         )`,
       [setCodes],
     );
     await Promise.all(stores.map((store) =>
       this.queueService.enqueueReextractUnmatchedJob({
         storeId: Number(store.id),
         setCodes,
+        rematchMissingPrintings: true,
         // Give Redis subscribers time to finish rebuilding their caches.
         delayMs: 10_000,
       }),
