@@ -1,5 +1,6 @@
 export { StorefrontClient } from './storefront-client';
 export { StorefrontExtractionAdapter } from './storefront-extraction.adapter';
+export { ProfiledStorefrontCardParser, InvalidStorefrontParserProfileError } from './profiled-storefront-card-parser';
 export { StorefrontPaginationLimitError } from './pagination-limit-error';
 export type {
   StorefrontGraphQLResponse,

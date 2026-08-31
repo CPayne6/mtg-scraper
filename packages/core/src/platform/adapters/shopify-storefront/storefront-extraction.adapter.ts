@@ -27,6 +27,9 @@ import type {
   ProductByHandleData,
   ProductsByIdsData,
 } from './storefront.types';
+import { normalizeStorefrontProfileInputs } from '@scoutlgs/shared';
+import type { ProfileEvaluationInput } from '@scoutlgs/shared';
+import { ProfiledStorefrontCardParser } from './profiled-storefront-card-parser';
 
 @Injectable()
 export class StorefrontExtractionAdapter implements IExtractionAdapter {
@@ -327,7 +330,19 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     product: StorefrontProduct,
   ): ExtractedCardVariant[] {
-    const extractor = this.extractorRegistry.get(store.scraperType);
+    const profile = store.scraperConfig?.parser;
+    if (profile?.kind === 'mapping') {
+      const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
+      return this.toProfileInputs(product).flatMap(input => {
+        const parsed = ProfiledStorefrontCardParser.parse(compiled, input, store.baseUrl);
+        if (!parsed) {
+          this.logger.warn(`Skipping invalid Storefront price for ${store.name} variant ${input.variant.id}`);
+          return [];
+        }
+        return [parsed];
+      });
+    }
+    const extractor = this.extractorRegistry.get(this.parserType(store));
 
     // Parse product-level info
     const titleInfo = extractor.parseTitle(product.title);
@@ -410,7 +425,12 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     product: StorefrontProduct,
   ): boolean {
-    const extractor = this.extractorRegistry.get(store.scraperType);
+    const profile = store.scraperConfig?.parser;
+    if (profile?.kind === 'mapping') {
+      const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
+      return ProfiledStorefrontCardParser.isArtSeries(compiled, this.toProfileInputs(product));
+    }
+    const extractor = this.extractorRegistry.get(this.parserType(store));
     if (extractor.parseTitle(product.title).isArtSeries) {
       return true;
     }
@@ -419,5 +439,15 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     return variants.length > 0 && variants.every(({ node: variant }) =>
       extractor.parseSkuInfo(variant.sku ?? undefined).isArtSeries,
     );
+  }
+
+  private parserType(store: Store): string {
+    const profile = store.scraperConfig?.parser;
+    return profile?.kind === 'builtin' ? profile.parserType : store.scraperType;
+  }
+
+  /** Converts Storefront edges to the profile contract. Tools can create this same shape from nodes. */
+  private toProfileInputs(product: StorefrontProduct): ProfileEvaluationInput[] {
+    return normalizeStorefrontProfileInputs(product);
   }
 }

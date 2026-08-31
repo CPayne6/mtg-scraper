@@ -539,4 +539,35 @@ describe('StorefrontExtractionAdapter', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('mapping parser profiles', () => {
+    it('evaluates a validated mapping profile against normalized Storefront edges', async () => {
+      const product = createMockProduct({
+        title: '  Lightning Bolt  ',
+        vendor: 'Magic 2011',
+        variants: { edges: [{ node: {
+          id: 'gid://shopify/ProductVariant/77', title: 'NM', sku: 'M11-123',
+          availableForSale: true, price: { amount: '2.50', currencyCode: 'CAD' },
+          selectedOptions: [{ name: 'Condition', value: 'Near Mint' }, { name: 'Finish', value: 'Foil' }],
+        } }] },
+      });
+      mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
+      const store = createMockStore({ scraperType: 'default', scraperConfig: {
+        parser: { kind: 'mapping', version: 1, fields: {
+          cardName: { candidates: [{ source: 'product.title', transforms: [{ type: 'trim' }] }] },
+          setName: { candidates: [{ source: 'product.vendor' }] },
+          condition: { candidates: [{ source: 'variant.selectedOptions', transforms: [{ type: 'optionValue', name: 'Condition' }, { type: 'condition' }] }] },
+          foil: { candidates: [{ source: 'variant.selectedOptions', transforms: [{ type: 'optionValue', name: 'Finish' }, { type: 'booleanTokens', true: ['foil'], false: ['non-foil'] }] }] },
+        } },
+      } });
+
+      const [variant] = await adapter.extractProduct(store, product.handle);
+
+      expect(variant).toMatchObject({
+        cardName: 'Lightning Bolt', setName: 'Magic 2011', condition: Condition.NM,
+        foil: true, price: 2.5, currency: 'CAD', inStock: true,
+        platformVariantId: '77', sku: 'M11-123',
+      });
+    });
+  });
 });

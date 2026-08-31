@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
   Generated,
 } from 'typeorm';
-import type { PlatformType, StoreDiscoveryConfig } from '@scoutlgs/shared';
+import type { PlatformType, StoreDiscoveryConfig, StorefrontParserProfile } from '@scoutlgs/shared';
 
 @Entity('stores')
 export class Store {
@@ -33,7 +33,7 @@ export class Store {
   isActive: boolean;
 
   @Column({ name: 'scraper_type' })
-  scraperType: 'f2f' | '401' | 'hobbies' | 'binderpos' | 'cgrealm';
+  scraperType: 'default' | 'f2f' | '401' | 'hobbies' | 'binderpos' | 'cgrealm';
 
   @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
   scraperConfig?: {
@@ -43,6 +43,7 @@ export class Store {
     storefrontAccessToken?: string;
     /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
     storefrontScope?: string;
+    parser?: StorefrontParserProfile;
   };
 
   @Column({ name: 'platform_type', length: 50, nullable: true })
