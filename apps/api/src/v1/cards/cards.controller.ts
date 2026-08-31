@@ -2,6 +2,7 @@ import { Controller, Get, Query, UsePipes, ValidationPipe } from '@nestjs/common
 import { CardsService, SearchResponse } from './cards.service';
 import { SearchCardsQueryDto } from './dto/search-cards-query.dto';
 import { BulkSearchCardsDto } from './dto/bulk-search-cards.dto';
+import { parseSelectedStores } from '../shared/store-selection';
 
 @Controller('cards')
 export class CardsController {
@@ -12,9 +13,7 @@ export class CardsController {
   async searchCards(
     @Query() query: SearchCardsQueryDto,
   ): Promise<SearchResponse> {
-    const stores = query.stores
-      ? query.stores.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined;
+    const stores = parseSelectedStores(query.stores);
     const conditions = query.conditions
       ? query.conditions.split(',').map((c) => c.trim()).filter(Boolean)
       : undefined;
