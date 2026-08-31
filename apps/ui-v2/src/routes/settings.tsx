@@ -9,7 +9,8 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import { useColorMode } from '@/components/ui/color-mode';
-import { DEFAULT_STORE_KEYS, STORE_FACETS } from '@/data/sample';
+import { DEFAULT_STORE_KEYS } from '@/data/sample';
+import { fetchActiveStores, type ActiveStore } from '@/api/stores';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { getDeliveryAddress, removeDeliveryAddress, saveDeliveryAddress, type DeliveryAddress } from '@/api/auth';
 import { useAuth } from '@/components/auth/AuthContext';
@@ -77,6 +78,8 @@ function SettingsRoute() {
   const { session } = useAuth();
   const [address, setAddress] = useState<DeliveryAddress | null>(null);
   const [addressSaving, setAddressSaving] = useState(false);
+  const [stores, setStores] = useState<ActiveStore[]>([]);
+  useEffect(() => { const controller = new AbortController(); fetchActiveStores(controller.signal).then(setStores).catch(() => undefined); return () => controller.abort(); }, []);
   useEffect(() => { if (session?.user) void getDeliveryAddress().then((result) => setAddress(result.address)).catch(() => setAddress(null)); }, [session?.user]);
   const [defaultCondition, setDefaultCondition] = useLocalStorage<string>(
     'scoutlgs:default-condition',
@@ -95,7 +98,7 @@ function SettingsRoute() {
         if (active.length === 1) return active;
         return active.filter((key) => key !== storeKey);
       }
-      return [...active, storeKey];
+      return active.length >= 10 ? active : [...active, storeKey];
     });
   };
 
@@ -142,15 +145,15 @@ function SettingsRoute() {
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {STORE_FACETS.map((store) => {
-                const selected = activeDefaultStores.includes(store.key);
+              {stores.map((store) => {
+                const selected = activeDefaultStores.includes(store.name);
                 return (
                   <Chip
-                    key={store.key}
+                    key={store.name}
                     color={selected ? 'success' : 'default'}
                     variant={selected ? 'filled' : 'outlined'}
-                    label={store.label}
-                    onClick={() => toggleDefaultStore(store.key)}
+                    label={store.displayName}
+                    onClick={() => toggleDefaultStore(store.name)}
                   />
                 );
               })}
