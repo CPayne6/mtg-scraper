@@ -19,6 +19,7 @@ const stores: Partial<Store>[] = [
     isActive: true,
     scraperConfig: {
       storefrontScope: 'product_type:Singles vendor:Magic',
+      parser: { kind: 'builtin', version: 1, parserType: 'f2f' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -32,6 +33,7 @@ const stores: Partial<Store>[] = [
     isActive: true,
     scraperConfig: {
       storefrontScope: 'product_type:"Magic: The Gathering Singles"',
+      parser: { kind: 'builtin', version: 1, parserType: '401' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -45,6 +47,7 @@ const stores: Partial<Store>[] = [
     isActive: true,
     scraperConfig: {
       storefrontScope: 'product_type:Single tag:Brands_Magicthegathering',
+      parser: { kind: 'builtin', version: 1, parserType: 'hobbies' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -59,6 +62,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       shopifyUrl: 'house-of-cards-mtg.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
+      parser: { kind: 'builtin', version: 1, parserType: 'binderpos' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -73,6 +77,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       shopifyUrl: 'black-knight-games.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
+      parser: { kind: 'builtin', version: 1, parserType: 'binderpos' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -87,6 +92,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       shopifyUrl: 'most-wanted-ca.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
+      parser: { kind: 'builtin', version: 1, parserType: 'binderpos' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -101,6 +107,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       shopifyUrl: 'gameknight-games.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
+      parser: { kind: 'builtin', version: 1, parserType: 'binderpos' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },
@@ -115,6 +122,7 @@ const stores: Partial<Store>[] = [
     scraperConfig: {
       shopifyUrl: 'the-cg-realm.myshopify.com',
       storefrontScope: 'product_type:"MTG Single"',
+      parser: { kind: 'builtin', version: 1, parserType: 'cgrealm' },
     },
     discoveryConfig: { discoveryEnabled: true },
   },

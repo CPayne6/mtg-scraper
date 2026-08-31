@@ -7,6 +7,7 @@ import type {
   ImageInfo,
 } from '../../card-detail-extractor.interface';
 import { isArtSeriesTitle } from '../art-series';
+import { CardDetailExtractor } from '../../card-detail-extractor.decorator';
 
 /**
  * Generic fallback card detail extractor.
@@ -15,6 +16,7 @@ import { isArtSeriesTitle } from '../art-series';
  * Handles basic title formats: brackets, parenthesis, dash, and plain text.
  */
 @Injectable()
+@CardDetailExtractor('default')
 export class DefaultCardDetailExtractor implements ICardDetailExtractor {
   parseTitle(title: string): TitleInfo {
     if (isArtSeriesTitle(title)) {
