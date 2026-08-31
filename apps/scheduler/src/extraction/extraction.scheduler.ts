@@ -45,15 +45,19 @@ export class ExtractionScheduler implements OnModuleInit {
     const timezone = this.configService.get<string>('schedule.timezone') ?? 'America/Toronto';
     const runOnInit = this.configService.get<boolean>('extraction.runOnInit') ?? false;
 
-    // Nightly full crawl
-    const fullCronTime = this.configService.get<string>('extraction.cronTime') ?? '0 1 * * *';
-    this.logger.log(`Full extraction scheduled at: ${fullCronTime} (${timezone})`);
+    // The dispatcher runs frequently, but each store is due only once per
+    // 24-hour window. This spreads 100+ stores instead of a nightly burst.
+    const fullCronTime = this.configService.get<string>('extraction.cronTime') ?? '*/15 * * * *';
+    this.logger.log(`Per-store daily extraction dispatcher scheduled at: ${fullCronTime} (${timezone})`);
     const fullJob = CronJob.from({
       cronTime: fullCronTime,
       timeZone: timezone,
       onTick: () => {
-        this.runExtraction({ incremental: false }).catch((error) => {
-          this.logger.error('Full extraction cron failed:', error);
+        const maxConcurrentStores = this.configService.get<number>('extraction.maxConcurrentStores') ?? 4;
+        this.extractionOrchestrator.queueDueStorefrontStores(maxConcurrentStores).then((queued) => {
+          if (queued > 0) this.logger.log(`Queued ${queued} due storefront sync(s)`);
+        }).catch((error) => {
+          this.logger.error('Daily storefront dispatcher failed:', error);
         });
       },
       start: true,
@@ -82,28 +86,6 @@ export class ExtractionScheduler implements OnModuleInit {
     sweeperJob.start();
     this.logger.log('Failed-bucket sweeper scheduled hourly');
 
-    // Hourly incremental refresh
-    const incrementalEnabled =
-      this.configService.get<boolean>('extraction.incrementalEnabled') ?? false;
-    if (incrementalEnabled) {
-      const incrementalCronTime =
-        this.configService.get<string>('extraction.incrementalCronTime') ?? '0 9-21 * * *';
-      this.logger.log(
-        `Incremental extraction scheduled at: ${incrementalCronTime} (${timezone})`,
-      );
-      const incJob = CronJob.from({
-        cronTime: incrementalCronTime,
-        timeZone: timezone,
-        onTick: () => {
-          this.runExtraction({ incremental: true }).catch((error) => {
-            this.logger.error('Incremental extraction cron failed:', error);
-          });
-        },
-        start: true,
-      });
-      this.schedulerRegistry.addCronJob('extraction-incremental', incJob);
-      incJob.start();
-    }
   }
 
   async getJobStatus(): Promise<ExtractionJobStatus | null> {
