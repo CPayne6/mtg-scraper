@@ -39,6 +39,24 @@ services:
       timeout: 3s
       retries: 5
 
+  # Isolated, append-only price history store. It is intentionally separate
+  # from current inventory so retention and analytical queries cannot starve
+  # storefront ingestion.
+  price-history-postgres:
+    image: postgres:16-alpine
+    container_name: scoutlgs-price-history-postgres-dev
+    environment:
+      - POSTGRES_DB=scoutlgs_price_history
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - scoutlgs-price-history-data-dev:/var/lib/postgresql/data
+      - ./infrastructure/price-history/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - scoutlgs-network-dev
+
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
@@ -287,4 +305,6 @@ volumes:
   scoutlgs-postgres-data-dev:
     driver: local
   scoutlgs-auth-postgres-data-dev:
+    driver: local
+  scoutlgs-price-history-data-dev:
     driver: local
