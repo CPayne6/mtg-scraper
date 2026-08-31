@@ -6,13 +6,14 @@ import {
   CacheModule,
   Store,
   ExtractionRun,
+  StoreSyncState,
 } from '@scoutlgs/core';
 import { ExtractionOrchestrator } from './extraction-orchestrator.service';
 import { ExtractionScheduler } from './extraction.scheduler';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store, ExtractionRun]),
+    TypeOrmModule.forFeature([Store, ExtractionRun, StoreSyncState]),
     QueueModule,
     CacheModule,
     ScheduleModule.forRoot(),

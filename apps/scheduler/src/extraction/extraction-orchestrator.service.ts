@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Store, QueueService, ExtractionRun } from '@scoutlgs/core';
+import { LessThanOrEqual, Repository } from 'typeorm';
+import { Store, QueueService, ExtractionRun, StoreSyncState } from '@scoutlgs/core';
 import type { ExtractionRunTrigger } from '@scoutlgs/core';
 
 export interface ExtractionRunResult {
@@ -35,18 +35,56 @@ export class ExtractionOrchestrator {
     private readonly storeRepository: Repository<Store>,
     @InjectRepository(ExtractionRun)
     private readonly extractionRunRepository: Repository<ExtractionRun>,
+    @InjectRepository(StoreSyncState)
+    private readonly storeSyncStateRepository: Repository<StoreSyncState>,
     private readonly queueService: QueueService,
   ) {}
 
   /**
+   * Dispatch only stores whose individual 24-hour window is due. Initial
+   * windows are deterministically spread across the day, and the conditional
+   * update is the cross-replica claim that prevents duplicate plan jobs.
+   */
+  async queueDueStorefrontStores(maxConcurrentStores = 4): Promise<number> {
+    const stores = (await this.storeRepository.find({ where: { isActive: true } }))
+      .filter((store) => store.platformType === 'shopify_storefront' && store.discoveryConfig?.discoveryEnabled);
+    const now = new Date();
+    const activeStoreIds = await this.queueService.getActiveStorefrontCrawlStoreIds();
+    let queued = 0;
+
+    for (const store of stores) {
+      if (activeStoreIds.size >= maxConcurrentStores) break;
+      if (activeStoreIds.has(store.id)) continue;
+      let state = await this.storeSyncStateRepository.findOne({ where: { storeId: store.id } });
+      if (!state) {
+        const slotMs = (store.id * 1_103_515_245) % (24 * 60 * 60 * 1000);
+        state = await this.storeSyncStateRepository.save(this.storeSyncStateRepository.create({
+          storeId: store.id,
+          nextSyncAt: new Date(now.getTime() + slotMs),
+          lastEnqueuedAt: null,
+          lastSuccessfulAt: null,
+          lastError: null,
+        }));
+      }
+      if (state.nextSyncAt > now) continue;
+      const claimed = await this.storeSyncStateRepository.update(
+        { storeId: store.id, nextSyncAt: LessThanOrEqual(now) },
+        { nextSyncAt: new Date(now.getTime() + 24 * 60 * 60 * 1000), lastEnqueuedAt: now, lastError: null },
+      );
+      if (!claimed.affected) continue;
+      if (await this.queueService.enqueueStorefrontPlanJob(store.id)) {
+        activeStoreIds.add(store.id);
+        queued++;
+      }
+    }
+    return queued;
+  }
+
+  /**
    * Queue storefront extraction jobs for all active opted-in stores.
    * Creates an `extraction_runs` row to track the wave, then enqueues
-   * one job per store with the run ID attached.
-   *
-   * When `incremental` is true, looks up the most recent prior run's
-   * `startedAt` and embeds it as `updatedSince` on each enqueued job so
-   * the Storefront query filters to products modified after the previous
-   * run. Falls through to a full crawl when no prior run exists.
+ * one job per store with the run ID attached. Shopify `updatedAt` is never
+ * used as a cursor: every run uses the exhaustive created_at bucket flow.
    */
   async queueExtractionForAllStores(
     priority: number = 1,
@@ -70,18 +108,14 @@ export class ExtractionOrchestrator {
 
     const targetStores = options?.skipExtraction ? [] : storefrontStores;
 
-    const updatedSince = options?.incremental
-      ? await this.resolveIncrementalCutoff()
-      : null;
+    // Storefront updatedAt is diagnostic only; complete created_at traversal
+    // is the correctness path and must never be replaced by a delta cursor.
+    const updatedSince = null;
 
     this.logger.log(
       `Found ${targetStores.length} storefront stores to queue out of ${enabledStores.length} opted-in stores` +
         (options?.skipExtraction ? ' (extraction skipped)' : '') +
-        (options?.incremental
-          ? updatedSince
-            ? ` (incremental since ${updatedSince})`
-            : ' (incremental requested but no prior run found; full crawl)'
-          : ''),
+        (options?.incremental ? ' (incremental request treated as a full traversal)' : ''),
     );
 
     const run = this.extractionRunRepository.create({
@@ -104,12 +138,6 @@ export class ExtractionOrchestrator {
       );
     }
 
-    if (updatedSince) {
-      this.logger.warn(
-        `Incremental mode requested (updatedSince=${updatedSince}) but the bucket flow currently runs full extraction per bucket; incremental filtering is a follow-up.`,
-      );
-    }
-
     // Mark the run completed once all jobs are on the queue. "Completed" here
     // means "we successfully kicked off the wave" — individual job results
     // are tracked separately on extractionsSucceeded. This gives us a stable
@@ -127,25 +155,4 @@ export class ExtractionOrchestrator {
     };
   }
 
-  /**
-   * Resolve the cutoff for incremental mode: the `startedAt` of the most
-   * recent prior run (any status, as long as it ran the full pipeline).
-   *
-   * We deliberately ignore `status` because Shopify's `updated_at` is
-   * monotonic — even if the previous run crashed mid-flight, anything
-   * modified since its startedAt is still what we need to re-fetch.
-   * Products unchanged at that point are already in our DB from earlier
-   * runs and don't need re-fetching.
-   *
-   * Returns null when no prior run exists (first-ever run falls through
-   * to a full crawl).
-   */
-  async resolveIncrementalCutoff(): Promise<string | null> {
-    const previousRun = await this.extractionRunRepository.findOne({
-      where: { skipExtraction: false },
-      order: { startedAt: 'DESC' },
-    });
-
-    return previousRun ? previousRun.startedAt.toISOString() : null;
-  }
 }
