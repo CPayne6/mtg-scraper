@@ -460,7 +460,7 @@ export class StorefrontProcessor implements OnModuleInit {
   async reextractUnmatched(
     job: Job<ReextractUnmatchedJobData>,
   ): Promise<ReextractUnmatchedJobResult> {
-    const { storeId, limit = 5000, setCodes } = job.data;
+    const { storeId, limit = 5000, setCodes, repairMissingPrintings = false } = job.data;
 
     const store = await this.storeRepository.findOne({ where: { id: storeId } });
     if (!store) throw new Error(`Store ${storeId} not found`);
@@ -471,7 +471,18 @@ export class StorefrontProcessor implements OnModuleInit {
 
     // Pull the unmatched Shopify product IDs for this store
     const normalizedSetCodes = setCodes?.map((code) => code.toLowerCase());
-    const unmatched: Array<{ shopifyProductId: string; productUrlId: number | null }> = normalizedSetCodes?.length
+    const unmatched: Array<{ shopifyProductId: string; productUrlId: number | null }> = repairMissingPrintings
+      ? await this.dataSource.query<Array<{ shopify_product_id: string; product_url_id: number | null }>>(
+        `SELECT DISTINCT sp.shopify_product_id, sp.product_url_id
+         FROM shopify_products sp
+         JOIN card_listings cl
+           ON cl.store_id = sp.store_id AND cl.product_url_id = sp.product_url_id
+         WHERE sp.store_id = $1
+           AND cl.card_printing_id IS NULL
+         LIMIT $2`,
+        [storeId, limit],
+      ).then((rows) => rows.map((row) => ({ shopifyProductId: row.shopify_product_id, productUrlId: row.product_url_id })))
+      : normalizedSetCodes?.length
       ? (await this.dataSource.query<Array<{ shopify_product_id: string; product_url_id: number | null }>>(
         `SELECT DISTINCT sp.shopify_product_id, sp.product_url_id
          FROM shopify_products sp
@@ -489,8 +500,11 @@ export class StorefrontProcessor implements OnModuleInit {
         take: limit,
       });
 
+    const repairDescription = repairMissingPrintings
+      ? ' listings with missing printing metadata'
+      : ' unmatched products';
     this.logger.warn(
-      `reextract-unmatched: ${store.name} has ${unmatched.length} unmatched products to re-fetch${normalizedSetCodes?.length ? ` for ${normalizedSetCodes.join(', ')}` : ''}`,
+      `reextract-unmatched: ${store.name} has ${unmatched.length}${repairDescription} to re-fetch${normalizedSetCodes?.length && !repairMissingPrintings ? ` for ${normalizedSetCodes.join(', ')}` : ''}`,
     );
 
     if (unmatched.length === 0) {

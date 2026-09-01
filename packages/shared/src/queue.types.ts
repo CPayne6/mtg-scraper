@@ -82,6 +82,12 @@ export interface ReextractUnmatchedJobData {
   limit?: number;
   /** Limit retries to products extracted from these set codes. */
   setCodes?: string[];
+  /**
+   * Re-fetch listings whose card name matched but whose Scryfall printing did
+   * not. This is used after a catalog repair so those offers gain their set,
+   * collector number, and printing image without re-crawling a whole store.
+   */
+  repairMissingPrintings?: boolean;
 }
 
 export interface ReextractUnmatchedJobResult {

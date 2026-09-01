@@ -144,8 +144,22 @@ export class ExtractionService {
       // Matched card — build listing + variant rows (in-stock only)
       if (matchResult.cardPrintingId) {
         result.matchedPrintings = 1;
+        // A prior extraction may have had the card name but lacked its
+        // Scryfall printing (for example, while a newly released set was
+        // absent from the catalog). It is no longer a repair candidate.
+        await this.unmatchedCardService.deleteForProductUrl(productUrlId);
       } else {
         result.unmatchedPrintings = 1;
+        // Keep the parsed set/collector data even when the card name matched.
+        // The catalog synchronizer uses this evidence to import a missing or
+        // incomplete set, then re-fetches the product to attach its printing.
+        await this.recordMissingPrintingVariants(
+          firstVariant,
+          variants,
+          store,
+          productUrlId,
+          result,
+        );
       }
 
       // Persist every variant with its current stock flag.
@@ -223,6 +237,43 @@ export class ExtractionService {
       await this.updateProductUrlStatus(productUrlId, 'error', result.error);
       return result;
     }
+  }
+
+  private async recordMissingPrintingVariants(
+    firstVariant: ExtractedCardVariant,
+    variants: ExtractedCardVariant[],
+    store: Store,
+    productUrlId: number,
+    result: ExtractionResult,
+  ): Promise<void> {
+    const normalizedName = firstVariant.cardName
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/['']/g, "'")
+      .replace(/[""]/g, '"');
+
+    const rows: UnmatchedCardRow[] = variants.map((variant) => ({
+      storeId: store.id,
+      productUrlId,
+      rawName: variant.cardName,
+      normalizedName,
+      setName: variant.setName || null,
+      setCode: variant.setCode || null,
+      collectorNumber: variant.collectorNumber || null,
+      condition: variant.condition,
+      foil: variant.foil,
+      price: variant.price,
+      currency: variant.currency,
+      inStock: variant.inStock ?? false,
+      quantity: variant.quantity ?? null,
+      imageUrl: variant.imageUrl || null,
+      productLink: variant.productUrl,
+      sku: variant.sku || null,
+      platformVariantId: variant.platformVariantId || null,
+    }));
+    await this.unmatchedCardService.upsertBatch(rows);
+    result.unmatchedCards = rows.length;
   }
 
   /**
