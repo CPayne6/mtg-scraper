@@ -191,7 +191,7 @@ export class ListsService {
       listId: list.id,
       listUuid: list.uuid,
       listName: list.name,
-      stores: requestedStores.length > 0 ? requestedStores : undefined,
+      stores: requestedStores.length > 0 ? requestedStores : null,
       minimumCondition,
       conditionFlexibility: options.conditionFlexibility,
       maxDowngradeSteps: options.maxDowngradeSteps,
@@ -264,7 +264,7 @@ export class ListsService {
     const cardList = new CardList();
     cardList.ownerPrincipalUuid = ownerPrincipalUuid;
     cardList.name = dto.name;
-    cardList.filterStores = parseSelectedStores(dto.filterStores)?.join(',') ?? null;
+    cardList.filterStores = parseSelectedStores(dto.filterStores)?.join(',') ?? undefined;
     cardList.filterConditions = dto.filterConditions;
     cardList.filterSetCode = dto.filterSetCode;
     cardList.visibility = dto.visibility ?? 'unlisted';
@@ -437,7 +437,7 @@ export class ListsService {
   ): Promise<void> {
     const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
 
-    list.filterStores = parseSelectedStores(dto.filterStores)?.join(',') ?? null;
+    list.filterStores = parseSelectedStores(dto.filterStores)?.join(',') ?? undefined;
     list.filterConditions = dto.filterConditions;
     list.filterSetCode = dto.filterSetCode;
     list.expiresAt = this.expiresAt();
