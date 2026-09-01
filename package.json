@@ -17,8 +17,12 @@
     "seed:prod:scryfall": "node scripts/seed-production-scryfall.mjs",
     "seed:prod:shopify-mappings": "node scripts/seed-production-shopify-mappings.mjs",
     "migrate:local": "docker compose -f docker-compose.dev.yml exec -T api pnpm migration:run && docker compose -f docker-compose.dev.yml exec -T auth pnpm migration:run",
-    "sync": "node scripts/sync-production-card-data.mjs",
-    "sync:prod": "node scripts/sync-production-card-data.mjs",
+    "sync": "node scripts/sync-production-stock-state.mjs",
+    "sync:prod": "node scripts/sync-production-stock-state.mjs",
+    "sync:full": "node scripts/sync-production-card-data.mjs",
+    "store:probe": "tsx scripts/probe-storefront-store.ts",
+    "store:onboard": "tsx scripts/probe-storefront-store.ts --approve",
+    "store:verify-listings": "tsx scripts/verify-storefront-listing-data.ts",
     "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
     "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"
@@ -28,7 +32,8 @@
     "@vitest/ui": "^4.0.16",
     "nx": "^22.3.3",
     "vite-tsconfig-paths": "^6.0.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.16",
+    "tsx": "^4.21.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

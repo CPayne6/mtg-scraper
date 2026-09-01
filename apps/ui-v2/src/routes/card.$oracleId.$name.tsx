@@ -20,7 +20,8 @@ import type { CardSearchResponse, StoreInfo } from '@scoutlgs/shared';
 import { fetchCard } from '@/api/cards';
 import { FiltersSidebar } from '@/components/results/FiltersSidebar';
 import { ProductTile } from '@/components/results/ProductTile';
-import { DEFAULT_STORE_KEYS, STORE_FACETS } from '@/data/sample';
+import { DEFAULT_STORE_KEYS } from '@/data/sample';
+import { fetchActiveStores, type ActiveStore } from '@/api/stores';
 import { useLists } from '@/components/lists/ListsContext';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useRecentSearches } from '@/hooks/useRecentSearches';
@@ -51,6 +52,7 @@ function CardRoute() {
   }, [name]);
 
   const [response, setResponse] = useState<CardSearchResponse | null>(null);
+  const [activeStores, setActiveStores] = useState<ActiveStore[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -104,16 +106,19 @@ function CardRoute() {
     return () => controller.abort();
   }, [decoded, oracleId, reloadKey, pushRecent]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchActiveStores(controller.signal).then((stores) => {
+      if (!controller.signal.aborted) setActiveStores(stores);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
   const stores: StoreInfo[] = useMemo(() => {
-    if (response?.stores?.length) return response.stores;
-    return STORE_FACETS.map((s, i) => ({
-      id: i,
-      uuid: String(i),
-      name: s.key,
-      displayName: s.label,
-      cardCount: s.count,
-    }));
-  }, [response]);
+    const counts = response?.stores ?? [];
+    const countByName = new Map(counts.map((store) => [store.name, store.cardCount]));
+    return activeStores.map((store) => ({ ...store, cardCount: countByName.get(store.name) ?? 0 }));
+  }, [activeStores, response]);
 
   // Counts are keyed by store slug (`store_key`), to match the filter values
   // passed to FiltersSidebar via `selectedStores` / `onToggleStore`.
@@ -151,13 +156,18 @@ function CardRoute() {
   }, [response, selectedStores, conditions, maxPrice]);
 
   const toggleStore = (n: string) =>
-    setSelectedStores((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n]));
+    setSelectedStores((s) => (s.includes(n) ? s.filter((x) => x !== n) : s.length >= 10 ? s : [...s, n]));
   const toggleCondition = (c: string) =>
     setConditions((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]));
 
   const handleAddMenuOpen = (event: MouseEvent<HTMLElement>) => {
     setAddMenuAnchor(event.currentTarget);
   };
+
+  const fallbackResults = useMemo(() => {
+    if (visibleResults.length > 0 || !response) return [];
+    return response.results.filter((result) => !selectedStores.includes(result.store_key));
+  }, [response, selectedStores, visibleResults.length]);
 
   const handleAddMenuClose = () => setAddMenuAnchor(null);
 
@@ -348,6 +358,17 @@ function CardRoute() {
               isCheapest={i === 0 && visibleResults.length > 1}
             />
           ))}
+          {visibleResults.length === 0 && fallbackResults.length > 0 && (
+            <Box sx={{ gridColumn: '1 / -1' }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>Available elsewhere</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                None of the selected stores has an in-stock match. These offers are from other active stores.
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2 }}>
+                {fallbackResults.map((c, i) => <ProductTile key={`${c.title}-${c.store}-${c.set}-${i}`} card={c} />)}
+              </Box>
+            </Box>
+          )}
         </Box>
       </Box>
     </Container>

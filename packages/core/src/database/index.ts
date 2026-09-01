@@ -22,6 +22,7 @@ export type { ShopifyProductMatchStatus } from './shopify-product.entity';
 
 export { ExtractionRun } from './extraction-run.entity';
 export type { ExtractionRunStatus, ExtractionRunTrigger } from './extraction-run.entity';
+export { StoreSyncState } from './store-sync-state.entity';
 
 export { CardList } from './card-list.entity';
 export type { CardListVisibility } from './card-list.entity';

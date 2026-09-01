@@ -155,4 +155,12 @@ export class UnmatchedCardService {
     this.logger.debug(`Batch upserted ${affectedRows} unmatched cards`);
     return affectedRows;
   }
+
+  /** Remove stale repair candidates once a product has a verified printing. */
+  async deleteForProductUrl(productUrlId: number): Promise<void> {
+    await this.dataSource.query(
+      'DELETE FROM unmatched_cards WHERE product_url_id = $1',
+      [productUrlId],
+    );
+  }
 }

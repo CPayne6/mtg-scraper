@@ -45,20 +45,42 @@ export class ScryfallCatalogService {
     const tracked = await this.dataSource.query<Array<{ code: string }>>('SELECT code FROM sets');
     const trackedCodes = new Set(tracked.map((row) => row.code.toLowerCase()));
     const missing = candidates.filter((set) => !trackedCodes.has(set.code.toLowerCase()));
+    // A listing can have a valid card name but no linked printing when its
+    // store published a card before our catalog learned that set. Keep those
+    // parsed set codes in unmatched_cards and use them to repair incomplete
+    // catalogs too — not just wholly absent sets.
+    const pendingRows = await this.dataSource.query<Array<{ set_code: string }>>(
+      `SELECT DISTINCT LOWER(set_code) AS set_code
+       FROM unmatched_cards
+       WHERE set_code IS NOT NULL AND set_code <> ''`,
+    );
+    const pendingCodes = new Set(pendingRows.map((row) => row.set_code));
+    const repairs = candidates.filter((set) =>
+      trackedCodes.has(set.code.toLowerCase()) && pendingCodes.has(set.code.toLowerCase()),
+    );
+    const targets = [...new Map(
+      [...missing, ...repairs].map((set) => [set.code.toLowerCase(), set]),
+    ).values()];
 
-    for (const set of missing) await this.importSet(set);
-    if (missing.length) {
-      const setCodes = missing.map((set) => set.code.toLowerCase());
+    for (const set of targets) await this.importSet(set);
+    if (targets.length) {
+      const setCodes = targets.map((set) => set.code.toLowerCase());
       // Scrapers rebuild their in-memory name, set, and printing caches on
       // this event, before they consume the targeted re-match jobs below.
       await this.cacheService.publishCardDataChanged(`sets:${setCodes.join(',')}`);
       await this.queueUnmatchedRematches(setCodes);
       this.logger.log(
-        `Imported ${missing.length} new Scryfall set(s): ${setCodes.join(', ')}; queued unmatched-card re-matches`,
+        `Imported ${missing.length} missing and refreshed ${repairs.length} incomplete Scryfall set(s): ${setCodes.join(', ')}; queued re-matches`,
       );
     }
-    else this.logger.log('Scryfall set check found no new sets');
-    return missing.map((set) => set.code);
+    else this.logger.log('Scryfall set check found no missing or incomplete sets');
+
+    // Bootstrap repairs for older listings that predate this tracking only
+    // when no set-specific repair is already queued. Their next extraction
+    // persists set_code in unmatched_cards; a subsequent catalog run then
+    // imports that exact set and re-fetches the listing.
+    if (targets.length === 0) await this.queueMissingPrintingRepairs();
+    return targets.map((set) => set.code);
   }
 
   private async queueUnmatchedRematches(setCodes: string[]): Promise<void> {
@@ -79,6 +101,27 @@ export class ScryfallCatalogService {
       }),
     ));
     this.logger.log(`Queued unmatched-card re-matches for ${stores.length} store(s)`);
+  }
+
+  private async queueMissingPrintingRepairs(): Promise<void> {
+    const stores = await this.dataSource.query<Array<{ id: number }>>(
+      `SELECT DISTINCT s.id
+       FROM stores s
+       JOIN card_listings cl ON cl.store_id = s.id
+       WHERE s.is_active = true
+         AND s.platform_type = 'shopify_storefront'
+         AND cl.card_printing_id IS NULL`,
+    );
+    await Promise.all(stores.map((store) =>
+      this.queueService.enqueueReextractUnmatchedJob({
+        storeId: Number(store.id),
+        repairMissingPrintings: true,
+        delayMs: 10_000,
+      }),
+    ));
+    if (stores.length) {
+      this.logger.log(`Queued missing-printing repairs for ${stores.length} store(s)`);
+    }
   }
 
   private async importSet(set: ScryfallSet): Promise<void> {

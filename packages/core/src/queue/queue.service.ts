@@ -60,8 +60,12 @@ export class QueueService {
   async enqueueStorefrontPlanJob(
     storeId: number,
     options: { discoveryRunId?: number } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
+      if (await this.hasStorefrontCrawlForStore(storeId)) {
+        this.logger.warn(`Skipped duplicate storefront plan for store ${storeId}; traversal is already queued or active`);
+        return false;
+      }
       await this.storefrontExtractionQueue.add(
         JOB_NAMES.STOREFRONT_PLAN,
         { storeId, ...options } satisfies StorefrontPlanJobData,
@@ -74,6 +78,7 @@ export class QueueService {
         },
       );
       this.logger.log(`Enqueued storefront plan for store ${storeId}`);
+      return true;
     } catch (error) {
       this.logger.error(
         `Failed to enqueue storefront plan for store ${storeId}:`,
@@ -81,6 +86,26 @@ export class QueueService {
       );
       throw error;
     }
+  }
+
+  /** Store ids with a traversal in flight, including delayed and prioritized work. */
+  async getActiveStorefrontCrawlStoreIds(): Promise<Set<number>> {
+    const jobs = await this.storefrontExtractionQueue.getJobs(
+      ['waiting', 'active', 'delayed', 'prioritized'] as any,
+      0,
+      10_000,
+    );
+    const ids = new Set<number>();
+    for (const job of jobs) {
+      if (![JOB_NAMES.STOREFRONT_PLAN, JOB_NAMES.STOREFRONT_BUCKET, JOB_NAMES.STOREFRONT_KNOWN_OFFER_RECOVERY].includes(job.name as any)) continue;
+      const storeId = (job.data as { storeId?: unknown }).storeId;
+      if (typeof storeId === 'number') ids.add(storeId);
+    }
+    return ids;
+  }
+
+  async hasStorefrontCrawlForStore(storeId: number): Promise<boolean> {
+    return (await this.getActiveStorefrontCrawlStoreIds()).has(storeId);
   }
 
   /**
@@ -92,7 +117,13 @@ export class QueueService {
    * without re-fetching the entire catalog.
    */
   async enqueueReextractUnmatchedJob(
-    opts: { storeId: number; limit?: number; setCodes?: string[]; delayMs?: number },
+    opts: {
+      storeId: number;
+      limit?: number;
+      setCodes?: string[];
+      repairMissingPrintings?: boolean;
+      delayMs?: number;
+    },
   ): Promise<void> {
     try {
       await this.storefrontExtractionQueue.add(

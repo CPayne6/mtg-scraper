@@ -32,6 +32,8 @@ import { CardNameResolverService } from './shared/card-name-resolver.service';
 import { DeliveryQuoteService } from './lists/delivery-quote.service';
 import { ListRefreshService } from './lists/list-refresh.service';
 import { ListRescrapePolicy } from './lists/list-rescrape.policy';
+import { StoresController } from './stores/stores.controller';
+import { StoresService } from './stores/stores.service';
 
 @Module({
   imports: [
@@ -48,7 +50,7 @@ import { ListRescrapePolicy } from './lists/list-rescrape.policy';
     CartModule,
     CheckoutModule,
   ],
-  controllers: [CardsController, TokensController, ListsController],
-  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService, ListRefreshService, ListRescrapePolicy],
+  controllers: [CardsController, TokensController, ListsController, StoresController],
+  providers: [CardsService, TokensService, ListsService, CardNameResolverService, DeliveryQuoteService, ListRefreshService, ListRescrapePolicy, StoresService],
 })
 export class V1Module {}

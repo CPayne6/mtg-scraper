@@ -58,6 +58,32 @@ services:
         limits:
           memory: 512M
 
+  # Separate analytical history database; current offer reads and ingestion
+  # continue to use postgres above.
+  price-history-postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=scoutlgs_price_history
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD_FILE=/run/secrets/price_history_database_password
+    volumes:
+      - scoutlgs-price-history-data:/var/lib/postgresql/data
+      - ./infrastructure/price-history/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - postgres-network
+    secrets:
+      - price_history_database_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 2G
+
   # Redis - Used for both caching and queue
   redis:
     image: redis:7-alpine
@@ -237,13 +263,12 @@ services:
       - PORT=5001
       - USE_DOCKER_SECRETS=true
       - EXTRACTION_ENABLED=true
-      - EXTRACTION_CRON_TIME=0 1 * * *
+      - EXTRACTION_CRON_TIME=*/15 * * * *
+      - EXTRACTION_MAX_CONCURRENT_STORES=4
       # Hourly incremental disabled — updated_at clusters tightly (stores'
       # price-sync jobs touch every product daily), so the `updated_at:>cutoff`
       # filter doesn't actually narrow the result set. The bucket flow's full
       # nightly run handles freshness adequately.
-      - INCREMENTAL_EXTRACTION_ENABLED=false
-      - INCREMENTAL_EXTRACTION_CRON_TIME=0 9-21 * * *
       - SCHEDULE_TIMEZONE=America/Toronto
       - LOG_LEVEL=log,warn,error,fatal
     ports:
@@ -397,10 +422,15 @@ volumes:
   scoutlgs-redis-data:
   scoutlgs-postgres-data:
   scoutlgs-auth-postgres-data:
+  scoutlgs-price-history-data:
 
 # Docker Secrets Configuration
 # Secrets must be created before deployment using scripts/setup-secrets.sh
 secrets:
+  price_history_database_password:
+    external: true
+    name: price_history_database_password
+
   # Global secrets
   postgres_password:
     external: true

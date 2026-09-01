@@ -22,15 +22,12 @@ export default () => ({
   extraction: {
     // Enable/disable scheduled storefront extraction
     enabled: process.env.EXTRACTION_ENABLED === 'true',
-    // Cron expression for the nightly full crawl (default: 1 AM daily)
-    cronTime: process.env.EXTRACTION_CRON_TIME ?? '0 1 * * *',
+    // Dispatcher cadence. Individual stores remain due once per 24 hours.
+    cronTime: process.env.EXTRACTION_CRON_TIME ?? '*/15 * * * *',
+    // Maximum stores with queued/running full traversal work at once.
+    maxConcurrentStores: parseInt(process.env.EXTRACTION_MAX_CONCURRENT_STORES ?? '4', 10),
     // Trigger a run once on startup (handy for local testing)
     runOnInit: process.env.EXTRACTION_RUN_ON_INIT === 'true',
-    // Hourly incremental refresh: re-scrape only products with updated_at
-    // newer than the previous run's startedAt. Default runs every hour
-    // between 9 AM and 9 PM (timezone-aware via SCHEDULE_TIMEZONE).
-    incrementalEnabled: process.env.INCREMENTAL_EXTRACTION_ENABLED === 'true',
-    incrementalCronTime: process.env.INCREMENTAL_EXTRACTION_CRON_TIME ?? '0 9-21 * * *',
   },
   schedule: {
     // Timezone for all cron schedules

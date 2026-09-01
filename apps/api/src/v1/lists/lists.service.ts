@@ -32,6 +32,7 @@ import { CreateListDto } from './dto/create-list.dto';
 import { UpdateFiltersDto } from './dto/update-filters.dto';
 import type { DeliveryOptionsDto } from './dto/delivery-options.dto';
 import { DeliveryQuoteService } from './delivery-quote.service';
+import { parseSelectedStores } from '../shared/store-selection';
 
 const MAX_LISTS_PER_ANONYMOUS_OWNER = 3;
 const MAX_LISTS_PER_USER_OWNER = 6;
@@ -178,7 +179,7 @@ export class ListsService {
     options: OptimizeListOptions = {},
   ): Promise<{ jobId: string; status: 'queued' }> {
     const list = await this.findVisibleList(listUuid, principal?.principalUuid);
-    const requestedStores = this.parseCsvFilter(options.stores ?? list.filterStores) ?? [];
+    const requestedStores = parseSelectedStores(options.stores ?? list.filterStores) ?? [];
     const shippingCostByStoreKey = Object.fromEntries(requestedStores.map((store) => [store, Math.max(0, Math.min(1000, Number(options.shippingCostByStoreKey?.[store] ?? 3)) || 0)]));
     const delivery = { mode: 'legacy' as const, shippingCostByStoreKey };
     const minimumCondition = this.resolveMinimumCondition(options.minimumCondition, list.filterConditions);
@@ -190,7 +191,7 @@ export class ListsService {
       listId: list.id,
       listUuid: list.uuid,
       listName: list.name,
-      stores: this.parseCsvFilter(options.stores ?? list.filterStores),
+      stores: requestedStores.length > 0 ? requestedStores : null,
       minimumCondition,
       conditionFlexibility: options.conditionFlexibility,
       maxDowngradeSteps: options.maxDowngradeSteps,
@@ -263,7 +264,7 @@ export class ListsService {
     const cardList = new CardList();
     cardList.ownerPrincipalUuid = ownerPrincipalUuid;
     cardList.name = dto.name;
-    cardList.filterStores = dto.filterStores;
+    cardList.filterStores = parseSelectedStores(dto.filterStores)?.join(',') ?? undefined;
     cardList.filterConditions = dto.filterConditions;
     cardList.filterSetCode = dto.filterSetCode;
     cardList.visibility = dto.visibility ?? 'unlisted';
@@ -436,7 +437,7 @@ export class ListsService {
   ): Promise<void> {
     const list = await this.findOwnedList(listUuid, ownerPrincipalUuid);
 
-    list.filterStores = dto.filterStores;
+    list.filterStores = parseSelectedStores(dto.filterStores)?.join(',') ?? undefined;
     list.filterConditions = dto.filterConditions;
     list.filterSetCode = dto.filterSetCode;
     list.expiresAt = this.expiresAt();

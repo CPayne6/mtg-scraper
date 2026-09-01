@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { TokensService, TokenSearchResponse } from './tokens.service';
 import { SearchTokensQueryDto } from './dto/search-tokens-query.dto';
+import { parseSelectedStores } from '../shared/store-selection';
 
 @Controller('tokens')
 export class TokensController {
@@ -11,9 +12,7 @@ export class TokensController {
   async searchTokens(
     @Query() query: SearchTokensQueryDto,
   ): Promise<TokenSearchResponse> {
-    const stores = query.stores
-      ? query.stores.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined;
+    const stores = parseSelectedStores(query.stores);
     const conditions = query.conditions
       ? query.conditions.split(',').map((c) => c.trim()).filter(Boolean)
       : undefined;
