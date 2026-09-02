@@ -6,11 +6,12 @@ export type SourcePath =
   | 'product.tags' | 'product.handle' | 'product.onlineStoreUrl' | 'product.availableForSale'
   | 'product.images[0].url' | 'variant.id' | 'variant.title' | 'variant.sku'
   | 'variant.availableForSale' | 'variant.price.amount' | 'variant.price.currencyCode'
-  | 'variant.selectedOptions';
+  | 'variant.selectedOptions' | 'variant.selectedOptions[0].value'
+  | 'variant.selectedOptions[1].value' | 'variant.selectedOptions[2].value';
 export type PredicateOperator = 'equals' | 'notEquals' | 'contains' | 'notContains' | 'regex' | 'isEmpty' | 'notEmpty';
 export type Predicate = { source: SourcePath; operator: PredicateOperator; value?: string | boolean; pattern?: string; flags?: 'i' };
 export type Transform =
-  | { type: 'trim' | 'lowercase' | 'uppercase' | 'condition' }
+  | { type: 'trim' | 'lowercase' | 'uppercase' | 'condition' | 'foil' }
   | { type: 'before' | 'after'; value: string }
   | { type: 'split'; delimiter: string; index: number }
   | { type: 'bracketGroup' | 'parenthesisGroup'; index: number }
@@ -55,7 +56,7 @@ export function normalizeStorefrontProfileInputs(product: StorefrontProfileProdu
 }
 export type ProfileEvaluationResult = Partial<Record<ProfileField, string | boolean>>;
 const fields: ProfileField[] = ['cardName', 'setName', 'setCode', 'collectorNumber', 'condition', 'foil', 'isToken'];
-const sources: SourcePath[] = ['product.title','product.vendor','product.productType','product.descriptionHtml','product.tags','product.handle','product.onlineStoreUrl','product.availableForSale','product.images[0].url','variant.id','variant.title','variant.sku','variant.availableForSale','variant.price.amount','variant.price.currencyCode','variant.selectedOptions'];
+const sources: SourcePath[] = ['product.title','product.vendor','product.productType','product.descriptionHtml','product.tags','product.handle','product.onlineStoreUrl','product.availableForSale','product.images[0].url','variant.id','variant.title','variant.sku','variant.availableForSale','variant.price.amount','variant.price.currencyCode','variant.selectedOptions','variant.selectedOptions[0].value','variant.selectedOptions[1].value','variant.selectedOptions[2].value'];
 const builtin: BuiltinParserType[] = ['default','f2f','401','hobbies','binderpos','cgrealm'];
 const missing = Symbol('missing');
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -69,6 +70,9 @@ const sourceValue = (input: ProfileEvaluationInput, source: SourcePath): unknown
     case 'variant.sku': return v.sku; case 'variant.availableForSale': return v.availableForSale;
     case 'variant.price.amount': return v.price.amount; case 'variant.price.currencyCode': return v.price.currencyCode;
     case 'variant.selectedOptions': return v.selectedOptions;
+    case 'variant.selectedOptions[0].value': return v.selectedOptions[0]?.value;
+    case 'variant.selectedOptions[1].value': return v.selectedOptions[1]?.value;
+    case 'variant.selectedOptions[2].value': return v.selectedOptions[2]?.value;
   }
 };
 const stringValue = (v: unknown): string | typeof missing => typeof v === 'string' ? v : missing;
@@ -106,7 +110,21 @@ function transform(value: unknown, rule: Transform): unknown | typeof missing {
     case 'regexCapture': { const m = new RegExp(rule.pattern, rule.flags).exec(text.slice(0, 512)); return m?.[rule.group] ?? missing; }
     case 'regexReplace': return text.slice(0, 512).replace(new RegExp(rule.pattern, rule.flags), rule.replacement);
     case 'stripTokens': return rule.values.reduce((result, token) => result.replace(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ''), text).replace(/\s+/g, ' ').trim();
-    case 'condition': { const x = text.trim().toLowerCase(); return ({ nm: 'nm', 'near mint': 'nm', lp: 'lp', 'lightly played': 'lp', mp: 'mp', 'moderately played': 'mp', hp: 'hp', 'heavily played': 'hp', dmg: 'dmg', damaged: 'dmg' } as Record<string,string>)[x] ?? missing; }
+    case 'condition': {
+      const x = text.trim().toLowerCase();
+      if (/(?:^|\W)(?:nm|near\s+mint)(?:$|\W)/.test(x)) return 'nm';
+      if (/(?:^|\W)(?:lp|pl|sp|light(?:ly)?\s+played|slightly\s+played)(?:$|\W)/.test(x)) return 'lp';
+      if (/(?:^|\W)(?:mp|moderately\s+played)(?:$|\W)/.test(x)) return 'mp';
+      if (/(?:^|\W)(?:hp|heavily\s+played)(?:$|\W)/.test(x)) return 'hp';
+      if (/(?:^|\W)(?:dmg|damaged)(?:$|\W)/.test(x)) return 'dmg';
+      return missing;
+    }
+    case 'foil': {
+      const x = text.trim().toLowerCase();
+      if (/(?:^|\W)(?:non[-\s]?foil|normal|nf)(?:$|\W)/.test(x)) return false;
+      if (/(?:^|\W)(?:foil|fo|etched)(?:$|\W)/.test(x)) return true;
+      return missing;
+    }
     case 'booleanTokens': { const x = text.trim().toLowerCase(); if (rule.false.some(t => t.toLowerCase() === x)) return false; if (rule.true.some(t => t.toLowerCase() === x)) return true; return missing; }
     case 'map': return rule.values[text.trim().toLowerCase()] ?? missing;
   }
@@ -138,7 +156,7 @@ export function validateStorefrontParserProfile(profile: unknown, samples: Profi
     if (!isRecord(profile.fields) || !isRecord(profile.fields.cardName)) errors.push('fields.cardName: required');
     for (const [field, rule] of Object.entries(profile.fields ?? {})) {
       if (!fields.includes(field as ProfileField) || !isRecord(rule) || !Array.isArray(rule.candidates) || !rule.candidates.length) { errors.push(`fields.${field}: invalid field rule`); continue; }
-      rule.candidates.forEach((c, i) => { const p = `fields.${field}.candidates.${i}`; if (!isRecord(c) || (!('source' in c) && !('value' in c)) || ('source' in c && (!sources.includes(c.source as SourcePath) || 'value' in c)) || ('value' in c && typeof c.value !== 'string' && typeof c.value !== 'boolean')) errors.push(`${p}: invalid candidate`); if (Array.isArray(c.when)) c.when.forEach((x,j) => validatePredicate(x,errors,`${p}.when.${j}`)); else if (c.when !== undefined) errors.push(`${p}.when: expected array`); if (Array.isArray(c.transforms)) c.transforms.forEach((t,j) => { if (!isRecord(t) || typeof t.type !== 'string' || !['trim','lowercase','uppercase','before','after','split','bracketGroup','parenthesisGroup','regexCapture','regexReplace','stripTokens','optionValue','tagValue','condition','booleanTokens','map'].includes(t.type)) errors.push(`${p}.transforms.${j}: unknown transform`); else { if (['before','after'].includes(t.type) && typeof t.value !== 'string') errors.push(`${p}.transforms.${j}: value required`); if (t.type === 'split' && (typeof t.delimiter !== 'string' || !Number.isInteger(t.index))) errors.push(`${p}.transforms.${j}: delimiter and integer index required`); if (['bracketGroup','parenthesisGroup'].includes(t.type) && !Number.isInteger(t.index)) errors.push(`${p}.transforms.${j}: integer index required`); if (t.type === 'regexCapture') { validateRegex(t.pattern,t.flags,errors,`${p}.transforms.${j}`); if (!Number.isInteger(t.group)) errors.push(`${p}.transforms.${j}: integer group required`); } if (t.type === 'regexReplace') validateRegex(t.pattern,t.flags,errors,`${p}.transforms.${j}`); if (t.type === 'stripTokens' && (!Array.isArray(t.values) || t.values.some(x => typeof x !== 'string'))) errors.push(`${p}.transforms.${j}: string values required`); if (t.type === 'optionValue' && typeof t.name !== 'string') errors.push(`${p}.transforms.${j}: name required`); if (t.type === 'tagValue' && (!['exact','prefix','contains','firstExcluding'].includes(t.mode as string) || (t.mode !== 'firstExcluding' && typeof t.value !== 'string') || (t.exclude !== undefined && (!Array.isArray(t.exclude) || t.exclude.some(x => typeof x !== 'string'))))) errors.push(`${p}.transforms.${j}: invalid tagValue`); if (t.type === 'booleanTokens' && (!Array.isArray(t.true) || !Array.isArray(t.false) || t.true.some(x => typeof x !== 'string') || t.false.some(x => typeof x !== 'string'))) errors.push(`${p}.transforms.${j}: true and false token arrays required`); if (t.type === 'map' && (!isRecord(t.values) || Object.values(t.values).some(x => typeof x !== 'string' && typeof x !== 'boolean'))) errors.push(`${p}.transforms.${j}: string/boolean map required`); } }); else if (c.transforms !== undefined) errors.push(`${p}.transforms: expected array`); });
+      rule.candidates.forEach((c, i) => { const p = `fields.${field}.candidates.${i}`; if (!isRecord(c) || (!('source' in c) && !('value' in c)) || ('source' in c && (!sources.includes(c.source as SourcePath) || 'value' in c)) || ('value' in c && typeof c.value !== 'string' && typeof c.value !== 'boolean')) errors.push(`${p}: invalid candidate`); if (Array.isArray(c.when)) c.when.forEach((x,j) => validatePredicate(x,errors,`${p}.when.${j}`)); else if (c.when !== undefined) errors.push(`${p}.when: expected array`); if (Array.isArray(c.transforms)) c.transforms.forEach((t,j) => { if (!isRecord(t) || typeof t.type !== 'string' || !['trim','lowercase','uppercase','before','after','split','bracketGroup','parenthesisGroup','regexCapture','regexReplace','stripTokens','optionValue','tagValue','condition','foil','booleanTokens','map'].includes(t.type)) errors.push(`${p}.transforms.${j}: unknown transform`); else { if (['before','after'].includes(t.type) && typeof t.value !== 'string') errors.push(`${p}.transforms.${j}: value required`); if (t.type === 'split' && (typeof t.delimiter !== 'string' || !Number.isInteger(t.index))) errors.push(`${p}.transforms.${j}: delimiter and integer index required`); if (['bracketGroup','parenthesisGroup'].includes(t.type) && !Number.isInteger(t.index)) errors.push(`${p}.transforms.${j}: integer index required`); if (t.type === 'regexCapture') { validateRegex(t.pattern,t.flags,errors,`${p}.transforms.${j}`); if (!Number.isInteger(t.group)) errors.push(`${p}.transforms.${j}: integer group required`); } if (t.type === 'regexReplace') validateRegex(t.pattern,t.flags,errors,`${p}.transforms.${j}`); if (t.type === 'stripTokens' && (!Array.isArray(t.values) || t.values.some(x => typeof x !== 'string'))) errors.push(`${p}.transforms.${j}: string values required`); if (t.type === 'optionValue' && typeof t.name !== 'string') errors.push(`${p}.transforms.${j}: name required`); if (t.type === 'tagValue' && (!['exact','prefix','contains','firstExcluding'].includes(t.mode as string) || (t.mode !== 'firstExcluding' && typeof t.value !== 'string') || (t.exclude !== undefined && (!Array.isArray(t.exclude) || t.exclude.some(x => typeof x !== 'string'))))) errors.push(`${p}.transforms.${j}: invalid tagValue`); if (t.type === 'booleanTokens' && (!Array.isArray(t.true) || !Array.isArray(t.false) || t.true.some(x => typeof x !== 'string') || t.false.some(x => typeof x !== 'string'))) errors.push(`${p}.transforms.${j}: true and false token arrays required`); if (t.type === 'map' && (!isRecord(t.values) || Object.values(t.values).some(x => typeof x !== 'string' && typeof x !== 'boolean'))) errors.push(`${p}.transforms.${j}: string/boolean map required`); } }); else if (c.transforms !== undefined) errors.push(`${p}.transforms: expected array`); });
     }
     if (profile.exclusions !== undefined && !Array.isArray(profile.exclusions)) errors.push('exclusions: expected array');
     if (Array.isArray(profile.exclusions)) profile.exclusions.forEach((exclusion, index) => {

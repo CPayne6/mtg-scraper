@@ -44,9 +44,34 @@ describe('Storefront parser profile grammar', () => {
     ['tagValue contains', 'product.tags', { type: 'tagValue', mode: 'contains', value: 'ngl' }, 'English'],
     ['tagValue firstExcluding', 'product.tags', { type: 'tagValue', mode: 'firstExcluding', exclude: ['magic', 'set:'] }, 'English'],
     ['condition', 'variant.title', { type: 'condition' }, 'nm'],
+    ['condition alias in combined option', 'variant.selectedOptions[0].value', { type: 'condition' }, 'nm'],
     ['map', 'product.vendor', { type: 'map', values: { 'magic 2011': 'M11' } }, 'M11'],
   ])('%s resolves deterministically', (_name, source, transform, expected) => {
     expect(evaluateStorefrontParserProfile(profile(source, transform) as any, input as any).cardName).toBe(expected);
+  });
+
+  it('reads and normalizes a positional foil option', () => {
+    const mapping: any = { kind: 'mapping', version: 1, fields: {
+      cardName: { candidates: [{ value: 'Bolt' }] },
+      foil: { candidates: [{ source: 'variant.selectedOptions[1].value', transforms: [{ type: 'foil' }] }] },
+    } };
+    expect(evaluateStorefrontParserProfile(mapping, input as any).foil).toBe(true);
+  });
+
+  it.each([
+    ['PL / Non-Foil', 'lp', false],
+    ['Slightly Played Foil', 'lp', true],
+    ['Moderately Played', 'mp', undefined],
+  ])('normalizes positional condition and foil values: %s', (value, condition, foil) => {
+    const mapping: any = { kind: 'mapping', version: 1, fields: {
+      cardName: { candidates: [{ value: 'Bolt' }] },
+      condition: { candidates: [{ source: 'variant.selectedOptions[0].value', transforms: [{ type: 'condition' }] }] },
+      foil: { candidates: [{ source: 'variant.selectedOptions[0].value', transforms: [{ type: 'foil' }] }] },
+    } };
+    const tested = { ...input, variant: { ...input.variant, selectedOptions: [{ name: 'Variant', value }] } };
+    const result = evaluateStorefrontParserProfile(mapping, tested as any);
+    expect(result.condition).toBe(condition);
+    expect(result.foil).toBe(foil);
   });
 
   it('normalizes booleanTokens with false taking precedence', () => {
