@@ -25,5 +25,5 @@ export type {
   CartRefreshOutcome,
 } from './queue.types';
 export { QUEUE_NAMES, JOB_NAMES, PUBSUB_CHANNELS } from './queue.types';
-export type { BuiltinParserType, StorefrontParserProfile, ProfileField, SourcePath, Predicate, Transform, Candidate, FieldRule, ArtSeriesExclusion, ProfileEvaluationInput, ProfileEvaluationResult, StorefrontProfileProductLike } from './storefront-parser-profile';
-export { evaluateStorefrontParserProfile, validateStorefrontParserProfile, matchesStorefrontProfilePredicate, normalizeStorefrontProfileInputs } from './storefront-parser-profile';
+export type { BuiltinParserType, StorefrontParserProfile, StorefrontScraperConfig, NormalizedStorefrontConfig, ProfileField, SourcePath, Predicate, Transform, Candidate, FieldRule, ArtSeriesExclusion, ProfileEvaluationInput, ProfileEvaluationResult, StorefrontProfileProductLike, StorefrontParserProfileValidation } from './storefront-parser-profile';
+export { evaluateStorefrontParserProfile, validateStorefrontParserProfile, validateStorefrontParserProfileGrammar, validateStorefrontMappingProfileContract, matchesStorefrontProfilePredicate, normalizeStorefrontProfileInputs } from './storefront-parser-profile';

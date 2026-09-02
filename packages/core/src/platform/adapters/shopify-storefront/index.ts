@@ -1,7 +1,11 @@
 export { StorefrontClient } from './storefront-client';
 export { StorefrontExtractionAdapter } from './storefront-extraction.adapter';
+export type { StorefrontParserDryRunReport } from './storefront-extraction.adapter';
 export { ProfiledStorefrontCardParser, InvalidStorefrontParserProfileError } from './profiled-storefront-card-parser';
+export type { ProfileParseResult, ProfileParseFailureCode } from './profiled-storefront-card-parser';
 export { StorefrontPaginationLimitError } from './pagination-limit-error';
+export { normalizeStorefrontHost, validateStorefrontStoreConfig } from './storefront-config';
+export type { StorefrontConfigValidation } from './storefront-config';
 export type {
   StorefrontGraphQLResponse,
   StorefrontGraphQLError,

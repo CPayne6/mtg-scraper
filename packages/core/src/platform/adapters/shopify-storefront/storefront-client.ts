@@ -8,6 +8,7 @@ import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
 import { WebBotAuthService } from '../../../web-bot-auth/web-bot-auth.service';
 import { ExtractionHttpError } from '../shopify/extraction-http-error';
 import { getStorefrontApiVersion } from './storefront.queries';
+import { normalizeStorefrontHost } from './storefront-config';
 import type { StorefrontGraphQLResponse } from './storefront.types';
 
 @Injectable()
@@ -279,8 +280,9 @@ export class StorefrontClient {
    * Build the Storefront API GraphQL endpoint URL for a store.
    */
   getEndpointUrl(store: Store): string {
-    const host =
-      store.scraperConfig?.shopifyUrl || new URL(store.baseUrl).host;
+    const configuredHost = store.scraperConfig?.shopifyUrl;
+    const host = normalizeStorefrontHost(configuredHost, store.baseUrl);
+    if (configuredHost?.startsWith('http://') || configuredHost?.startsWith('https://')) this.logger.warn(`Deprecated absolute scraperConfig.shopifyUrl for ${store.name}; use host[:port]`);
     const apiVersion =
       store.scraperConfig?.storefrontApiVersion || getStorefrontApiVersion();
     return `https://${host}/api/${apiVersion}/graphql.json`;

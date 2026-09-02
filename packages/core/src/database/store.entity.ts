@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
   Generated,
 } from 'typeorm';
-import type { PlatformType, StoreDiscoveryConfig, StorefrontParserProfile } from '@scoutlgs/shared';
+import type { PlatformType, StoreDiscoveryConfig, StorefrontScraperConfig } from '@scoutlgs/shared';
 
 @Entity('stores')
 export class Store {
@@ -36,14 +36,9 @@ export class Store {
   scraperType: 'default' | 'f2f' | '401' | 'hobbies' | 'binderpos' | 'cgrealm';
 
   @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
-  scraperConfig?: {
+  scraperConfig?: Partial<StorefrontScraperConfig> & {
     searchPath?: string;
-    shopifyUrl?: string;
-    storefrontApiVersion?: string;
-    storefrontAccessToken?: string;
     /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
-    storefrontScope?: string;
-    parser?: StorefrontParserProfile;
   };
 
   @Column({ name: 'platform_type', length: 50, nullable: true })
