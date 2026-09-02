@@ -558,6 +558,7 @@ describe('StorefrontExtractionAdapter', () => {
           setName: { candidates: [{ source: 'product.vendor' }] },
           condition: { candidates: [{ source: 'variant.selectedOptions', transforms: [{ type: 'optionValue', name: 'Condition' }, { type: 'condition' }] }] },
           foil: { candidates: [{ source: 'variant.selectedOptions', transforms: [{ type: 'optionValue', name: 'Finish' }, { type: 'booleanTokens', true: ['foil'], false: ['non-foil'] }] }] },
+          isToken: { candidates: [{ value: false }] },
         } },
       } });
 
@@ -568,6 +569,19 @@ describe('StorefrontExtractionAdapter', () => {
         foil: true, price: 2.5, currency: 'CAD', inStock: true,
         platformVariantId: '77', sku: 'M11-123',
       });
+    });
+
+    it('excludes rejected mapping variants and reports dry-run diagnostics', async () => {
+      const product = createMockProduct({ variants: { edges: [
+        { node: { id: 'gid://shopify/ProductVariant/1', title: 'NM', availableForSale: true, price: { amount: '1', currencyCode: 'CAD' }, selectedOptions: [] } },
+        { node: { id: 'gid://shopify/ProductVariant/2', title: 'NM', availableForSale: true, price: { amount: '2', currencyCode: 'CAD' }, selectedOptions: [] } },
+      ] } });
+      const store = createMockStore({ scraperConfig: { parser: { kind: 'mapping', version: 1, fields: {
+        cardName: { candidates: [{ value: 'Bolt' }] }, setName: { candidates: [{ value: 'M11' }] }, condition: { candidates: [{ value: 'nm' }] },
+        foil: { candidates: [{ value: false }] }, isToken: { candidates: [{ value: false }] },
+      } } } });
+      const report = adapter.dryRunParser(store, [product]);
+      expect(report).toMatchObject({ sampledProducts: 1, sampledVariants: 2, validVariants: 2, rejectedVariants: 0 });
     });
   });
 });

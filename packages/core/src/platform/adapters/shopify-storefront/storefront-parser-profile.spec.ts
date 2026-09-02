@@ -3,6 +3,8 @@ import {
   evaluateStorefrontParserProfile,
   normalizeStorefrontProfileInputs,
   validateStorefrontParserProfile,
+  validateStorefrontParserProfileGrammar,
+  validateStorefrontMappingProfileContract,
 } from '@scoutlgs/shared';
 import { ProfiledStorefrontCardParser } from './profiled-storefront-card-parser';
 
@@ -123,6 +125,26 @@ describe('Storefront parser profile grammar', () => {
     expect(validateStorefrontParserProfile({ kind: 'mapping', version: 1, fields: { cardName: { candidates: [{ source: 'nope' }] } } }).valid).toBe(false);
     expect(validateStorefrontParserProfile({ kind: 'mapping', version: 1, fields: { cardName: { candidates: [{ source: 'product.title', transforms: [{ type: 'regexCapture', pattern: '(', group: 1 }] }] } } }).valid).toBe(false);
     expect(validateStorefrontParserProfile({ kind: 'mapping', version: 1, fields: { cardName: { candidates: [{ source: 'product.title' }] } } }, [input as any]).valid).toBe(false);
+  });
+
+  it('separates grammar from the production mapping contract and rejects unknown keys', () => {
+    const incomplete = { kind: 'mapping', version: 1, fields: { cardName: { candidates: [{ value: 'Bolt' }] } } };
+    expect(validateStorefrontParserProfileGrammar(incomplete).valid).toBe(true);
+    expect(validateStorefrontMappingProfileContract(incomplete).valid).toBe(false);
+    expect(validateStorefrontParserProfileGrammar({ ...incomplete, unexpected: true }).valid).toBe(false);
+    expect(validateStorefrontParserProfileGrammar({ kind: 'mapping', version: 1, fields: { cardName: { candidates: [{ value: 'Bolt', nope: true }] } } }).valid).toBe(false);
+  });
+
+  it('fails closed with every missing required output', () => {
+    const mapping: any = { kind: 'mapping', version: 1, fields: {
+      cardName: { candidates: [{ value: '' }] }, setName: { candidates: [{ value: '' }] },
+      condition: { candidates: [{ value: 'unknown' }] }, foil: { candidates: [{ source: 'variant.title', transforms: [{ type: 'foil' }] }] }, isToken: { candidates: [{ value: false }] },
+    } };
+    const result = ProfiledStorefrontCardParser.parse(mapping, { ...input, variant: { ...input.variant, id: '', price: { amount: '-1', currencyCode: '' } } } as any, 'https://example.test');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failures.map(failure => failure.code)).toEqual([
+      'missing-card-name', 'missing-set-identity', 'unknown-condition', 'unknown-finish', 'invalid-price', 'missing-currency', 'missing-variant-id',
+    ]);
   });
 
   it('applies Art Series exclusions with product and all-variant scope', () => {

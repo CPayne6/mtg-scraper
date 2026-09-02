@@ -98,6 +98,16 @@ describe('StorefrontClient', () => {
       );
     });
 
+    it('normalizes a legacy absolute shopifyUrl without duplicating its scheme', () => {
+      const store = createMockStore({ scraperConfig: { shopifyUrl: 'https://CUSTOM-store.myshopify.com/' } });
+      expect(client.getEndpointUrl(store)).toBe(`https://custom-store.myshopify.com/api/${DEFAULT_STOREFRONT_API_VERSION}/graphql.json`);
+    });
+
+    it('rejects a configured host with a path', () => {
+      const store = createMockStore({ scraperConfig: { shopifyUrl: 'custom-store.myshopify.com/path' } });
+      expect(() => client.getEndpointUrl(store)).toThrow('Storefront host');
+    });
+
     it('falls back to baseUrl host when shopifyUrl is not set', () => {
       const store = createMockStore({
         baseUrl: 'https://example-store.com',
