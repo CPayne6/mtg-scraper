@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Store } from '@scoutlgs/core';
-import { buildCartPermalink, normalizeLines, resolveStoreHost } from './cart-permalink';
+import {
+  buildCartPermalink,
+  normalizeLines,
+  resolveStoreHost,
+} from './cart-permalink';
 
 describe('buildCartPermalink', () => {
   it('builds a single-line permalink', () => {
@@ -25,7 +29,9 @@ describe('buildCartPermalink', () => {
 });
 
 describe('resolveStoreHost', () => {
-  const makeStore = (overrides: Partial<Store> = {}): Pick<Store, 'baseUrl' | 'scraperConfig'> => ({
+  const makeStore = (
+    overrides: Partial<Store> = {},
+  ): Pick<Store, 'baseUrl' | 'scraperConfig'> => ({
     baseUrl: 'https://facetofacegames.com',
     scraperConfig: undefined,
     ...overrides,
@@ -47,15 +53,29 @@ describe('resolveStoreHost', () => {
   });
 
   it('normalizes a legacy absolute scraperConfig.shopifyUrl', () => {
-    expect(resolveStoreHost(makeStore({ scraperConfig: { shopifyUrl: 'https://SHOP.myshopify.com/' } }))).toBe('shop.myshopify.com');
+    expect(
+      resolveStoreHost(
+        makeStore({
+          scraperConfig: { shopifyUrl: 'https://SHOP.myshopify.com/' },
+        }),
+      ),
+    ).toBe('shop.myshopify.com');
   });
 
   it('rejects whitespace rather than silently repairing a malformed host', () => {
-    expect(() => resolveStoreHost(makeStore({ scraperConfig: { shopifyUrl: '  shop.myshopify.com  ' } }))).toThrow();
+    expect(() =>
+      resolveStoreHost(
+        makeStore({ scraperConfig: { shopifyUrl: '  shop.myshopify.com  ' } }),
+      ),
+    ).toThrow();
   });
 
   it('rejects a non-origin baseUrl when falling back', () => {
-    expect(() => resolveStoreHost(makeStore({ baseUrl: 'https://shop.example.com:8080/products' }))).toThrow();
+    expect(() =>
+      resolveStoreHost(
+        makeStore({ baseUrl: 'https://shop.example.com:8080/products' }),
+      ),
+    ).toThrow();
   });
 });
 

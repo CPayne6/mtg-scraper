@@ -28,14 +28,22 @@ export function buildCartPermalink(host: string, lines: CartLine[]): string {
 // The cart permalink MUST hit the actual Shopify host -- vanity-domain
 // stores will 404 `/cart/{vid}:{qty}` on the storefront frontend in some
 // theme configurations, while the myshopify.com host always works.
-export function resolveStoreHost(store: Pick<Store, 'baseUrl' | 'scraperConfig'>): string {
-  return normalizeStorefrontHost(store.scraperConfig?.shopifyUrl, store.baseUrl);
+export function resolveStoreHost(
+  store: Pick<Store, 'baseUrl' | 'scraperConfig'>,
+): string {
+  return normalizeStorefrontHost(
+    store.scraperConfig?.shopifyUrl,
+    store.baseUrl,
+  );
 }
 
 // Dedupe by variantId and sum quantities. Caps each merged quantity at `maxPerLine`
 // because Shopify rejects cart permalinks with absurd quantities and the cap
 // matches the DTO's per-line constraint.
-export function normalizeLines(lines: CartLineInput[], maxPerLine: number): CartLine[] {
+export function normalizeLines(
+  lines: CartLineInput[],
+  maxPerLine: number,
+): CartLine[] {
   const merged = new Map<string, number>();
   for (const line of lines) {
     const existing = merged.get(line.variantId) ?? 0;

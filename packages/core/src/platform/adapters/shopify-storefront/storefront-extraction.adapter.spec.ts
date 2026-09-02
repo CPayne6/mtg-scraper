@@ -1,21 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StorefrontExtractionAdapter } from './storefront-extraction.adapter';
-import { StorefrontPaginationLimitError } from './pagination-limit-error';
-import { ExtractionHttpError } from '../shopify/extraction-http-error';
-import { Condition } from '@scoutlgs/shared';
-import type { Store } from '../../../database/store.entity';
-import type { StorefrontProduct, ProductByHandleData, CollectionProductsData, ProductsQueryData, ProductsByIdsData } from './storefront.types';
-import type { ICardDetailExtractor } from '../shopify/card-detail-extractor.interface';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { StorefrontExtractionAdapter } from "./storefront-extraction.adapter";
+import { StorefrontPaginationLimitError } from "./pagination-limit-error";
+import { ExtractionHttpError } from "../shopify/extraction-http-error";
+import { Condition } from "@scoutlgs/shared";
+import type { Store } from "../../../database/store.entity";
+import type {
+  StorefrontProduct,
+  ProductByHandleData,
+  CollectionProductsData,
+  ProductsQueryData,
+  ProductsByIdsData,
+} from "./storefront.types";
+import type { ICardDetailExtractor } from "../shopify/card-detail-extractor.interface";
 
 function createMockStore(overrides: Partial<Store> = {}): Store {
   return {
     id: 1,
-    uuid: 'test-uuid',
-    name: 'test-store',
-    displayName: 'Test Store',
-    baseUrl: 'https://test-store.com',
+    uuid: "test-uuid",
+    name: "test-store",
+    displayName: "Test Store",
+    baseUrl: "https://test-store.com",
     isActive: true,
-    scraperType: 'binderpos',
+    scraperType: "binderpos",
     rateLimitPerSecond: 2,
     scraperConfig: {},
     createdAt: new Date(),
@@ -27,8 +33,8 @@ function createMockStore(overrides: Partial<Store> = {}): Store {
 function createMockExtractor(): ICardDetailExtractor {
   return {
     parseTitle: vi.fn().mockReturnValue({
-      cardName: 'Lightning Bolt',
-      setName: 'Magic 2011',
+      cardName: "Lightning Bolt",
+      setName: "Magic 2011",
       collectorNumber: undefined,
     }),
     parseSkuInfo: vi.fn().mockReturnValue({
@@ -46,33 +52,33 @@ function createMockExtractor(): ICardDetailExtractor {
   };
 }
 
-function createMockProduct(overrides: Partial<StorefrontProduct> = {}): StorefrontProduct {
+function createMockProduct(
+  overrides: Partial<StorefrontProduct> = {},
+): StorefrontProduct {
   return {
-    id: 'gid://shopify/Product/111',
-    handle: 'lightning-bolt-magic-2011',
-    title: 'Lightning Bolt [Magic 2011]',
-    vendor: 'Wizards',
-    productType: 'MTG Single',
-    descriptionHtml: '',
+    id: "gid://shopify/Product/111",
+    handle: "lightning-bolt-magic-2011",
+    title: "Lightning Bolt [Magic 2011]",
+    vendor: "Wizards",
+    productType: "MTG Single",
+    descriptionHtml: "",
     availableForSale: true,
-    updatedAt: '2025-01-01T00:00:00Z',
-    tags: ['mtg-singles'],
-    onlineStoreUrl: 'https://test-store.com/products/lightning-bolt-magic-2011',
+    updatedAt: "2025-01-01T00:00:00Z",
+    tags: ["mtg-singles"],
+    onlineStoreUrl: "https://test-store.com/products/lightning-bolt-magic-2011",
     images: {
-      edges: [{ node: { url: 'https://cdn.shopify.com/image.jpg' } }],
+      edges: [{ node: { url: "https://cdn.shopify.com/image.jpg" } }],
     },
     variants: {
       edges: [
         {
           node: {
-            id: 'gid://shopify/ProductVariant/12345',
-            title: 'NM',
-            sku: 'M11-123',
+            id: "gid://shopify/ProductVariant/12345",
+            title: "NM",
+            sku: "M11-123",
             availableForSale: true,
-            price: { amount: '2.50', currencyCode: 'CAD' },
-            selectedOptions: [
-              { name: 'Condition', value: 'NM' },
-            ],
+            price: { amount: "2.50", currencyCode: "CAD" },
+            selectedOptions: [{ name: "Condition", value: "NM" }],
           },
         },
       ],
@@ -81,7 +87,7 @@ function createMockProduct(overrides: Partial<StorefrontProduct> = {}): Storefro
   };
 }
 
-describe('StorefrontExtractionAdapter', () => {
+describe("StorefrontExtractionAdapter", () => {
   let adapter: StorefrontExtractionAdapter;
   let mockClient: { query: ReturnType<typeof vi.fn> };
   let mockExtractor: ICardDetailExtractor;
@@ -97,7 +103,7 @@ describe('StorefrontExtractionAdapter', () => {
     // instead of separate extractor maps + default.
     const mockRegistry = {
       get: (scraperType: string) =>
-        scraperType === 'binderpos' ? mockExtractor : mockDefaultExtractor,
+        scraperType === "binderpos" ? mockExtractor : mockDefaultExtractor,
     };
     adapter = new StorefrontExtractionAdapter(
       mockClient as any,
@@ -105,19 +111,19 @@ describe('StorefrontExtractionAdapter', () => {
     );
   });
 
-  describe('extractProduct', () => {
-    it('normalizes price from amount string to number', async () => {
+  describe("extractProduct", () => {
+    it("normalizes price from amount string to number", async () => {
       const product = createMockProduct({
         variants: {
           edges: [
             {
               node: {
-                id: 'gid://shopify/ProductVariant/99',
-                title: 'NM',
+                id: "gid://shopify/ProductVariant/99",
+                title: "NM",
                 sku: null,
                 availableForSale: true,
-                price: { amount: '2.50', currencyCode: 'CAD' },
-                selectedOptions: [{ name: 'Condition', value: 'NM' }],
+                price: { amount: "2.50", currencyCode: "CAD" },
+                selectedOptions: [{ name: "Condition", value: "NM" }],
               },
             },
           ],
@@ -126,26 +132,26 @@ describe('StorefrontExtractionAdapter', () => {
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
 
       const store = createMockStore();
-      const variants = await adapter.extractProduct(store, 'lightning-bolt');
+      const variants = await adapter.extractProduct(store, "lightning-bolt");
 
       expect(variants[0].price).toBe(2.5);
-      expect(variants[0].currency).toBe('CAD');
+      expect(variants[0].currency).toBe("CAD");
     });
 
-    it('maps selectedOptions to condition and foil', async () => {
+    it("maps selectedOptions to condition and foil", async () => {
       const product = createMockProduct({
         variants: {
           edges: [
             {
               node: {
-                id: 'gid://shopify/ProductVariant/200',
-                title: 'Near Mint Foil',
+                id: "gid://shopify/ProductVariant/200",
+                title: "Near Mint Foil",
                 sku: null,
                 availableForSale: true,
-                price: { amount: '5.00', currencyCode: 'CAD' },
+                price: { amount: "5.00", currencyCode: "CAD" },
                 selectedOptions: [
-                  { name: 'Condition', value: 'Near Mint' },
-                  { name: 'Style', value: 'Foil' },
+                  { name: "Condition", value: "Near Mint" },
+                  { name: "Style", value: "Foil" },
                 ],
               },
             },
@@ -155,7 +161,7 @@ describe('StorefrontExtractionAdapter', () => {
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
 
       const store = createMockStore();
-      const variants = await adapter.extractProduct(store, 'test-handle');
+      const variants = await adapter.extractProduct(store, "test-handle");
 
       // selectedOptions[0] => option1 = "Near Mint" => NM
       // option2 = "Foil" => foil=true via parseConditionAndFoil
@@ -163,18 +169,18 @@ describe('StorefrontExtractionAdapter', () => {
       expect(variants[0].foil).toBe(true);
     });
 
-    it('extracts platformVariantId from variant gid', async () => {
+    it("extracts platformVariantId from variant gid", async () => {
       const product = createMockProduct({
         variants: {
           edges: [
             {
               node: {
-                id: 'gid://shopify/ProductVariant/12345',
-                title: 'NM',
+                id: "gid://shopify/ProductVariant/12345",
+                title: "NM",
                 sku: null,
                 availableForSale: true,
-                price: { amount: '1.00', currencyCode: 'CAD' },
-                selectedOptions: [{ name: 'Condition', value: 'NM' }],
+                price: { amount: "1.00", currencyCode: "CAD" },
+                selectedOptions: [{ name: "Condition", value: "NM" }],
               },
             },
           ],
@@ -183,24 +189,24 @@ describe('StorefrontExtractionAdapter', () => {
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
 
       const store = createMockStore();
-      const variants = await adapter.extractProduct(store, 'test-handle');
+      const variants = await adapter.extractProduct(store, "test-handle");
 
-      expect(variants[0].platformVariantId).toBe('12345');
+      expect(variants[0].platformVariantId).toBe("12345");
     });
 
-    it('treats Storefront quantity as unsupported and leaves quantity undefined', async () => {
+    it("treats Storefront quantity as unsupported and leaves quantity undefined", async () => {
       const product = createMockProduct({
-        tags: ['Magic 2011', 'Normal'],
+        tags: ["Magic 2011", "Normal"],
         variants: {
           edges: [
             {
               node: {
-                id: 'gid://shopify/ProductVariant/12345',
-                title: 'NM',
-                sku: 'M11-123',
+                id: "gid://shopify/ProductVariant/12345",
+                title: "NM",
+                sku: "M11-123",
                 availableForSale: true,
-                price: { amount: '1.00', currencyCode: 'CAD' },
-                selectedOptions: [{ name: 'Condition', value: 'NM' }],
+                price: { amount: "1.00", currencyCode: "CAD" },
+                selectedOptions: [{ name: "Condition", value: "NM" }],
               },
             },
           ],
@@ -209,49 +215,52 @@ describe('StorefrontExtractionAdapter', () => {
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
 
       const store = createMockStore();
-      const variants = await adapter.extractProduct(store, 'test-handle');
+      const variants = await adapter.extractProduct(store, "test-handle");
 
       expect(variants[0].inStock).toBe(true);
       expect(variants[0].quantity).toBeUndefined();
       expect(mockExtractor.parseTags).toHaveBeenCalledWith([
-        'Magic 2011',
-        'Normal',
+        "Magic 2011",
+        "Normal",
       ]);
     });
 
-    it('throws ExtractionHttpError with status 404 when product is null', async () => {
-      mockClient.query.mockResolvedValue({ product: null } as ProductByHandleData);
+    it("throws ExtractionHttpError with status 404 when product is null", async () => {
+      mockClient.query.mockResolvedValue({
+        product: null,
+      } as ProductByHandleData);
 
       const store = createMockStore();
 
       await expect(
-        adapter.extractProduct(store, 'nonexistent-handle'),
+        adapter.extractProduct(store, "nonexistent-handle"),
       ).rejects.toThrow(ExtractionHttpError);
 
       await expect(
-        adapter.extractProduct(store, 'nonexistent-handle'),
+        adapter.extractProduct(store, "nonexistent-handle"),
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
-    it('uses the correct extractor based on store scraperType', async () => {
+    it("uses the correct extractor based on store scraperType", async () => {
       const product = createMockProduct();
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
 
-      const store = createMockStore({ scraperType: 'binderpos' });
-      await adapter.extractProduct(store, 'test-handle');
+      const store = createMockStore({ scraperType: "binderpos" });
+      await adapter.extractProduct(store, "test-handle");
 
       // The binderpos-specific extractor should be called, not the default
       expect(mockExtractor.parseTitle).toHaveBeenCalledWith(product.title);
       expect(mockDefaultExtractor.parseTitle).not.toHaveBeenCalled();
     });
 
-    it('marks an Art Series title for exclusion before matching', async () => {
+    it("marks an Art Series title for exclusion before matching", async () => {
       const product = createMockProduct({
-        title: "Liberator, Urza's Battlethopter - Art Series (Gold-Stamped Signature) (ABRO)",
+        title:
+          "Liberator, Urza's Battlethopter - Art Series (Gold-Stamped Signature) (ABRO)",
       });
       mockExtractor.parseTitle.mockReturnValue({
-        cardName: '',
-        setName: '',
+        cardName: "",
+        setName: "",
         isArtSeries: true,
       });
       mockClient.query.mockResolvedValue({
@@ -263,40 +272,42 @@ describe('StorefrontExtractionAdapter', () => {
 
       const result = await adapter.fetchPageByCursor(
         createMockStore(),
-        'scope',
-        '2025-01-01T00:00:00Z',
-        '2025-04-01T00:00:00Z',
+        "scope",
+        "2025-01-01T00:00:00Z",
+        "2025-04-01T00:00:00Z",
         null,
       );
 
       expect(result.products[0].isArtSeries).toBe(true);
     });
 
-    it('falls back to default extractor for unknown scraperType', async () => {
+    it("falls back to default extractor for unknown scraperType", async () => {
       const product = createMockProduct();
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
 
-      const store = createMockStore({ scraperType: 'f2f' as any });
-      await adapter.extractProduct(store, 'test-handle');
+      const store = createMockStore({ scraperType: "f2f" as any });
+      await adapter.extractProduct(store, "test-handle");
 
       // 'f2f' is not in the extractorMap, so default should be used
-      expect(mockDefaultExtractor.parseTitle).toHaveBeenCalledWith(product.title);
+      expect(mockDefaultExtractor.parseTitle).toHaveBeenCalledWith(
+        product.title,
+      );
       expect(mockExtractor.parseTitle).not.toHaveBeenCalled();
     });
   });
 
-  describe('extractCollection', () => {
-    it('paginates through multiple pages and yields all products', async () => {
-      const product1 = createMockProduct({ handle: 'product-1' });
-      const product2 = createMockProduct({ handle: 'product-2' });
-      const product3 = createMockProduct({ handle: 'product-3' });
+  describe("extractCollection", () => {
+    it("paginates through multiple pages and yields all products", async () => {
+      const product1 = createMockProduct({ handle: "product-1" });
+      const product2 = createMockProduct({ handle: "product-2" });
+      const product3 = createMockProduct({ handle: "product-3" });
 
       // Page 1: has next page
       const page1: CollectionProductsData = {
         collection: {
           products: {
             edges: [{ node: product1 }, { node: product2 }],
-            pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+            pageInfo: { hasNextPage: true, endCursor: "cursor-1" },
           },
         },
       };
@@ -305,7 +316,7 @@ describe('StorefrontExtractionAdapter', () => {
         collection: {
           products: {
             edges: [{ node: product3 }],
-            pageInfo: { hasNextPage: false, endCursor: 'cursor-2' },
+            pageInfo: { hasNextPage: false, endCursor: "cursor-2" },
           },
         },
       };
@@ -317,21 +328,24 @@ describe('StorefrontExtractionAdapter', () => {
       const store = createMockStore();
       const results: Array<{ handle: string }> = [];
 
-      for await (const item of adapter.extractCollection(store, 'mtg-singles')) {
+      for await (const item of adapter.extractCollection(
+        store,
+        "mtg-singles",
+      )) {
         results.push(item);
       }
 
       expect(results).toHaveLength(3);
-      expect(results[0].handle).toBe('product-1');
-      expect(results[1].handle).toBe('product-2');
-      expect(results[2].handle).toBe('product-3');
+      expect(results[0].handle).toBe("product-1");
+      expect(results[1].handle).toBe("product-2");
+      expect(results[2].handle).toBe("product-3");
 
       // Verify pagination cursor was passed
       const secondCallVars = mockClient.query.mock.calls[1][2];
-      expect(secondCallVars.after).toBe('cursor-1');
+      expect(secondCallVars.after).toBe("cursor-1");
     });
 
-    it('yields nothing when collection is null', async () => {
+    it("yields nothing when collection is null", async () => {
       mockClient.query.mockResolvedValue({
         collection: null,
       } as CollectionProductsData);
@@ -339,7 +353,10 @@ describe('StorefrontExtractionAdapter', () => {
       const store = createMockStore();
       const results: unknown[] = [];
 
-      for await (const item of adapter.extractCollection(store, 'nonexistent')) {
+      for await (const item of adapter.extractCollection(
+        store,
+        "nonexistent",
+      )) {
         results.push(item);
       }
 
@@ -347,47 +364,58 @@ describe('StorefrontExtractionAdapter', () => {
     });
   });
 
-  describe('fetchProductsByIds', () => {
-    it('uses the direct nodes lookup with global IDs and no search filters', async () => {
+  describe("fetchProductsByIds", () => {
+    it("uses the direct nodes lookup with global IDs and no search filters", async () => {
       const product = createMockProduct();
-      mockClient.query.mockResolvedValue({ nodes: [product, null] } as ProductsByIdsData);
+      mockClient.query.mockResolvedValue({
+        nodes: [product, null],
+      } as ProductsByIdsData);
 
-      const result = await adapter.fetchProductsByIds(createMockStore(), ['111', 'gid://shopify/Product/222', '111']);
+      const result = await adapter.fetchProductsByIds(createMockStore(), [
+        "111",
+        "gid://shopify/Product/222",
+        "111",
+      ]);
 
       expect(mockClient.query).toHaveBeenCalledTimes(1);
       const [, query, variables] = mockClient.query.mock.calls[0];
-      expect(query).toContain('nodes(ids: $ids)');
-      expect(query).not.toContain('products(first:');
-      expect(variables).toEqual({ ids: ['gid://shopify/Product/111', 'gid://shopify/Product/222'] });
+      expect(query).toContain("nodes(ids: $ids)");
+      expect(query).not.toContain("products(first:");
+      expect(variables).toEqual({
+        ids: ["gid://shopify/Product/111", "gid://shopify/Product/222"],
+      });
       expect(result.products).toHaveLength(1);
-      expect(result.products[0].shopifyProductId).toBe('111');
+      expect(result.products[0].shopifyProductId).toBe("111");
     });
 
-    it('bounds one direct lookup to Shopify\'s 250-ID nodes limit', async () => {
+    it("bounds one direct lookup to Shopify's 250-ID nodes limit", async () => {
       mockClient.query.mockResolvedValue({ nodes: [] } as ProductsByIdsData);
-      await adapter.fetchProductsByIds(createMockStore(), Array.from({ length: 251 }, (_, index) => String(index + 1)));
+      await adapter.fetchProductsByIds(
+        createMockStore(),
+        Array.from({ length: 251 }, (_, index) => String(index + 1)),
+      );
       const [, , variables] = mockClient.query.mock.calls[0];
       expect(variables.ids).toHaveLength(250);
     });
   });
 
-  describe('fetchPageByCursor', () => {
-    it('builds the query with the scope and date range and forwards the cursor', async () => {
+  describe("fetchPageByCursor", () => {
+    it("builds the query with the scope and date range and forwards the cursor", async () => {
       const product = createMockProduct();
       mockClient.query.mockResolvedValue({
         products: {
           edges: [{ node: product }],
-          pageInfo: { hasNextPage: true, endCursor: 'next-cursor' },
+          pageInfo: { hasNextPage: true, endCursor: "next-cursor" },
         },
       } as ProductsQueryData);
 
-      const store = createMockStore({ scraperType: 'binderpos' });
+      const store = createMockStore({ scraperType: "binderpos" });
       const result = await adapter.fetchPageByCursor(
         store,
         'product_type:"MTG Single"',
-        '2025-01-01T00:00:00Z',
-        '2025-04-01T00:00:00Z',
-        'prev-cursor',
+        "2025-01-01T00:00:00Z",
+        "2025-04-01T00:00:00Z",
+        "prev-cursor",
       );
 
       expect(mockClient.query).toHaveBeenCalledTimes(1);
@@ -396,34 +424,34 @@ describe('StorefrontExtractionAdapter', () => {
         `product_type:"MTG Single" created_at:>='2025-01-01T00:00:00Z' created_at:<'2025-04-01T00:00:00Z'`,
       );
       expect(vars.first).toBe(250);
-      expect(vars.after).toBe('prev-cursor');
+      expect(vars.after).toBe("prev-cursor");
 
       expect(result.products).toHaveLength(1);
       expect(result.products[0].handle).toBe(product.handle);
       expect(result.products[0].rawProductTitle).toBe(product.title);
-      expect(result.nextCursor).toBe('next-cursor');
+      expect(result.nextCursor).toBe("next-cursor");
     });
 
-    it('returns nextCursor=null when hasNextPage is false', async () => {
+    it("returns nextCursor=null when hasNextPage is false", async () => {
       mockClient.query.mockResolvedValue({
         products: {
           edges: [{ node: createMockProduct() }],
-          pageInfo: { hasNextPage: false, endCursor: 'end' },
+          pageInfo: { hasNextPage: false, endCursor: "end" },
         },
       } as ProductsQueryData);
 
       const result = await adapter.fetchPageByCursor(
         createMockStore(),
-        'scope',
-        '2025-01-01T00:00:00Z',
-        '2025-04-01T00:00:00Z',
+        "scope",
+        "2025-01-01T00:00:00Z",
+        "2025-04-01T00:00:00Z",
         null,
       );
 
       expect(result.nextCursor).toBeNull();
     });
 
-    it('passes null cursor through unchanged for the first page', async () => {
+    it("passes null cursor through unchanged for the first page", async () => {
       mockClient.query.mockResolvedValue({
         products: {
           edges: [],
@@ -433,9 +461,9 @@ describe('StorefrontExtractionAdapter', () => {
 
       await adapter.fetchPageByCursor(
         createMockStore(),
-        'scope',
-        '2025-01-01T00:00:00Z',
-        '2025-04-01T00:00:00Z',
+        "scope",
+        "2025-01-01T00:00:00Z",
+        "2025-04-01T00:00:00Z",
         null,
       );
 
@@ -443,49 +471,53 @@ describe('StorefrontExtractionAdapter', () => {
       expect(vars.after).toBeNull();
     });
 
-    it('translates the 25K depth error into StorefrontPaginationLimitError', async () => {
+    it("translates the 25K depth error into StorefrontPaginationLimitError", async () => {
       mockClient.query.mockRejectedValue(
         new Error(
-          'GraphQL errors from test-store: Platform limit for pagination (25000 items) exceeded by 250 items.',
+          "GraphQL errors from test-store: Platform limit for pagination (25000 items) exceeded by 250 items.",
         ),
       );
 
-      const store = createMockStore({ name: 'test-store' });
+      const store = createMockStore({ name: "test-store" });
       await expect(
         adapter.fetchPageByCursor(
           store,
-          'scope',
-          '2025-01-01T00:00:00Z',
-          '2025-04-01T00:00:00Z',
-          'some-cursor',
+          "scope",
+          "2025-01-01T00:00:00Z",
+          "2025-04-01T00:00:00Z",
+          "some-cursor",
         ),
       ).rejects.toBeInstanceOf(StorefrontPaginationLimitError);
     });
 
-    it('re-throws non-pagination errors unchanged', async () => {
-      const networkErr = new Error('fetch failed via proxy 5: ECONNRESET');
+    it("re-throws non-pagination errors unchanged", async () => {
+      const networkErr = new Error("fetch failed via proxy 5: ECONNRESET");
       mockClient.query.mockRejectedValue(networkErr);
 
       await expect(
         adapter.fetchPageByCursor(
           createMockStore(),
-          'scope',
-          '2025-01-01T00:00:00Z',
-          '2025-04-01T00:00:00Z',
+          "scope",
+          "2025-01-01T00:00:00Z",
+          "2025-04-01T00:00:00Z",
           null,
         ),
       ).rejects.toBe(networkErr);
     });
   });
 
-  describe('findCreatedAtRange', () => {
-    it('returns the oldest and newest createdAt for the scope', async () => {
+  describe("findCreatedAtRange", () => {
+    it("returns the oldest and newest createdAt for the scope", async () => {
       mockClient.query
         .mockResolvedValueOnce({
-          products: { edges: [{ node: { createdAt: '2024-03-01T00:00:00Z' } }] },
+          products: {
+            edges: [{ node: { createdAt: "2024-03-01T00:00:00Z" } }],
+          },
         })
         .mockResolvedValueOnce({
-          products: { edges: [{ node: { createdAt: '2026-05-01T00:00:00Z' } }] },
+          products: {
+            edges: [{ node: { createdAt: "2026-05-01T00:00:00Z" } }],
+          },
         });
 
       const result = await adapter.findCreatedAtRange(
@@ -493,16 +525,16 @@ describe('StorefrontExtractionAdapter', () => {
         'product_type:"MTG Single"',
       );
 
-      expect(result.minCreatedAt).toBe('2024-03-01T00:00:00Z');
-      expect(result.maxCreatedAt).toBe('2026-05-01T00:00:00Z');
+      expect(result.minCreatedAt).toBe("2024-03-01T00:00:00Z");
+      expect(result.maxCreatedAt).toBe("2026-05-01T00:00:00Z");
     });
 
-    it('returns nulls when the scope matches nothing', async () => {
+    it("returns nulls when the scope matches nothing", async () => {
       mockClient.query.mockResolvedValue({ products: { edges: [] } });
 
       const result = await adapter.findCreatedAtRange(
         createMockStore(),
-        'product_type:Nonexistent',
+        "product_type:Nonexistent",
       );
 
       expect(result.minCreatedAt).toBeNull();
@@ -510,78 +542,167 @@ describe('StorefrontExtractionAdapter', () => {
     });
   });
 
-  describe('probeBucketHasProducts', () => {
-    it('returns true when the bucket has at least one product', async () => {
+  describe("probeBucketHasProducts", () => {
+    it("returns true when the bucket has at least one product", async () => {
       mockClient.query.mockResolvedValue({
-        products: { edges: [{ node: { id: 'gid://shopify/Product/1' } }] },
+        products: { edges: [{ node: { id: "gid://shopify/Product/1" } }] },
       });
 
       const result = await adapter.probeBucketHasProducts(
         createMockStore(),
         'product_type:"MTG Single"',
-        '2025-01-01T00:00:00Z',
-        '2025-02-01T00:00:00Z',
+        "2025-01-01T00:00:00Z",
+        "2025-02-01T00:00:00Z",
       );
 
       expect(result).toBe(true);
     });
 
-    it('returns false when the bucket is empty', async () => {
+    it("returns false when the bucket is empty", async () => {
       mockClient.query.mockResolvedValue({ products: { edges: [] } });
 
       const result = await adapter.probeBucketHasProducts(
         createMockStore(),
         'product_type:"MTG Single"',
-        '2020-01-01T00:00:00Z',
-        '2020-02-01T00:00:00Z',
+        "2020-01-01T00:00:00Z",
+        "2020-02-01T00:00:00Z",
       );
 
       expect(result).toBe(false);
     });
   });
 
-  describe('mapping parser profiles', () => {
-    it('evaluates a validated mapping profile against normalized Storefront edges', async () => {
+  describe("mapping parser profiles", () => {
+    it("evaluates a validated mapping profile against normalized Storefront edges", async () => {
       const product = createMockProduct({
-        title: '  Lightning Bolt  ',
-        vendor: 'Magic 2011',
-        variants: { edges: [{ node: {
-          id: 'gid://shopify/ProductVariant/77', title: 'NM', sku: 'M11-123',
-          availableForSale: true, price: { amount: '2.50', currencyCode: 'CAD' },
-          selectedOptions: [{ name: 'Condition', value: 'Near Mint' }, { name: 'Finish', value: 'Foil' }],
-        } }] },
+        title: "  Lightning Bolt  ",
+        vendor: "Magic 2011",
+        variants: {
+          edges: [
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/77",
+                title: "NM",
+                sku: "M11-123",
+                availableForSale: true,
+                price: { amount: "2.50", currencyCode: "CAD" },
+                selectedOptions: [
+                  { name: "Condition", value: "Near Mint" },
+                  { name: "Finish", value: "Foil" },
+                ],
+              },
+            },
+          ],
+        },
       });
       mockClient.query.mockResolvedValue({ product } as ProductByHandleData);
-      const store = createMockStore({ scraperType: 'default', scraperConfig: {
-        parser: { kind: 'mapping', version: 1, fields: {
-          cardName: { candidates: [{ source: 'product.title', transforms: [{ type: 'trim' }] }] },
-          setName: { candidates: [{ source: 'product.vendor' }] },
-          condition: { candidates: [{ source: 'variant.selectedOptions', transforms: [{ type: 'optionValue', name: 'Condition' }, { type: 'condition' }] }] },
-          foil: { candidates: [{ source: 'variant.selectedOptions', transforms: [{ type: 'optionValue', name: 'Finish' }, { type: 'booleanTokens', true: ['foil'], false: ['non-foil'] }] }] },
-          isToken: { candidates: [{ value: false }] },
-        } },
-      } });
+      const store = createMockStore({
+        scraperType: "default",
+        scraperConfig: {
+          parser: {
+            kind: "mapping",
+            version: 1,
+            fields: {
+              cardName: {
+                candidates: [
+                  { source: "product.title", transforms: [{ type: "trim" }] },
+                ],
+              },
+              setName: { candidates: [{ source: "product.vendor" }] },
+              condition: {
+                candidates: [
+                  {
+                    source: "variant.selectedOptions",
+                    transforms: [
+                      { type: "optionValue", name: "Condition" },
+                      { type: "condition" },
+                    ],
+                  },
+                ],
+              },
+              foil: {
+                candidates: [
+                  {
+                    source: "variant.selectedOptions",
+                    transforms: [
+                      { type: "optionValue", name: "Finish" },
+                      {
+                        type: "booleanTokens",
+                        true: ["foil"],
+                        false: ["non-foil"],
+                      },
+                    ],
+                  },
+                ],
+              },
+              isToken: { candidates: [{ value: false }] },
+            },
+          },
+        },
+      });
 
       const [variant] = await adapter.extractProduct(store, product.handle);
 
       expect(variant).toMatchObject({
-        cardName: 'Lightning Bolt', setName: 'Magic 2011', condition: Condition.NM,
-        foil: true, price: 2.5, currency: 'CAD', inStock: true,
-        platformVariantId: '77', sku: 'M11-123',
+        cardName: "Lightning Bolt",
+        setName: "Magic 2011",
+        condition: Condition.NM,
+        foil: true,
+        price: 2.5,
+        currency: "CAD",
+        inStock: true,
+        platformVariantId: "77",
+        sku: "M11-123",
       });
     });
 
-    it('excludes rejected mapping variants and reports dry-run diagnostics', async () => {
-      const product = createMockProduct({ variants: { edges: [
-        { node: { id: 'gid://shopify/ProductVariant/1', title: 'NM', availableForSale: true, price: { amount: '1', currencyCode: 'CAD' }, selectedOptions: [] } },
-        { node: { id: 'gid://shopify/ProductVariant/2', title: 'NM', availableForSale: true, price: { amount: '2', currencyCode: 'CAD' }, selectedOptions: [] } },
-      ] } });
-      const store = createMockStore({ scraperConfig: { parser: { kind: 'mapping', version: 1, fields: {
-        cardName: { candidates: [{ value: 'Bolt' }] }, setName: { candidates: [{ value: 'M11' }] }, condition: { candidates: [{ value: 'nm' }] },
-        foil: { candidates: [{ value: false }] }, isToken: { candidates: [{ value: false }] },
-      } } } });
+    it("excludes rejected mapping variants and reports dry-run diagnostics", async () => {
+      const product = createMockProduct({
+        variants: {
+          edges: [
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/1",
+                title: "NM",
+                availableForSale: true,
+                price: { amount: "1", currencyCode: "CAD" },
+                selectedOptions: [],
+              },
+            },
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/2",
+                title: "NM",
+                availableForSale: true,
+                price: { amount: "2", currencyCode: "CAD" },
+                selectedOptions: [],
+              },
+            },
+          ],
+        },
+      });
+      const store = createMockStore({
+        scraperConfig: {
+          parser: {
+            kind: "mapping",
+            version: 1,
+            fields: {
+              cardName: { candidates: [{ value: "Bolt" }] },
+              setName: { candidates: [{ value: "M11" }] },
+              condition: { candidates: [{ value: "nm" }] },
+              foil: { candidates: [{ value: false }] },
+              isToken: { candidates: [{ value: false }] },
+            },
+          },
+        },
+      });
       const report = adapter.dryRunParser(store, [product]);
-      expect(report).toMatchObject({ sampledProducts: 1, sampledVariants: 2, validVariants: 2, rejectedVariants: 0 });
+      expect(report).toMatchObject({
+        sampledProducts: 1,
+        sampledVariants: 2,
+        validVariants: 2,
+        rejectedVariants: 0,
+      });
     });
   });
 });

@@ -1,15 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { Dispatcher } from 'undici';
-import type { Store } from '../../../database/store.entity';
+import { Injectable, Logger } from "@nestjs/common";
+import type { Dispatcher } from "undici";
+import type { Store } from "../../../database/store.entity";
 import type {
   IExtractionAdapter,
   ExtractedCardVariant,
-} from '../../platform.interfaces';
-import { CardDetailExtractorRegistry } from '../shopify/card-detail-extractor.registry';
-import { ExtractionHttpError } from '../shopify/extraction-http-error';
-import { parseConditionAndFoil } from '../shopify/shopify-variant.utils';
-import { StorefrontPaginationLimitError } from './pagination-limit-error';
-import { StorefrontClient } from './storefront-client';
+} from "../../platform.interfaces";
+import { CardDetailExtractorRegistry } from "../shopify/card-detail-extractor.registry";
+import { ExtractionHttpError } from "../shopify/extraction-http-error";
+import { parseConditionAndFoil } from "../shopify/shopify-variant.utils";
+import { StorefrontPaginationLimitError } from "./pagination-limit-error";
+import { StorefrontClient } from "./storefront-client";
 import {
   COLLECTION_PRODUCTS_QUERY,
   PRODUCT_BY_HANDLE_QUERY,
@@ -19,20 +19,35 @@ import {
   PRODUCTS_BY_CREATED_AT_QUERY,
   PRODUCTS_BY_QUERY,
   PRODUCTS_BY_IDS_QUERY,
-} from './storefront.queries';
+} from "./storefront.queries";
 import type {
   StorefrontProduct,
   CollectionProductsData,
   ProductsQueryData,
   ProductByHandleData,
   ProductsByIdsData,
-} from './storefront.types';
-import { normalizeStorefrontProfileInputs } from '@scoutlgs/shared';
-import type { ProfileEvaluationInput } from '@scoutlgs/shared';
-import { ProfiledStorefrontCardParser } from './profiled-storefront-card-parser';
-import type { ProfileParseFailureCode, ProfileParseResult } from './profiled-storefront-card-parser';
+} from "./storefront.types";
+import { normalizeStorefrontProfileInputs } from "@scoutlgs/shared";
+import type { ProfileEvaluationInput } from "@scoutlgs/shared";
+import { ProfiledStorefrontCardParser } from "./profiled-storefront-card-parser";
+import type {
+  ProfileParseFailureCode,
+  ProfileParseResult,
+} from "./profiled-storefront-card-parser";
 
-export type StorefrontParserDryRunReport = { sampledProducts: number; sampledVariants: number; validVariants: number; rejectedVariants: number; coverage: number; failuresByCode: Record<ProfileParseFailureCode, number>; variants: Array<{ productId: string; variantId: string; result: ProfileParseResult }> };
+export type StorefrontParserDryRunReport = {
+  sampledProducts: number;
+  sampledVariants: number;
+  validVariants: number;
+  rejectedVariants: number;
+  coverage: number;
+  failuresByCode: Record<ProfileParseFailureCode, number>;
+  variants: Array<{
+    productId: string;
+    variantId: string;
+    result: ProfileParseResult;
+  }>;
+};
 
 @Injectable()
 export class StorefrontExtractionAdapter implements IExtractionAdapter {
@@ -69,8 +84,16 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
 
     const variants = this.extractVariantsFromProduct(store, data.product);
 
-    if (store.scraperConfig?.parser?.kind === 'mapping' && data.product.variants.edges.length > 0 && variants.length === 0) {
-      throw new ExtractionHttpError(`Mapping profile rejected every variant for ${handle} at ${store.name}`, 422, `${store.baseUrl}/products/${handle}`);
+    if (
+      store.scraperConfig?.parser?.kind === "mapping" &&
+      data.product.variants.edges.length > 0 &&
+      variants.length === 0
+    ) {
+      throw new ExtractionHttpError(
+        `Mapping profile rejected every variant for ${handle} at ${store.name}`,
+        422,
+        `${store.baseUrl}/products/${handle}`,
+      );
     }
 
     this.logger.debug(
@@ -164,14 +187,16 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     );
 
     const { edges } = data.products;
-    return { products: edges.map(({ node: product }) => ({
-      shopifyProductId: product.id.split('/').pop()!,
-      handle: product.handle,
-      rawProductTitle: product.title,
-      updatedAt: new Date(product.updatedAt),
-      isArtSeries: this.isArtSeriesProduct(store, product),
-      variants: this.extractVariantsFromProduct(store, product),
-    })) };
+    return {
+      products: edges.map(({ node: product }) => ({
+        shopifyProductId: product.id.split("/").pop()!,
+        handle: product.handle,
+        rawProductTitle: product.title,
+        updatedAt: new Date(product.updatedAt),
+        isArtSeries: this.isArtSeriesProduct(store, product),
+        variants: this.extractVariantsFromProduct(store, product),
+      })),
+    };
   }
 
   /**
@@ -194,7 +219,9 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   }> {
     const ids = [...new Set(productIds)]
       .slice(0, 250)
-      .map((id) => id.startsWith('gid://') ? id : `gid://shopify/Product/${id}`);
+      .map((id) =>
+        id.startsWith("gid://") ? id : `gid://shopify/Product/${id}`,
+      );
     if (!ids.length) return { products: [] };
     const data = await this.storefrontClient.query<ProductsByIdsData>(
       store,
@@ -202,9 +229,11 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       { ids },
     );
     const products = data.nodes
-      .filter((product): product is StorefrontProduct => Boolean(product?.id && product.handle && product.variants))
+      .filter((product): product is StorefrontProduct =>
+        Boolean(product?.id && product.handle && product.variants),
+      )
       .map((product) => ({
-        shopifyProductId: product.id.split('/').pop()!,
+        shopifyProductId: product.id.split("/").pop()!,
         handle: product.handle,
         rawProductTitle: product.title,
         updatedAt: new Date(product.updatedAt),
@@ -250,8 +279,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     }>;
     nextCursor: string | null;
   }> {
-    const query =
-      `${scope} created_at:>='${createdAtStart}' created_at:<'${createdAtEnd}'`;
+    const query = `${scope} created_at:>='${createdAtStart}' created_at:<'${createdAtEnd}'`;
 
     let data: ProductsQueryData;
     try {
@@ -261,7 +289,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
         { query, first: 250, after: cursor },
       );
     } catch (err) {
-      const message = (err as Error).message ?? '';
+      const message = (err as Error).message ?? "";
       if (StorefrontPaginationLimitError.isPaginationLimitMessage(message)) {
         throw new StorefrontPaginationLimitError(message, store.name);
       }
@@ -271,7 +299,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const { edges, pageInfo } = data.products;
 
     const products = edges.map(({ node: product }) => ({
-      shopifyProductId: product.id.split('/').pop()!,
+      shopifyProductId: product.id.split("/").pop()!,
       handle: product.handle,
       rawProductTitle: product.title,
       updatedAt: new Date(product.updatedAt),
@@ -279,7 +307,9 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       variants: this.extractVariantsFromProduct(store, product),
     }));
 
-    const nextCursor = pageInfo.hasNextPage ? pageInfo.endCursor ?? null : null;
+    const nextCursor = pageInfo.hasNextPage
+      ? (pageInfo.endCursor ?? null)
+      : null;
 
     return { products, nextCursor };
   }
@@ -321,8 +351,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     createdAtStart: string,
     createdAtEnd: string,
   ): Promise<boolean> {
-    const query =
-      `${scope} created_at:>='${createdAtStart}' created_at:<'${createdAtEnd}'`;
+    const query = `${scope} created_at:>='${createdAtStart}' created_at:<'${createdAtEnd}'`;
     const data = await this.storefrontClient.query<{
       products: { edges: { node: { id: string } }[] };
     }>(store, PRODUCT_BUCKET_PROBE_QUERY, { query });
@@ -338,12 +367,21 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     product: StorefrontProduct,
   ): ExtractedCardVariant[] {
     const profile = store.scraperConfig?.parser;
-    if (profile?.kind === 'mapping') {
-      const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
-      return this.toProfileInputs(product).flatMap(input => {
-        const parsed = ProfiledStorefrontCardParser.parse(compiled, input, store.baseUrl);
+    if (profile?.kind === "mapping") {
+      const compiled = ProfiledStorefrontCardParser.compile(
+        store.uuid,
+        profile,
+      );
+      return this.toProfileInputs(product).flatMap((input) => {
+        const parsed = ProfiledStorefrontCardParser.parse(
+          compiled,
+          input,
+          store.baseUrl,
+        );
         if (!parsed.ok) {
-          this.logger.warn(`Rejected Storefront mapping variant store=${store.name} product=${product.id.split('/').pop()} variant=${input.variant.id.split('/').pop()} failures=${parsed.failures.map(failure => failure.code).join(',')}`);
+          this.logger.warn(
+            `Rejected Storefront mapping variant store=${store.name} product=${product.id.split("/").pop()} variant=${input.variant.id.split("/").pop()} failures=${parsed.failures.map((failure) => failure.code).join(",")}`,
+          );
           return [];
         }
         return [parsed.variant];
@@ -364,7 +402,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const cardName = metaInfo.cardName || titleInfo.cardName;
     // Merge set name: structured meta > title > tags
     const setName =
-      metaInfo.setName || titleInfo.setName || tagsInfo.setName || '';
+      metaInfo.setName || titleInfo.setName || tagsInfo.setName || "";
 
     const productUrl =
       product.onlineStoreUrl || `${store.baseUrl}/products/${product.handle}`;
@@ -413,7 +451,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
         imageUrl: firstImageUrl,
         productUrl,
         sku: variant.sku ?? undefined,
-        platformVariantId: variant.id.split('/').pop(),
+        platformVariantId: variant.id.split("/").pop(),
         setCode,
         collectorNumber,
         isToken: skuInfo.isToken,
@@ -433,9 +471,15 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     product: StorefrontProduct,
   ): boolean {
     const profile = store.scraperConfig?.parser;
-    if (profile?.kind === 'mapping') {
-      const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
-      return ProfiledStorefrontCardParser.isArtSeries(compiled, this.toProfileInputs(product));
+    if (profile?.kind === "mapping") {
+      const compiled = ProfiledStorefrontCardParser.compile(
+        store.uuid,
+        profile,
+      );
+      return ProfiledStorefrontCardParser.isArtSeries(
+        compiled,
+        this.toProfileInputs(product),
+      );
     }
     const extractor = this.extractorRegistry.get(this.parserType(store));
     if (extractor.parseTitle(product.title).isArtSeries) {
@@ -443,34 +487,71 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     }
 
     const variants = product.variants.edges;
-    return variants.length > 0 && variants.every(({ node: variant }) =>
-      extractor.parseSkuInfo(variant.sku ?? undefined).isArtSeries,
+    return (
+      variants.length > 0 &&
+      variants.every(
+        ({ node: variant }) =>
+          extractor.parseSkuInfo(variant.sku ?? undefined).isArtSeries,
+      )
     );
   }
 
   private parserType(store: Store): string {
     const profile = store.scraperConfig?.parser;
-    return profile?.kind === 'builtin' ? profile.parserType : store.scraperType;
+    return profile?.kind === "builtin" ? profile.parserType : store.scraperType;
   }
 
   /** Converts Storefront edges to the profile contract. Tools can create this same shape from nodes. */
-  private toProfileInputs(product: StorefrontProduct): ProfileEvaluationInput[] {
+  private toProfileInputs(
+    product: StorefrontProduct,
+  ): ProfileEvaluationInput[] {
     return normalizeStorefrontProfileInputs(product);
   }
 
   /** Read-only production parser boundary for onboarding and profile diagnostics. */
-  dryRunParser(store: Store, products: StorefrontProduct[]): StorefrontParserDryRunReport {
-    const failuresByCode: Record<ProfileParseFailureCode, number> = { 'missing-card-name': 0, 'missing-set-identity': 0, 'unknown-condition': 0, 'unknown-finish': 0, 'invalid-price': 0, 'missing-currency': 0, 'missing-variant-id': 0 };
-    const variants: StorefrontParserDryRunReport['variants'] = [];
+  dryRunParser(
+    store: Store,
+    products: StorefrontProduct[],
+  ): StorefrontParserDryRunReport {
+    const failuresByCode: Record<ProfileParseFailureCode, number> = {
+      "missing-card-name": 0,
+      "missing-set-identity": 0,
+      "unknown-condition": 0,
+      "unknown-finish": 0,
+      "invalid-price": 0,
+      "missing-currency": 0,
+      "missing-variant-id": 0,
+    };
+    const variants: StorefrontParserDryRunReport["variants"] = [];
     const profile = store.scraperConfig?.parser;
-    if (profile?.kind !== 'mapping') throw new Error('Store does not have a mapping parser profile');
+    if (profile?.kind !== "mapping")
+      throw new Error("Store does not have a mapping parser profile");
     const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
-    for (const product of products) for (const input of this.toProfileInputs(product)) {
-      const result = ProfiledStorefrontCardParser.parse(compiled, input, store.baseUrl);
-      if (!result.ok) for (const failure of result.failures) failuresByCode[failure.code]++;
-      variants.push({ productId: product.id.split('/').pop() ?? product.id, variantId: input.variant.id.split('/').pop() ?? input.variant.id, result });
-    }
-    const sampledVariants = variants.length, validVariants = variants.filter(variant => variant.result.ok).length;
-    return { sampledProducts: products.length, sampledVariants, validVariants, rejectedVariants: sampledVariants - validVariants, coverage: sampledVariants ? validVariants / sampledVariants : 1, failuresByCode, variants };
+    for (const product of products)
+      for (const input of this.toProfileInputs(product)) {
+        const result = ProfiledStorefrontCardParser.parse(
+          compiled,
+          input,
+          store.baseUrl,
+        );
+        if (!result.ok)
+          for (const failure of result.failures) failuresByCode[failure.code]++;
+        variants.push({
+          productId: product.id.split("/").pop() ?? product.id,
+          variantId: input.variant.id.split("/").pop() ?? input.variant.id,
+          result,
+        });
+      }
+    const sampledVariants = variants.length,
+      validVariants = variants.filter((variant) => variant.result.ok).length;
+    return {
+      sampledProducts: products.length,
+      sampledVariants,
+      validVariants,
+      rejectedVariants: sampledVariants - validVariants,
+      coverage: sampledVariants ? validVariants / sampledVariants : 1,
+      failuresByCode,
+      variants,
+    };
   }
 }

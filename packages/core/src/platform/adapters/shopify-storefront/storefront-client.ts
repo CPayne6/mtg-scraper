@@ -1,15 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { fetch } from 'undici';
-import type { Dispatcher } from 'undici';
-import type { Store } from '../../../database/store.entity';
-import { ProxyService } from '../../../proxy/proxy.service';
-import { CacheService } from '../../../cache/cache.service';
-import { RateLimiterService } from '../../../rate-limiter/rate-limiter.service';
-import { WebBotAuthService } from '../../../web-bot-auth/web-bot-auth.service';
-import { ExtractionHttpError } from '../shopify/extraction-http-error';
-import { getStorefrontApiVersion } from './storefront.queries';
-import { normalizeStorefrontHost } from './storefront-config';
-import type { StorefrontGraphQLResponse } from './storefront.types';
+import { Injectable, Logger } from "@nestjs/common";
+import { fetch } from "undici";
+import type { Dispatcher } from "undici";
+import type { Store } from "../../../database/store.entity";
+import { ProxyService } from "../../../proxy/proxy.service";
+import { CacheService } from "../../../cache/cache.service";
+import { RateLimiterService } from "../../../rate-limiter/rate-limiter.service";
+import { WebBotAuthService } from "../../../web-bot-auth/web-bot-auth.service";
+import { ExtractionHttpError } from "../shopify/extraction-http-error";
+import { getStorefrontApiVersion } from "./storefront.queries";
+import { normalizeStorefrontHost } from "./storefront-config";
+import type { StorefrontGraphQLResponse } from "./storefront.types";
 
 @Injectable()
 export class StorefrontClient {
@@ -48,7 +48,7 @@ export class StorefrontClient {
     let proxyDispatcher: Dispatcher | undefined = dispatcher;
     if (!dispatcher && this.proxyService.isEnabled()) {
       proxyNumber = await this.cacheService.getNextProxyNumber(
-        'storefront',
+        "storefront",
         this.proxyService.getIpCount(),
       );
       proxyDispatcher = this.proxyService.getProxyAgentForNumber(proxyNumber);
@@ -66,10 +66,10 @@ export class StorefrontClient {
 
     // Build headers
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'User-Agent':
-        'Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)',
-      Accept: 'application/json',
+      "Content-Type": "application/json",
+      "User-Agent":
+        "Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)",
+      Accept: "application/json",
     };
 
     // Web Bot Auth signing — signed with the key matching the proxy IP so
@@ -77,7 +77,7 @@ export class StorefrontClient {
     if (this.webBotAuth.isEnabled()) {
       const authHeaders = await this.webBotAuth.signRequest(
         proxyNumber,
-        'POST',
+        "POST",
         url,
       );
       if (authHeaders) {
@@ -92,7 +92,7 @@ export class StorefrontClient {
     let response: Awaited<ReturnType<typeof fetch>>;
     try {
       response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify({ query: gql, variables }),
         ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
@@ -101,8 +101,7 @@ export class StorefrontClient {
     } catch (err) {
       const cause = (err as { cause?: { code?: string; message?: string } })
         .cause;
-      const reason =
-        cause?.code ?? cause?.message ?? (err as Error).message;
+      const reason = cause?.code ?? cause?.message ?? (err as Error).message;
       throw new Error(
         `fetch failed for ${store.name} via proxy ${proxyNumber}: ${reason}`,
       );
@@ -110,7 +109,7 @@ export class StorefrontClient {
 
     // Handle HTTP-level errors
     if (!response.ok) {
-      const retryAfter = response.headers.get('retry-after');
+      const retryAfter = response.headers.get("retry-after");
       const retryAfterSeconds = retryAfter
         ? parseInt(retryAfter, 10)
         : undefined;
@@ -150,15 +149,13 @@ export class StorefrontClient {
     }
 
     // Parse GraphQL response
-    const body =
-      (await response.json()) as StorefrontGraphQLResponse<T>;
+    const body = (await response.json()) as StorefrontGraphQLResponse<T>;
 
     // Handle GraphQL-level errors
     if (body.errors && body.errors.length > 0) {
       const isThrottled = body.errors.some(
         (e) =>
-          e.extensions?.code === 'THROTTLED' ||
-          e.message.includes('Throttled'),
+          e.extensions?.code === "THROTTLED" || e.message.includes("Throttled"),
       );
 
       if (isThrottled) {
@@ -183,10 +180,8 @@ export class StorefrontClient {
       }
 
       // Non-throttle GraphQL errors
-      const messages = body.errors.map((e) => e.message).join('; ');
-      throw new Error(
-        `GraphQL errors from ${store.name}: ${messages}`,
-      );
+      const messages = body.errors.map((e) => e.message).join("; ");
+      throw new Error(`GraphQL errors from ${store.name}: ${messages}`);
     }
 
     return body.data as T;
@@ -197,82 +192,150 @@ export class StorefrontClient {
    * multipart/mixed stream, so a successful HTTP response is not complete
    * until its terminal `hasNext: false` part has arrived.
    */
-  async queryDeferred<T>(store: Store, gql: string, variables: Record<string, unknown>): Promise<T> {
+  async queryDeferred<T>(
+    store: Store,
+    gql: string,
+    variables: Record<string, unknown>,
+  ): Promise<T> {
     const url = this.getEndpointUrl(store);
     let proxyNumber = 0;
     let dispatcher: Dispatcher | undefined;
     if (this.proxyService.isEnabled()) {
-      proxyNumber = await this.cacheService.getNextProxyNumber('storefront', this.proxyService.getIpCount());
+      proxyNumber = await this.cacheService.getNextProxyNumber(
+        "storefront",
+        this.proxyService.getIpCount(),
+      );
       dispatcher = this.proxyService.getProxyAgentForNumber(proxyNumber);
     }
-    const permit = await this.rateLimiter.acquirePermit(store.name, proxyNumber, store.rateLimitPerSecond || 15);
-    if (!permit.allowed) await new Promise((resolve) => setTimeout(resolve, permit.retryAfterMs));
+    const permit = await this.rateLimiter.acquirePermit(
+      store.name,
+      proxyNumber,
+      store.rateLimitPerSecond || 15,
+    );
+    if (!permit.allowed)
+      await new Promise((resolve) => setTimeout(resolve, permit.retryAfterMs));
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'multipart/mixed; deferSpec=20220824, application/json',
-      'User-Agent': 'Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)',
+      "Content-Type": "application/json",
+      Accept: "multipart/mixed; deferSpec=20220824, application/json",
+      "User-Agent":
+        "Mozilla/5.0 (compatible; ScoutLGS/1.0; +https://scoutlgs.com)",
     };
-    if (this.webBotAuth.isEnabled()) Object.assign(headers, await this.webBotAuth.signRequest(proxyNumber, 'POST', url) ?? {});
+    if (this.webBotAuth.isEnabled())
+      Object.assign(
+        headers,
+        (await this.webBotAuth.signRequest(proxyNumber, "POST", url)) ?? {},
+      );
     let response: Awaited<ReturnType<typeof fetch>>;
     try {
-      response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ query: gql, variables }), ...(dispatcher ? { dispatcher } : {}), signal: AbortSignal.timeout(15000) });
+      response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ query: gql, variables }),
+        ...(dispatcher ? { dispatcher } : {}),
+        signal: AbortSignal.timeout(15000),
+      });
     } catch (error) {
-      throw new Error(`Deferred fetch failed for ${store.name}: ${(error as Error).message}`);
+      throw new Error(
+        `Deferred fetch failed for ${store.name}: ${(error as Error).message}`,
+      );
     }
-    if (!response.ok) throw new Error(`Deferred HTTP ${response.status} from ${store.name}`);
+    if (!response.ok)
+      throw new Error(`Deferred HTTP ${response.status} from ${store.name}`);
     const raw = await response.text();
-    const parts = this.parseDeferredParts(raw, response.headers.get('content-type') ?? '');
-    if (!parts.length) throw new Error(`Malformed deferred response from ${store.name}`);
+    const parts = this.parseDeferredParts(
+      raw,
+      response.headers.get("content-type") ?? "",
+    );
+    if (!parts.length)
+      throw new Error(`Malformed deferred response from ${store.name}`);
     let result: unknown = {};
     let complete = false;
     for (const part of parts) {
-      if (part.errors?.length) throw new Error(`Deferred GraphQL errors from ${store.name}: ${part.errors.map((e: { message?: string }) => e.message ?? 'unknown').join('; ')}`);
+      if (part.errors?.length)
+        throw new Error(
+          `Deferred GraphQL errors from ${store.name}: ${part.errors.map((e: { message?: string }) => e.message ?? "unknown").join("; ")}`,
+        );
       if (part.data) result = this.mergeDeferred(result, part.data);
-      for (const incremental of part.incremental ?? []) result = this.applyDeferredIncremental(result, incremental);
+      for (const incremental of part.incremental ?? [])
+        result = this.applyDeferredIncremental(result, incremental);
       if (part.hasNext === false) complete = true;
     }
-    if (!complete) throw new Error(`Incomplete deferred response from ${store.name}`);
+    if (!complete)
+      throw new Error(`Incomplete deferred response from ${store.name}`);
     return result as T;
   }
 
-  private parseDeferredParts(raw: string, contentType: string): Array<Record<string, any>> {
+  private parseDeferredParts(
+    raw: string,
+    contentType: string,
+  ): Array<Record<string, any>> {
     const boundary = /boundary\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1];
-    const candidates = contentType.includes('multipart/mixed') && boundary
-      ? raw.split(`--${boundary}`)
-      : [raw];
+    const candidates =
+      contentType.includes("multipart/mixed") && boundary
+        ? raw.split(`--${boundary}`)
+        : [raw];
     const parts: Array<Record<string, any>> = [];
     for (const candidate of candidates) {
-      const body = candidate.trim().replace(/^Content-[^\n]*\r?\n(?:[^\n]*\r?\n)*\r?\n/i, '').trim();
+      const body = candidate
+        .trim()
+        .replace(/^Content-[^\n]*\r?\n(?:[^\n]*\r?\n)*\r?\n/i, "")
+        .trim();
       // The closing multipart boundary can remain as a fragment after split
       // (for example `--graphql--`). It is not a JSON response part.
-      if (!body || body === '--' || body.startsWith('--')) continue;
-      try { parts.push(JSON.parse(body)); } catch { throw new Error('Malformed multipart JSON'); }
+      if (!body || body === "--" || body.startsWith("--")) continue;
+      try {
+        parts.push(JSON.parse(body));
+      } catch {
+        throw new Error("Malformed multipart JSON");
+      }
     }
     return parts;
   }
 
   private mergeDeferred(base: any, addition: any): any {
     if (Array.isArray(base) || Array.isArray(addition)) return addition;
-    if (!base || !addition || typeof base !== 'object' || typeof addition !== 'object') return addition;
+    if (
+      !base ||
+      !addition ||
+      typeof base !== "object" ||
+      typeof addition !== "object"
+    )
+      return addition;
     const merged = { ...base };
-    for (const [key, value] of Object.entries(addition)) merged[key] = key in merged ? this.mergeDeferred(merged[key], value) : value;
+    for (const [key, value] of Object.entries(addition))
+      merged[key] =
+        key in merged ? this.mergeDeferred(merged[key], value) : value;
     return merged;
   }
 
-  private applyDeferredIncremental(root: any, incremental: { path?: Array<string | number>; data?: unknown; items?: unknown }): any {
-    if (!incremental.path) return this.mergeDeferred(root, incremental.data ?? incremental.items ?? {});
+  private applyDeferredIncremental(
+    root: any,
+    incremental: {
+      path?: Array<string | number>;
+      data?: unknown;
+      items?: unknown;
+    },
+  ): any {
+    if (!incremental.path)
+      return this.mergeDeferred(
+        root,
+        incremental.data ?? incremental.items ?? {},
+      );
     const clone = structuredClone(root);
     let target = clone;
     const path = incremental.path;
     for (let index = 0; index < path.length - 1; index++) {
       const key = path[index];
       const next = path[index + 1];
-      target[key] ??= typeof next === 'number' ? [] : {};
+      target[key] ??= typeof next === "number" ? [] : {};
       target = target[key];
     }
     const leaf = path[path.length - 1];
     const value = incremental.data ?? incremental.items;
-    target[leaf] = Array.isArray(target[leaf]) && Array.isArray(value) ? [...target[leaf], ...value] : this.mergeDeferred(target[leaf], value);
+    target[leaf] =
+      Array.isArray(target[leaf]) && Array.isArray(value)
+        ? [...target[leaf], ...value]
+        : this.mergeDeferred(target[leaf], value);
     return clone;
   }
 
@@ -282,7 +345,13 @@ export class StorefrontClient {
   getEndpointUrl(store: Store): string {
     const configuredHost = store.scraperConfig?.shopifyUrl;
     const host = normalizeStorefrontHost(configuredHost, store.baseUrl);
-    if (configuredHost?.startsWith('http://') || configuredHost?.startsWith('https://')) this.logger.warn(`Deprecated absolute scraperConfig.shopifyUrl for ${store.name}; use host[:port]`);
+    if (
+      configuredHost?.startsWith("http://") ||
+      configuredHost?.startsWith("https://")
+    )
+      this.logger.warn(
+        `Deprecated absolute scraperConfig.shopifyUrl for ${store.name}; use host[:port]`,
+      );
     const apiVersion =
       store.scraperConfig?.storefrontApiVersion || getStorefrontApiVersion();
     return `https://${host}/api/${apiVersion}/graphql.json`;

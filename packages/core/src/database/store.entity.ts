@@ -5,54 +5,58 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Generated,
-} from 'typeorm';
-import type { PlatformType, StoreDiscoveryConfig, StorefrontScraperConfig } from '@scoutlgs/shared';
+} from "typeorm";
+import type {
+  PlatformType,
+  StoreDiscoveryConfig,
+  StorefrontScraperConfig,
+} from "@scoutlgs/shared";
 
-@Entity('stores')
+@Entity("stores")
 export class Store {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'uuid' })
-  @Generated('uuid')
+  @Column({ type: "uuid" })
+  @Generated("uuid")
   uuid: string;
 
   @Column({ unique: true })
   name: string;
 
-  @Column({ name: 'display_name' })
+  @Column({ name: "display_name" })
   displayName: string;
 
-  @Column({ name: 'base_url' })
+  @Column({ name: "base_url" })
   baseUrl: string;
 
-  @Column({ name: 'logo_url', nullable: true })
+  @Column({ name: "logo_url", nullable: true })
   logoUrl?: string;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: "is_active", default: true })
   isActive: boolean;
 
-  @Column({ name: 'scraper_type' })
-  scraperType: 'default' | 'f2f' | '401' | 'hobbies' | 'binderpos' | 'cgrealm';
+  @Column({ name: "scraper_type" })
+  scraperType: "default" | "f2f" | "401" | "hobbies" | "binderpos" | "cgrealm";
 
-  @Column({ name: 'scraper_config', type: 'jsonb', nullable: true })
+  @Column({ name: "scraper_config", type: "jsonb", nullable: true })
   scraperConfig?: Partial<StorefrontScraperConfig> & {
     searchPath?: string;
     /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
   };
 
-  @Column({ name: 'platform_type', length: 50, nullable: true })
+  @Column({ name: "platform_type", length: 50, nullable: true })
   platformType?: PlatformType;
 
-  @Column({ name: 'rate_limit_per_second', type: 'int', default: 15 })
+  @Column({ name: "rate_limit_per_second", type: "int", default: 15 })
   rateLimitPerSecond: number;
 
-  @Column({ name: 'discovery_config', type: 'jsonb', nullable: true })
+  @Column({ name: "discovery_config", type: "jsonb", nullable: true })
   discoveryConfig?: StoreDiscoveryConfig;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: "updated_at" })
   updatedAt: Date;
 }
