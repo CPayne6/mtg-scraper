@@ -1,4 +1,4 @@
-import type { Store } from '@scoutlgs/core';
+import { normalizeStorefrontHost, type Store } from '@scoutlgs/core';
 
 export interface CartLineInput {
   variantId: string;
@@ -29,9 +29,7 @@ export function buildCartPermalink(host: string, lines: CartLine[]): string {
 // stores will 404 `/cart/{vid}:{qty}` on the storefront frontend in some
 // theme configurations, while the myshopify.com host always works.
 export function resolveStoreHost(store: Pick<Store, 'baseUrl' | 'scraperConfig'>): string {
-  const configured = store.scraperConfig?.shopifyUrl?.trim();
-  if (configured) return configured;
-  return new URL(store.baseUrl).host;
+  return normalizeStorefrontHost(store.scraperConfig?.shopifyUrl, store.baseUrl);
 }
 
 // Dedupe by variantId and sum quantities. Caps each merged quantity at `maxPerLine`
