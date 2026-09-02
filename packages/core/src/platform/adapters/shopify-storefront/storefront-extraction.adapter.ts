@@ -30,6 +30,9 @@ import type {
 import { normalizeStorefrontProfileInputs } from '@scoutlgs/shared';
 import type { ProfileEvaluationInput } from '@scoutlgs/shared';
 import { ProfiledStorefrontCardParser } from './profiled-storefront-card-parser';
+import type { ProfileParseFailureCode, ProfileParseResult } from './profiled-storefront-card-parser';
+
+export type StorefrontParserDryRunReport = { sampledProducts: number; sampledVariants: number; validVariants: number; rejectedVariants: number; coverage: number; failuresByCode: Record<ProfileParseFailureCode, number>; variants: Array<{ productId: string; variantId: string; result: ProfileParseResult }> };
 
 @Injectable()
 export class StorefrontExtractionAdapter implements IExtractionAdapter {
@@ -65,6 +68,10 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     }
 
     const variants = this.extractVariantsFromProduct(store, data.product);
+
+    if (store.scraperConfig?.parser?.kind === 'mapping' && data.product.variants.edges.length > 0 && variants.length === 0) {
+      throw new ExtractionHttpError(`Mapping profile rejected every variant for ${handle} at ${store.name}`, 422, `${store.baseUrl}/products/${handle}`);
+    }
 
     this.logger.debug(
       `Extracted ${variants.length} variants from ${handle} at ${store.name}`,
@@ -335,11 +342,11 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
       return this.toProfileInputs(product).flatMap(input => {
         const parsed = ProfiledStorefrontCardParser.parse(compiled, input, store.baseUrl);
-        if (!parsed) {
-          this.logger.warn(`Skipping invalid Storefront price for ${store.name} variant ${input.variant.id}`);
+        if (!parsed.ok) {
+          this.logger.warn(`Rejected Storefront mapping variant store=${store.name} product=${product.id.split('/').pop()} variant=${input.variant.id.split('/').pop()} failures=${parsed.failures.map(failure => failure.code).join(',')}`);
           return [];
         }
-        return [parsed];
+        return [parsed.variant];
       });
     }
     const extractor = this.extractorRegistry.get(this.parserType(store));
@@ -449,5 +456,21 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   /** Converts Storefront edges to the profile contract. Tools can create this same shape from nodes. */
   private toProfileInputs(product: StorefrontProduct): ProfileEvaluationInput[] {
     return normalizeStorefrontProfileInputs(product);
+  }
+
+  /** Read-only production parser boundary for onboarding and profile diagnostics. */
+  dryRunParser(store: Store, products: StorefrontProduct[]): StorefrontParserDryRunReport {
+    const failuresByCode: Record<ProfileParseFailureCode, number> = { 'missing-card-name': 0, 'missing-set-identity': 0, 'unknown-condition': 0, 'unknown-finish': 0, 'invalid-price': 0, 'missing-currency': 0, 'missing-variant-id': 0 };
+    const variants: StorefrontParserDryRunReport['variants'] = [];
+    const profile = store.scraperConfig?.parser;
+    if (profile?.kind !== 'mapping') throw new Error('Store does not have a mapping parser profile');
+    const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
+    for (const product of products) for (const input of this.toProfileInputs(product)) {
+      const result = ProfiledStorefrontCardParser.parse(compiled, input, store.baseUrl);
+      if (!result.ok) for (const failure of result.failures) failuresByCode[failure.code]++;
+      variants.push({ productId: product.id.split('/').pop() ?? product.id, variantId: input.variant.id.split('/').pop() ?? input.variant.id, result });
+    }
+    const sampledVariants = variants.length, validVariants = variants.filter(variant => variant.result.ok).length;
+    return { sampledProducts: products.length, sampledVariants, validVariants, rejectedVariants: sampledVariants - validVariants, coverage: sampledVariants ? validVariants / sampledVariants : 1, failuresByCode, variants };
   }
 }
