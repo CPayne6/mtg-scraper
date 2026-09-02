@@ -5,6 +5,7 @@ import {
 import type {
   NormalizedStorefrontConfig,
   StorefrontScraperConfig,
+  StorefrontSource,
 } from "@scoutlgs/shared";
 import type { Store } from "../../../database/store.entity";
 
@@ -88,11 +89,7 @@ export function validateStorefrontStoreConfig(
     !/^\d{4}-\d{2}$/.test(config.storefrontApiVersion)
   )
     errors.push("storefrontApiVersion: expected YYYY-MM");
-  if (
-    typeof config.storefrontScope !== "string" ||
-    !config.storefrontScope.trim()
-  )
-    errors.push("storefrontScope: required");
+  const source = normalizeStorefrontSource(config, errors);
   if (!config.parser) errors.push("parser: required");
   else {
     const parser =
@@ -107,6 +104,34 @@ export function validateStorefrontStoreConfig(
     : {
         valid: true,
         errors,
-        config: { ...config, shopifyUrl } as NormalizedStorefrontConfig,
+        config: { ...config, shopifyUrl, source: source! } as NormalizedStorefrontConfig,
       };
+}
+
+/**
+ * Accept the legacy scope while ensuring new configuration has one, closed
+ * Storefront traversal strategy. This is intentionally pure so endpoint and
+ * onboarding callers cannot diverge from production semantics.
+ */
+export function normalizeStorefrontSource(
+  config: Partial<StorefrontScraperConfig>,
+  errors: string[] = [],
+): StorefrontSource | undefined {
+  if (config.source) {
+    const source = config.source;
+    if (source.kind !== "storefront-graphql") {
+      errors.push("source.kind: expected storefront-graphql");
+      return undefined;
+    }
+    if (source.mode === "products-query" && source.productQuery?.trim())
+      return { kind: source.kind, mode: source.mode, productQuery: source.productQuery.trim() };
+    if (source.mode === "collection" && source.collectionHandle?.trim() && /^[a-z0-9][a-z0-9-]*$/i.test(source.collectionHandle))
+      return { kind: source.kind, mode: source.mode, collectionHandle: source.collectionHandle.trim().toLowerCase() };
+    errors.push("source: expected a products query or normalized collection handle");
+    return undefined;
+  }
+  if (typeof config.storefrontScope === "string" && config.storefrontScope.trim())
+    return { kind: "storefront-graphql", mode: "products-query", productQuery: config.storefrontScope.trim() };
+  errors.push("source: required (or legacy storefrontScope)");
+  return undefined;
 }

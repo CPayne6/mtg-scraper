@@ -519,6 +519,13 @@ export class StorefrontOnboardingService {
             scraperConfig: {
               shopifyUrl: baseUrl.host,
               storefrontApiVersion: apiVersion,
+              source: {
+                kind: "storefront-graphql",
+                mode: "products-query",
+                productQuery: scope.query,
+              },
+              // Kept only so mixed-version workers can read a newly reviewed
+              // disabled proposal during the source-strategy migration.
               storefrontScope: scope.query,
               parser: profile,
             },

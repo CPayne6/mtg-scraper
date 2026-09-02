@@ -16,6 +16,7 @@ export type {
 export { StorefrontPaginationLimitError } from "./pagination-limit-error";
 export {
   normalizeStorefrontHost,
+  normalizeStorefrontSource,
   validateStorefrontStoreConfig,
 } from "./storefront-config";
 export type { StorefrontConfigValidation } from "./storefront-config";

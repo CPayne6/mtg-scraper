@@ -161,7 +161,10 @@ export class StorefrontProcessor implements OnModuleInit {
     const store = await this.storeRepository.findOne({ where: { id: storeId } });
     if (!store) throw new Error(`Store ${storeId} not found`);
 
-    const scope = store.scraperConfig?.storefrontScope;
+    const source = store.scraperConfig?.source;
+    const scope = source?.mode === "products-query"
+      ? source.productQuery
+      : store.scraperConfig?.storefrontScope;
     if (!scope) {
       throw new Error(
         `Store ${store.name} (${storeId}) is missing storefrontScope`,

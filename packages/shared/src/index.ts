@@ -29,6 +29,7 @@ export type {
   BuiltinParserType,
   StorefrontParserProfile,
   StorefrontScraperConfig,
+  StorefrontSource,
   NormalizedStorefrontConfig,
   ProfileField,
   SourcePath,

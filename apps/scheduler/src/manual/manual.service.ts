@@ -90,7 +90,9 @@ export class ManualService {
       );
     }
 
-    const scope = store.scraperConfig?.storefrontScope;
+    const scope = store.scraperConfig?.source?.mode === 'products-query'
+      ? store.scraperConfig.source.productQuery
+      : store.scraperConfig?.storefrontScope;
     if (!scope) {
       throw new BadRequestException(
         `Store ${store.name} is missing scraperConfig.storefrontScope`,
@@ -125,7 +127,9 @@ export class ManualService {
     const results: { store: string; error?: string }[] = [];
 
     for (const store of stores) {
-      const scope = store.scraperConfig?.storefrontScope;
+      const scope = store.scraperConfig?.source?.mode === 'products-query'
+        ? store.scraperConfig.source.productQuery
+        : store.scraperConfig?.storefrontScope;
       if (!scope) {
         results.push({ store: store.name, error: 'Missing storefrontScope' });
         continue;

@@ -82,17 +82,23 @@ export type StorefrontParserProfile =
       fields: Partial<Record<ProfileField, FieldRule>>;
       exclusions?: ArtSeriesExclusion[];
     };
+/** The traversal strategy is explicit in newly onboarded stores. */
+export type StorefrontSource =
+  | { kind: "storefront-graphql"; mode: "products-query"; productQuery: string }
+  | { kind: "storefront-graphql"; mode: "collection"; collectionHandle: string };
 export type StorefrontScraperConfig = {
   shopifyUrl: string;
   storefrontApiVersion: string;
-  storefrontScope: string;
+  /** @deprecated Read-only compatibility for pre-source configurations. */
+  storefrontScope?: string;
+  source?: StorefrontSource;
   parser: StorefrontParserProfile;
   storefrontAccessToken?: string;
 };
-export type NormalizedStorefrontConfig = Omit<
-  StorefrontScraperConfig,
-  "shopifyUrl"
-> & { shopifyUrl: string };
+export type NormalizedStorefrontConfig = Omit<StorefrontScraperConfig, "shopifyUrl" | "source"> & {
+  shopifyUrl: string;
+  source: StorefrontSource;
+};
 export type ProfileEvaluationInput = {
   product: {
     title: string;
