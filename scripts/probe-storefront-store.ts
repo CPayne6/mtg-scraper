@@ -164,18 +164,41 @@ export async function tryStorefrontApi(
   }
 }
 
+/** Named-card discovery intentionally does not require a catalog scope. */
+export async function tryStorefrontProductsByTitle(
+  baseUrl: URL,
+  apiVersion: string,
+  title: string,
+  timeoutMs: number,
+  first = 20,
+) {
+  return tryStorefrontApi(
+    baseUrl,
+    apiVersion,
+    `title:${JSON.stringify(title)}`,
+    timeoutMs,
+    first,
+  );
+}
+
 function createStorefrontClient() {
   return {
     async homepage(url: URL, timeoutMs: number) {
       try {
         const response = await request(url, timeoutMs);
         const html = await response.text();
+        const binderSignals = {
+          binderScript: /binderpos|binder[-_ ]?pos/i.test(html),
+          binderInventory: /binder(?:pos)?[^<]{0,80}(?:inventory|single|condition)/i.test(html),
+          binderProductData: /(?:binderpos|binder_pos|binder-pos)/i.test(html),
+        };
         return {
           ok: response.ok,
           status: response.status,
           signals: {
             shopifyGlobal: /shopify\.shop|shopify\.theme/i.test(html),
             shopifyCdn: /cdn\.shopify\.com/i.test(html),
+            ...binderSignals,
           },
         };
       } catch (error: any) {
@@ -187,6 +210,7 @@ function createStorefrontClient() {
       }
     },
     products: tryStorefrontApi,
+    productsByTitle: tryStorefrontProductsByTitle,
   };
 }
 
@@ -251,6 +275,8 @@ function createGroqProvider(key: string | undefined, model: string) {
         const requestBody = {
           model,
           temperature: 0,
+          reasoning_effort: "medium",
+          include_reasoning: false,
           messages: [
             {
               role: "system",

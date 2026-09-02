@@ -1,4 +1,16 @@
 export type StorefrontProduct = any;
+export type AnchorFixture = {
+  key: string;
+  cardName: string;
+  setCode: string;
+  collectorNumber: string;
+  aliases: string[];
+};
+export type AnchorObservation = {
+  fixture: AnchorFixture;
+  query: string;
+  products: StorefrontProduct[];
+};
 export type ScopeEvidence = {
   ok: boolean;
   query: string | null;
@@ -42,6 +54,19 @@ export type StorefrontOnboardingDependencies = {
       url: URL,
       apiVersion: string,
       scope: string | null,
+      timeoutMs: number,
+      first?: number,
+    ): Promise<{
+      ok: boolean;
+      endpoint: string;
+      status: number | null;
+      products: StorefrontProduct[];
+      error?: string | null;
+    }>;
+    productsByTitle?(
+      url: URL,
+      apiVersion: string,
+      title: string,
       timeoutMs: number,
       first?: number,
     ): Promise<{

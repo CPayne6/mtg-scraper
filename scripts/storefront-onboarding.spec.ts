@@ -6,11 +6,14 @@ import {
   main as probeMain,
   parseArgs as parseProbeArgs,
   tryStorefrontApi,
+  tryStorefrontProductsByTitle,
   validateMappingDraft,
 } from "./probe-storefront-store.ts";
 import {
   StorefrontOnboardingService,
   compactEvidence,
+  collectAnchorObservations,
+  detectHomepageBinder,
 } from "./storefront-onboarding/service.ts";
 import { productionParserAdapter } from "./storefront-onboarding/production-parser-adapter.ts";
 import {
@@ -132,6 +135,38 @@ describe("storefront onboarding scripts", () => {
     expect(
       fetchMock.mock.calls[0][1].headers["X-Shopify-Storefront-Access-Token"],
     ).toBeUndefined();
+  });
+
+  it("uses fixed named-card probes without requiring a catalog scope", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { products: { nodes: [] } } }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await tryStorefrontProductsByTitle(
+      new URL("https://example.test"), "2026-04", "Urza's Saga", 100,
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).variables.query).toBe(
+      'title:"Urza\'s Saga"',
+    );
+
+    const observations = await collectAnchorObservations({
+      homepage: async () => ({}),
+      products: async () => ({ ok: true, endpoint: "", status: 200, products: [] }),
+      productsByTitle: async (_url, _api, title) => ({
+        ok: true, endpoint: "", status: 200,
+        products: title === "Lightning Bolt" ? [{ id: "p1" }] : [],
+      }),
+    }, new URL("https://example.test"), "2026-04", 100);
+    expect(observations).toHaveLength(12);
+    expect(observations[0].products).toHaveLength(1);
+  });
+
+  it("requires multiple independent homepage signals for BinderPOS", () => {
+    expect(detectHomepageBinder({ signals: { binderScript: true } }).detected).toBe(false);
+    expect(detectHomepageBinder({ signals: { binderScript: true, binderProductData: true } })).toMatchObject({
+      detected: true,
+      evidence: ["binderScript", "binderProductData"],
+    });
   });
 
   it("reports GraphQL rejection and request timeout failures without proposing an unsafe scope", async () => {

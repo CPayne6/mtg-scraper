@@ -1,9 +1,51 @@
 import { validateDraftEnvelope } from "./schema.ts";
+import { MTG_ANCHOR_FIXTURES } from "./mtg-anchor-fixtures.ts";
 import type {
   ScopeEvidence,
   StorefrontOnboardingDependencies,
   StorefrontOnboardingRequest,
 } from "./types.ts";
+
+/**
+ * Runs the fixed named-card probe without assuming a catalog scope. The
+ * observations are deliberately not accepted as MTG proof until the production
+ * identity matcher scores them in the next onboarding stage.
+ */
+export async function collectAnchorObservations(
+  storefront: StorefrontOnboardingDependencies["storefront"],
+  url: URL,
+  apiVersion: string,
+  timeoutMs: number,
+) {
+  if (!storefront.productsByTitle) return [];
+  const observations: any[] = [];
+  for (const fixture of MTG_ANCHOR_FIXTURES) {
+    let response: any = null;
+    let query = "";
+    for (const alias of fixture.aliases) {
+      query = `title:${quote(alias)}`;
+      response = await storefront.productsByTitle(url, apiVersion, alias, timeoutMs, 20);
+      if (response.ok && response.products.length) break;
+    }
+    observations.push({
+      fixture,
+      query,
+      products: response?.products ?? [],
+      error: response?.error ?? null,
+    });
+  }
+  return observations;
+}
+
+export function detectHomepageBinder(homepage: any) {
+  const signals = homepage?.signals ?? {};
+  const evidence = [
+    "binderScript",
+    "binderInventory",
+    "binderProductData",
+  ].filter((key) => signals[key]);
+  return { detected: evidence.length >= 2, evidence };
+}
 
 const quote = (s: string) =>
   `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
