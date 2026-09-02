@@ -8,3 +8,5 @@ export { ListingUpsertService } from './listing-upsert.service';
 export type { ListingRow } from './listing-upsert.service';
 export { UnmatchedCardService } from './unmatched-card.service';
 export type { UnmatchedCardRow } from './unmatched-card.service';
+export { StorefrontOnboardingDryRunService } from './storefront-onboarding-dry-run.service';
+export type { OnboardingVariantEvaluation, OnboardingIdentityOutcome } from './storefront-onboarding-dry-run.service';

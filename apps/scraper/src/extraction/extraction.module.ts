@@ -23,6 +23,7 @@ import { UnmatchedCardService } from './unmatched-card.service';
 import { TokenMatcherService } from './token-matcher.service';
 import { TokenBatchAccumulatorService } from './token-batch-accumulator.service';
 import { TokenListingUpsertService } from './token-listing-upsert.service';
+import { StorefrontOnboardingDryRunService } from './storefront-onboarding-dry-run.service';
 
 @Module({
   imports: [
@@ -40,7 +41,8 @@ import { TokenListingUpsertService } from './token-listing-upsert.service';
     TokenMatcherService,
     TokenBatchAccumulatorService,
     TokenListingUpsertService,
+    StorefrontOnboardingDryRunService,
   ],
-  exports: [ExtractionService, PrintingMatcherService, BatchAccumulatorService],
+  exports: [ExtractionService, PrintingMatcherService, BatchAccumulatorService, StorefrontOnboardingDryRunService],
 })
 export class ExtractionModule {}
