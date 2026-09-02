@@ -49,6 +49,54 @@ export type StorefrontParserDryRunReport = {
   }>;
 };
 
+/** Pure production parser boundary for onboarding and profile diagnostics. */
+export function dryRunStorefrontMappingProfile(
+  store: Store,
+  products: StorefrontProduct[],
+): StorefrontParserDryRunReport {
+  const failuresByCode: Record<ProfileParseFailureCode, number> = {
+    "missing-card-name": 0,
+    "missing-set-identity": 0,
+    "unknown-condition": 0,
+    "unknown-finish": 0,
+    "invalid-price": 0,
+    "missing-currency": 0,
+    "missing-variant-id": 0,
+  };
+  const variants: StorefrontParserDryRunReport["variants"] = [];
+  const profile = store.scraperConfig?.parser;
+  if (profile?.kind !== "mapping")
+    throw new Error("Store does not have a mapping parser profile");
+  const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
+  for (const product of products)
+    for (const input of normalizeStorefrontProfileInputs(product)) {
+      const result = ProfiledStorefrontCardParser.parse(
+        compiled,
+        input,
+        store.baseUrl,
+      );
+      if (!result.ok)
+        for (const failure of result.failures) failuresByCode[failure.code]++;
+      variants.push({
+        productId: product.id?.split("/").pop() ?? product.id ?? "",
+        variantId:
+          input.variant.id?.split("/").pop() ?? input.variant.id ?? "",
+        result,
+      });
+    }
+  const sampledVariants = variants.length;
+  const validVariants = variants.filter((variant) => variant.result.ok).length;
+  return {
+    sampledProducts: products.length,
+    sampledVariants,
+    validVariants,
+    rejectedVariants: sampledVariants - validVariants,
+    coverage: sampledVariants ? validVariants / sampledVariants : 1,
+    failuresByCode,
+    variants,
+  };
+}
+
 @Injectable()
 export class StorefrontExtractionAdapter implements IExtractionAdapter {
   private readonly logger = new Logger(StorefrontExtractionAdapter.name);
@@ -513,45 +561,6 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     products: StorefrontProduct[],
   ): StorefrontParserDryRunReport {
-    const failuresByCode: Record<ProfileParseFailureCode, number> = {
-      "missing-card-name": 0,
-      "missing-set-identity": 0,
-      "unknown-condition": 0,
-      "unknown-finish": 0,
-      "invalid-price": 0,
-      "missing-currency": 0,
-      "missing-variant-id": 0,
-    };
-    const variants: StorefrontParserDryRunReport["variants"] = [];
-    const profile = store.scraperConfig?.parser;
-    if (profile?.kind !== "mapping")
-      throw new Error("Store does not have a mapping parser profile");
-    const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
-    for (const product of products)
-      for (const input of this.toProfileInputs(product)) {
-        const result = ProfiledStorefrontCardParser.parse(
-          compiled,
-          input,
-          store.baseUrl,
-        );
-        if (!result.ok)
-          for (const failure of result.failures) failuresByCode[failure.code]++;
-        variants.push({
-          productId: product.id.split("/").pop() ?? product.id,
-          variantId: input.variant.id.split("/").pop() ?? input.variant.id,
-          result,
-        });
-      }
-    const sampledVariants = variants.length,
-      validVariants = variants.filter((variant) => variant.result.ok).length;
-    return {
-      sampledProducts: products.length,
-      sampledVariants,
-      validVariants,
-      rejectedVariants: sampledVariants - validVariants,
-      coverage: sampledVariants ? validVariants / sampledVariants : 1,
-      failuresByCode,
-      variants,
-    };
+    return dryRunStorefrontMappingProfile(store, products);
   }
 }

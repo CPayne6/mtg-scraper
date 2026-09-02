@@ -1,5 +1,8 @@
 export { StorefrontClient } from "./storefront-client";
-export { StorefrontExtractionAdapter } from "./storefront-extraction.adapter";
+export {
+  StorefrontExtractionAdapter,
+  dryRunStorefrontMappingProfile,
+} from "./storefront-extraction.adapter";
 export type { StorefrontParserDryRunReport } from "./storefront-extraction.adapter";
 export {
   ProfiledStorefrontCardParser,

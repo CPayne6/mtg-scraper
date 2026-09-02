@@ -50,3 +50,7 @@ export {
   matchesStorefrontProfilePredicate,
   normalizeStorefrontProfileInputs,
 } from "./storefront-parser-profile";
+export {
+  STOREFRONT_MAPPING_PROFILE_JSON_SCHEMA,
+  normalizeStorefrontMappingProfileDraft,
+} from "./storefront-mapping-profile-schema";

@@ -23,6 +23,7 @@
     "store:probe": "tsx scripts/probe-storefront-store.ts",
     "store:onboard": "tsx scripts/probe-storefront-store.ts --approve",
     "store:verify-listings": "tsx scripts/verify-storefront-listing-data.ts",
+    "store:verify-dev-mappings": "tsx scripts/verify-development-storefront-mappings.ts",
     "secrets:setup": "node scripts/run-bash.js setup-secrets.sh",
     "secrets:setup:help": "node scripts/run-bash.js setup-secrets.sh --help",
     "secrets:setup:debug": "node scripts/run-bash.js setup-secrets.sh --debug"
