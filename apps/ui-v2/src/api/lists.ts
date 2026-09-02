@@ -135,6 +135,7 @@ export interface CreateListInput {
   name: string;
   cards?: string[];
   cardNameIds?: number[];
+  ignoreBasicLands?: boolean;
   filterStores?: string;
   filterConditions?: string;
   filterSetCode?: string;
