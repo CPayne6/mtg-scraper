@@ -113,6 +113,30 @@ cannot be established; it may not fall back to structural-only acceptance.
 
 ## Code structure
 
+### 0. Extract the production matching boundary before building the API
+
+This is the prerequisite that was implicit in the original plan and must be
+completed first. `PrintingMatcherService`, `TokenMatcherService`, and the
+read-only onboarding listing dry run currently live only in `apps/scraper`.
+The API cannot correctly import an application-private service in a production
+build.
+
+Move those services, their shared types, and their TypeORM registrations into
+a new `packages/core/src/storefront-onboarding/` module (or an equivalently
+shared package module). Then:
+
+1. export `StorefrontIdentityMatchingModule` and
+   `StorefrontOnboardingDryRunService` from `@scoutlgs/core`;
+2. update scraper extraction imports to use these exported services, without
+   changing matcher algorithms or persistence behavior;
+3. add the same shared module to the API imports;
+4. run existing printing/token matcher tests unchanged in their new location;
+5. prove API and scraper instantiate the same class, rather than copies.
+
+Only after this extraction passes may the API onboarding service be wired. This
+removes the blocker that would otherwise force the API to duplicate matcher SQL
+or invoke scraper source files directly.
+
 ### 1. Move the orchestration into an injectable production module
 
 Create `apps/api/src/storefront-onboarding/` containing:
@@ -283,11 +307,12 @@ activate a production store as part of this verification.
 
 ## Delivery sequence and commits
 
-1. `feat: persist protected storefront onboarding runs`
-2. `feat: verify storefront candidates against production matchers`
-3. `feat: score storefront source queries and held-out listings`
-4. `feat: approve disabled storefront onboarding proposals`
-5. `test: cover protected verified storefront onboarding api`
+1. `refactor: share storefront identity matching services`
+2. `feat: persist protected storefront onboarding runs`
+3. `feat: verify storefront candidates against production matchers`
+4. `feat: score storefront source queries and held-out listings`
+5. `feat: approve disabled storefront onboarding proposals`
+6. `test: cover protected verified storefront onboarding api`
 
 Open a PR only after all build/test/e2e/live-read-only checks above pass. The
 PR description must state that approval creates disabled stores only and that
