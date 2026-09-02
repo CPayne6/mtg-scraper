@@ -498,6 +498,35 @@ describe("StorefrontOnboardingService gates", () => {
       "Malformed",
     );
   });
+  it("decodes a strict-provider parserProfileJson envelope before validation", async () => {
+    const strictEnvelope = JSON.stringify({
+      schemaVersion: 1,
+      storeDisplayName: "Example Store",
+      parserProfileJson: JSON.stringify(profile),
+      fieldRationale: [
+        {
+          field: "cardName",
+          sources: ["product.title"],
+          rationale: "present",
+          confidence: 1,
+        },
+      ],
+      gaps: [],
+      requiresHumanReview: true,
+    });
+    const ai = {
+      discover: vi.fn().mockResolvedValue({
+        kind: "success",
+        content: strictEnvelope,
+      }),
+    };
+    const result = await service([product()], ai).onboard({
+      url: "https://example.test",
+      aiDiscovery: true,
+    });
+    expect(result.status).toBe("proposal-ready");
+    expect(result.ai.attempts).toBe(1);
+  });
   it("uses the second and final request for transient provider failure", async () => {
     const ai = {
       discover: vi
@@ -516,6 +545,27 @@ describe("StorefrontOnboardingService gates", () => {
     });
     expect(result.status).toBe("proposal-ready");
     expect(ai.discover).toHaveBeenCalledTimes(2);
+  });
+  it("fails closed on a non-retryable AI provider response", async () => {
+    const ai = {
+      discover: vi.fn().mockResolvedValue({
+        kind: "transport-error",
+        status: 400,
+        reason: "provider HTTP 400: invalid request",
+        transient: false,
+      }),
+    };
+    const result = await service([product()], ai).onboard({
+      url: "https://example.test",
+      aiDiscovery: true,
+    });
+    expect(result.status).toBe("ai-provider-failed");
+    expect(result.proposedStore).toBeNull();
+    expect(result.ai).toMatchObject({
+      transportStatus: 400,
+      status: "provider HTTP 400: invalid request",
+    });
+    expect(ai.discover).toHaveBeenCalledTimes(1);
   });
   it("rejects builtin and malformed drafts and honors 99/100 plus 95% coverage boundaries", async () => {
     const bad = JSON.stringify({
@@ -574,9 +624,10 @@ describe("StorefrontOnboardingService gates", () => {
         })),
       },
     }));
-    const one = compactEvidence(products),
-      two = compactEvidence(products);
+    const one = compactEvidence(products, "example.test"),
+      two = compactEvidence(products, "example.test");
     expect(one).toEqual(two);
+    expect(one.storeHost).toBe("example.test");
     expect(one.products).toHaveLength(5);
     expect(one.products.every((p: any) => p.variants.length <= 3)).toBe(true);
   });

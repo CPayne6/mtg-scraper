@@ -214,7 +214,7 @@ export function selectDiverseProducts(products: any[]) {
   }
   return result;
 }
-export function compactEvidence(products: any[]) {
+export function compactEvidence(products: any[], storeHost?: string) {
   const all = products.flatMap((p) => variants(p).map((v: any) => ({ p, v })));
   const chosen = selectDiverseProducts(products);
   const shape = (x: unknown) =>
@@ -224,6 +224,7 @@ export function compactEvidence(products: any[]) {
       .slice(0, 80);
   return {
     promptVersion: 1,
+    storeHost,
     represented: { products: products.length, variants: all.length },
     statistics: {
       fieldPresence: {
@@ -255,7 +256,10 @@ export function compactEvidence(products: any[]) {
       tags: tags(p)
         .slice(0, 12)
         .map((x) => x.slice(0, 100)),
-      descriptionHtml: String(p.descriptionHtml ?? "").slice(0, 500),
+      // Product HTML is both noisy and expensive to send to the model. A
+      // short prefix still exposes any embedded set/printing convention;
+      // titles, SKUs and selected options remain the primary evidence.
+      descriptionHtml: String(p.descriptionHtml ?? "").slice(0, 120),
       variants: variants(p)
         .slice(0, 3)
         .map((v: any) => ({
@@ -392,7 +396,7 @@ export class StorefrontOnboardingService {
     else if (this.deps.storefront.productsByTitle && !anchorProducts.length) {
       ai = { status: "anchors-insufficient", attempts: 0 };
     } else if (request.aiDiscovery && this.deps.ai) {
-      ai = await this.discover(compactEvidence(unique), timeoutMs);
+      ai = await this.discover(compactEvidence(unique, baseUrl.host), timeoutMs);
       if (ai.envelope) profile = ai.envelope.parserProfile;
     } else
       ai = {
@@ -413,6 +417,8 @@ export class StorefrontOnboardingService {
         ? "database-unavailable"
       : profile
         ? "validation-failed"
+        : ai?.transportStatus
+          ? "ai-provider-failed"
         : "draft-unavailable";
     const result = this.result(
       status,
@@ -481,6 +487,24 @@ export class StorefrontOnboardingService {
         if (attempt === 1) continue;
         diagnostics.status = "malformed-output";
         return diagnostics;
+      }
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.parserProfileJson === "string" &&
+        !parsed.parserProfile
+      ) {
+        try {
+          parsed.parserProfile = JSON.parse(parsed.parserProfileJson);
+          delete parsed.parserProfileJson;
+        } catch {
+          correctiveErrors = [
+            "parserProfileJson must be a complete JSON-encoded mapping profile.",
+          ];
+          if (attempt === 1) continue;
+          diagnostics.status = "malformed-output";
+          return diagnostics;
+        }
       }
       const envelope = validateDraftEnvelope(parsed, (p) =>
         this.deps.parser.validate(p),
