@@ -86,6 +86,9 @@ export function productionParserAdapter() {
         rejections: rejections.slice(0, 100),
         errors,
         warnings: contract.warnings,
+        parsedVariants: report.variants.flatMap((entry) => entry.result.ok
+          ? [{ productId: entry.productId, variantId: entry.variantId, variant: entry.result.variant as any }]
+          : []),
       } as ParserDryRun;
     },
   };

@@ -1,6 +1,7 @@
 import { validateDraftEnvelope } from "./schema.ts";
 import { MTG_ANCHOR_FIXTURES } from "./mtg-anchor-fixtures.ts";
 import type {
+  IdentityEvaluation,
   ScopeEvidence,
   StorefrontOnboardingDependencies,
   StorefrontOnboardingRequest,
@@ -401,9 +402,15 @@ export class StorefrontOnboardingService {
     const validation = profile
       ? this.deps.parser.dryRun(profile, unique, scope)
       : null;
-    const valid = !!validation?.valid;
+    const identity = validation?.valid && this.deps.identity
+      ? await this.deps.identity.evaluate(validation.parsedVariants ?? [])
+      : null;
+    const identitySummary = summarizeIdentity(identity);
+    const valid = !!validation?.valid && (!this.deps.identity || identitySummary.valid);
     const status = valid
       ? "proposal-ready"
+      : validation?.valid && !this.deps.identity
+        ? "database-unavailable"
       : profile
         ? "validation-failed"
         : "draft-unavailable";
@@ -418,6 +425,7 @@ export class StorefrontOnboardingService {
       {
         ...ai,
         binder,
+        identity: identitySummary,
         anchors: anchors.map((anchor) => ({
           fixture: anchor.fixture.key,
           query: anchor.query,
@@ -554,6 +562,26 @@ export class StorefrontOnboardingService {
       duplicateLookupKeys: { name, baseUrl: baseUrl.origin },
     };
   }
+}
+function summarizeIdentity(identity: IdentityEvaluation[] | null) {
+  if (!identity) return { status: "not-run", valid: false };
+  const counts = identity.reduce<Record<string, number>>(
+    (result, item) => ((result[item.outcome] = (result[item.outcome] ?? 0) + 1), result),
+    {},
+  );
+  const exact = counts["exact-printing"] ?? 0;
+  const nonToken = identity.length - (counts.token ?? 0);
+  const coverage = nonToken ? exact / nonToken : 0;
+  return {
+    status: "verified",
+    valid: identity.length >= 100 && coverage >= 0.9 && !(counts.ambiguous ?? 0) && !(counts.unmatched ?? 0),
+    sampledVariants: identity.length,
+    exactPrinting: exact,
+    token: counts.token ?? 0,
+    ambiguous: counts.ambiguous ?? 0,
+    unmatched: counts.unmatched ?? 0,
+    coverage,
+  };
 }
 function dedupeProducts(products: any[]) {
   const seen = new Set<string>();

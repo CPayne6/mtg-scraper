@@ -36,6 +36,18 @@ export type ParserDryRun = {
   }>;
   errors: string[];
   warnings: string[];
+  parsedVariants?: Array<{
+    productId: string;
+    variantId: string;
+    variant: Record<string, unknown>;
+  }>;
+};
+export type IdentityEvaluation = {
+  productId: string;
+  variantId: string;
+  outcome: "exact-printing" | "ambiguous" | "unmatched" | "token";
+  cardPrintingId?: number | null;
+  cardNameId?: number | null;
 };
 
 export type StorefrontOnboardingRequest = {
@@ -88,6 +100,13 @@ export type StorefrontOnboardingDependencies = {
       products: StorefrontProduct[],
       scope: ScopeEvidence,
     ): ParserDryRun;
+  };
+  identity?: {
+    evaluate(variants: Array<{
+      productId: string;
+      variantId: string;
+      variant: Record<string, unknown>;
+    }>): Promise<IdentityEvaluation[]>;
   };
   ai?: {
     discover(input: {

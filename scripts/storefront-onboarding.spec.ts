@@ -421,6 +421,15 @@ describe("StorefrontOnboardingService gates", () => {
         }),
       },
       parser: productionParserAdapter(),
+      identity: {
+        evaluate: async (variants) => variants.map((variant) => ({
+          productId: variant.productId,
+          variantId: variant.variantId,
+          outcome: "exact-printing" as const,
+          cardPrintingId: 1,
+          cardNameId: 1,
+        })),
+      },
       ai,
     });
   }
