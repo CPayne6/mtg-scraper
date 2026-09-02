@@ -280,13 +280,25 @@ export class StorefrontOnboardingService {
     const timeoutMs = request.timeoutMs ?? 15_000,
       apiVersion = request.apiVersion ?? "2026-04";
     const homepage = await this.deps.storefront.homepage(baseUrl, timeoutMs);
-    const catalog = await this.deps.storefront.products(
+    // Named anchor searches are deliberately the first Storefront catalogue
+    // interaction. A broad catalogue query is only a fallback for older test
+    // clients that cannot yet issue title searches.
+    const anchors = await collectAnchorObservations(
+      this.deps.storefront,
       baseUrl,
       apiVersion,
-      null,
       timeoutMs,
-      100,
     );
+    const anchorProducts = dedupeProducts(anchors.flatMap((x) => x.products));
+    const catalog = anchorProducts.length
+      ? { ok: true, products: anchorProducts, endpoint: "anchor-search", status: 200 }
+      : await this.deps.storefront.products(
+          baseUrl,
+          apiVersion,
+          null,
+          timeoutMs,
+          100,
+        );
     if (!catalog.ok)
       return this.result(
         "access-failed",
@@ -361,12 +373,12 @@ export class StorefrontOnboardingService {
         },
       );
     const unique = dedupeProducts(scoped.products);
-    const binder = detectBinder(unique);
+    const binder = detectHomepageBinder(homepage);
     let profile: any = null;
     let ai: any = { status: "not-called", attempts: 0 };
     if (request.parserProfile !== undefined) {
       const g = this.deps.parser.validate(request.parserProfile);
-      if (g.valid && (request.parserProfile as any).kind === "mapping")
+      if (g.valid && ["mapping", "builtin"].includes((request.parserProfile as any).kind))
         profile = request.parserProfile;
       else
         ai = {
@@ -376,7 +388,9 @@ export class StorefrontOnboardingService {
         };
     } else if (binder.detected)
       profile = { kind: "builtin", version: 1, parserType: "binderpos" };
-    else if (request.aiDiscovery && this.deps.ai) {
+    else if (this.deps.storefront.productsByTitle && !anchorProducts.length) {
+      ai = { status: "anchors-insufficient", attempts: 0 };
+    } else if (request.aiDiscovery && this.deps.ai) {
       ai = await this.discover(compactEvidence(unique), timeoutMs);
       if (ai.envelope) profile = ai.envelope.parserProfile;
     } else
@@ -384,12 +398,9 @@ export class StorefrontOnboardingService {
         status: request.aiDiscovery ? "provider-unavailable" : "disabled",
         attempts: 0,
       };
-    const validation =
-      profile?.kind === "mapping"
-        ? this.deps.parser.dryRun(profile, unique, scope)
-        : profile?.parserType === "binderpos"
-          ? binderValidation(unique, scope)
-          : null;
+    const validation = profile
+      ? this.deps.parser.dryRun(profile, unique, scope)
+      : null;
     const valid = !!validation?.valid;
     const status = valid
       ? "proposal-ready"
@@ -404,7 +415,16 @@ export class StorefrontOnboardingService {
       scope,
       profile,
       validation,
-      { ...ai, binder },
+      {
+        ...ai,
+        binder,
+        anchors: anchors.map((anchor) => ({
+          fixture: anchor.fixture.key,
+          query: anchor.query,
+          products: anchor.products.length,
+          error: anchor.error,
+        })),
+      },
       request.proposedSlug,
     );
     result.sanitizedFixture = sanitizeFixture(unique, validation);
@@ -542,41 +562,6 @@ function dedupeProducts(products: any[]) {
       }),
     },
   }));
-}
-function detectBinder(products: any[]) {
-  const vs = products.flatMap((p) => variants(p).map((v: any) => ({ p, v })));
-  const matches = vs.filter(
-    ({ p, v }) =>
-      /\s\[[^\]]+\]\s*$/.test(p.title ?? "") &&
-      /^[A-Z0-9]{2,5}-[A-Z0-9]+-EN-(?:NF|FO)-[0-5]$/i.test(v.sku ?? "") &&
-      (v.selectedOptions ?? []).some(
-        (o: any) =>
-          /^(title|condition)$/i.test(o.name) &&
-          /^(near mint|lightly played|moderately played|heavily played|damaged|nm|lp|mp|hp)$/i.test(
-            o.value,
-          ),
-      ),
-  ).length;
-  return {
-    detected: matches >= 3,
-    matchedVariants: matches,
-    sampledVariants: vs.length,
-  };
-}
-function binderValidation(products: any[], scope: ScopeEvidence) {
-  const n = products.reduce((x, p) => x + variants(p).length, 0);
-  return {
-    valid: scope.ok && n >= 100,
-    sampledProducts: products.length,
-    sampledVariants: n,
-    validVariants: n,
-    rejectedVariants: 0,
-    coverage: n ? 1 : 0,
-    failuresByCode: {},
-    rejections: [],
-    errors: n >= 100 ? [] : [`requires 100 valid variants; found ${n}`],
-    warnings: [],
-  };
 }
 function sanitizeFixture(products: any[], validation: any) {
   const rejected = new Map(

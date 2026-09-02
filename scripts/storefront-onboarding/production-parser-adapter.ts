@@ -1,4 +1,7 @@
-import { dryRunStorefrontMappingProfile } from "../../packages/core/dist/platform/adapters/shopify-storefront/storefront-extraction.adapter.js";
+import {
+  dryRunStorefrontBinderposParser,
+  dryRunStorefrontMappingProfile,
+} from "../../packages/core/dist/platform/adapters/shopify-storefront/storefront-extraction.adapter.js";
 import {
   normalizeStorefrontProfileInputs,
   validateStorefrontMappingProfileContract,
@@ -9,13 +12,22 @@ import type { ParserDryRun, ScopeEvidence } from "./types.ts";
 export function productionParserAdapter() {
   return {
     validate(profile: unknown) {
+      if ((profile as any)?.kind === "builtin") {
+        return (profile as any).version === 1 && (profile as any).parserType === "binderpos"
+          ? { valid: true, errors: [], warnings: [] }
+          : { valid: false, errors: ["Only the BinderPOS builtin parser is permitted for onboarding"], warnings: [] };
+      }
       return validateStorefrontMappingProfileContract(profile);
     },
     dryRun(profile: any, products: any[], scope: ScopeEvidence): ParserDryRun {
-      const contract = validateStorefrontMappingProfileContract(profile);
+      const contract = (profile as any)?.kind === "builtin"
+        ? this.validate(profile)
+        : validateStorefrontMappingProfileContract(profile);
       if (!contract.valid) return failedContract(products, contract.errors, contract.warnings);
 
-      const report = dryRunStorefrontMappingProfile(
+      const report = (profile as any)?.kind === "builtin"
+        ? dryRunStorefrontBinderposParser(products as any)
+        : dryRunStorefrontMappingProfile(
         {
           uuid: "00000000-0000-4000-8000-000000000000",
           name: "onboarding-dry-run",
@@ -28,8 +40,8 @@ export function productionParserAdapter() {
           discoveryConfig: { discoveryEnabled: false },
           scraperConfig: { parser: profile },
         } as any,
-        products as any,
-      );
+            products as any,
+          );
       const failuresByCode: Record<string, number> = { ...report.failuresByCode };
       const rejections = report.variants.flatMap((variant) =>
         variant.result.ok

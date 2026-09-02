@@ -2,6 +2,7 @@ export { StorefrontClient } from "./storefront-client";
 export {
   StorefrontExtractionAdapter,
   dryRunStorefrontMappingProfile,
+  dryRunStorefrontBinderposParser,
 } from "./storefront-extraction.adapter";
 export type { StorefrontParserDryRunReport } from "./storefront-extraction.adapter";
 export {

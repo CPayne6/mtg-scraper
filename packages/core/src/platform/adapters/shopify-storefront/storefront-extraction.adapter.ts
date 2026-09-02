@@ -6,6 +6,7 @@ import type {
   ExtractedCardVariant,
 } from "../../platform.interfaces";
 import { CardDetailExtractorRegistry } from "../shopify/card-detail-extractor.registry";
+import { BinderposCardDetailExtractor } from "../shopify/extractors/binderpos/binderpos-card-detail.extractor";
 import { ExtractionHttpError } from "../shopify/extraction-http-error";
 import { parseConditionAndFoil } from "../shopify/shopify-variant.utils";
 import { StorefrontPaginationLimitError } from "./pagination-limit-error";
@@ -28,6 +29,7 @@ import type {
   ProductsByIdsData,
 } from "./storefront.types";
 import { normalizeStorefrontProfileInputs } from "@scoutlgs/shared";
+import { Condition } from "@scoutlgs/shared";
 import type { ProfileEvaluationInput } from "@scoutlgs/shared";
 import { ProfiledStorefrontCardParser } from "./profiled-storefront-card-parser";
 import type {
@@ -94,6 +96,86 @@ export function dryRunStorefrontMappingProfile(
     coverage: sampledVariants ? validVariants / sampledVariants : 1,
     failuresByCode,
     variants,
+  };
+}
+
+/**
+ * Read-only BinderPOS parser boundary used by onboarding.  This deliberately
+ * uses the production BinderPOS extractor instead of homepage or SKU-shape
+ * heuristics, so a BinderPOS proposal is held to the same field-completeness
+ * standard as a generated mapping profile.
+ */
+export function dryRunStorefrontBinderposParser(
+  products: StorefrontProduct[],
+): StorefrontParserDryRunReport {
+  const failuresByCode: Record<ProfileParseFailureCode, number> = {
+    "missing-card-name": 0,
+    "missing-set-identity": 0,
+    "unknown-condition": 0,
+    "unknown-finish": 0,
+    "invalid-price": 0,
+    "missing-currency": 0,
+    "missing-variant-id": 0,
+  };
+  const extractor = new BinderposCardDetailExtractor();
+  const parsed: StorefrontParserDryRunReport["variants"] = [];
+  for (const product of products) {
+    const title = extractor.parseTitle(product.title ?? "");
+    const tagInfo = extractor.parseTags(product.tags);
+    for (const input of normalizeStorefrontProfileInputs(product)) {
+      const variant = input.variant;
+      const sku = extractor.parseSkuInfo(variant.sku ?? undefined);
+      const conditionInfo = parseConditionAndFoil({
+        option1: variant.selectedOptions[0]?.value,
+        option2: variant.selectedOptions[1]?.value,
+        title: variant.title,
+      });
+      const failures: ProfileParseFailureCode[] = [];
+      if (!(title.cardName ?? "").trim()) failures.push("missing-card-name");
+      if (!(sku.setCode || title.setName || tagInfo.setName))
+        failures.push("missing-set-identity");
+      if (conditionInfo.condition === Condition.UNKNOWN) failures.push("unknown-condition");
+      // BinderPOS SKU is the authoritative finish source. Do not turn a
+      // missing finish marker into non-foil during an onboarding dry run.
+      if (sku.foil === undefined) failures.push("unknown-finish");
+      if (!Number.isFinite(Number(variant.price?.amount)) || Number(variant.price?.amount) < 0)
+        failures.push("invalid-price");
+      if (!variant.price?.currencyCode) failures.push("missing-currency");
+      if (!variant.id) failures.push("missing-variant-id");
+      for (const failure of failures) failuresByCode[failure]++;
+      parsed.push({
+        productId: product.id?.split("/").pop() ?? product.id ?? "",
+        variantId: variant.id?.split("/").pop() ?? variant.id ?? "",
+        result: failures.length
+          ? { ok: false, failures: failures.map((code) => ({ code })) } as ProfileParseResult
+          : {
+              ok: true,
+              variant: {
+                cardName: title.cardName,
+                setName: title.setName || tagInfo.setName || "",
+                setCode: sku.setCode,
+                collectorNumber: sku.collectorNumber,
+                condition: conditionInfo.condition,
+                foil: sku.foil,
+                isToken: !!sku.isToken,
+                price: Number(variant.price.amount),
+                currency: variant.price.currencyCode,
+                inStock: !!variant.availableForSale,
+                platformVariantId: variant.id.split("/").pop(),
+              },
+            } as ProfileParseResult,
+      });
+    }
+  }
+  const validVariants = parsed.filter(({ result }) => result.ok).length;
+  return {
+    sampledProducts: products.length,
+    sampledVariants: parsed.length,
+    validVariants,
+    rejectedVariants: parsed.length - validVariants,
+    coverage: parsed.length ? validVariants / parsed.length : 1,
+    failuresByCode,
+    variants: parsed,
   };
 }
 
