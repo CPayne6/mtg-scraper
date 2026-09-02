@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { TokenName, TokenPrinting, ScryfallSet } from '@scoutlgs/core';
+import { TokenName } from '../database/token-name.entity';
+import { TokenPrinting } from '../database/token-printing.entity';
+import { ScryfallSet } from '../database/scryfall-set.entity';
 import { LRUCache } from 'lru-cache';
 
 export interface TokenMatchResult {

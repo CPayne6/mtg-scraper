@@ -1,12 +1,10 @@
 export { ExtractionModule } from './extraction.module';
 export { ExtractionService } from './extraction.service';
 export type { ExtractionResult } from './extraction.service';
-export { PrintingMatcherService } from './printing-matcher.service';
-export type { MatchResult } from './printing-matcher.service';
+export { PrintingMatcherService, TokenMatcherService, StorefrontOnboardingDryRunService } from '@scoutlgs/core';
+export type { MatchResult, TokenMatchResult, OnboardingVariantEvaluation, OnboardingIdentityOutcome } from '@scoutlgs/core';
 export { BatchAccumulatorService } from './batch-accumulator.service';
 export { ListingUpsertService } from './listing-upsert.service';
 export type { ListingRow } from './listing-upsert.service';
 export { UnmatchedCardService } from './unmatched-card.service';
 export type { UnmatchedCardRow } from './unmatched-card.service';
-export { StorefrontOnboardingDryRunService } from './storefront-onboarding-dry-run.service';
-export type { OnboardingVariantEvaluation, OnboardingIdentityOutcome } from './storefront-onboarding-dry-run.service';

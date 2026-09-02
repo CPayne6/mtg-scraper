@@ -30,7 +30,7 @@ import {
 import type { ExtractedCardVariant } from '@scoutlgs/core';
 import type { StorefrontExtractionAdapter } from '@scoutlgs/core';
 import { ExtractionService } from '../extraction/extraction.service';
-import { PrintingMatcherService } from '../extraction/printing-matcher.service';
+import { PrintingMatcherService } from '@scoutlgs/core';
 
 interface ExtractedProduct {
   shopifyProductId: string;

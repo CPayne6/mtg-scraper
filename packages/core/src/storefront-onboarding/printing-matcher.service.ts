@@ -2,7 +2,9 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Raw } from 'typeorm';
-import { CardPrinting, CardName, ScryfallSet } from '@scoutlgs/core';
+import { CardPrinting } from '../database/card-printing.entity';
+import { CardName } from '../database/card-name.entity';
+import { ScryfallSet } from '../database/scryfall-set.entity';
 import { LRUCache } from 'lru-cache';
 import Redis from 'ioredis';
 import { PUBSUB_CHANNELS } from '@scoutlgs/shared';

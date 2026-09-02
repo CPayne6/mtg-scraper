@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ExtractedCardVariant } from '@scoutlgs/core';
+import type { ExtractedCardVariant } from '../platform/platform.interfaces';
 import { PrintingMatcherService, type MatchResult } from './printing-matcher.service';
 import { TokenMatcherService } from './token-matcher.service';
 

@@ -16,14 +16,12 @@ import {
   ExtractionRun,
 } from '@scoutlgs/core';
 import { ExtractionService } from './extraction.service';
-import { PrintingMatcherService } from './printing-matcher.service';
+import { PrintingMatcherService, TokenMatcherService, StorefrontOnboardingDryRunService } from '@scoutlgs/core';
 import { BatchAccumulatorService } from './batch-accumulator.service';
 import { ListingUpsertService } from './listing-upsert.service';
 import { UnmatchedCardService } from './unmatched-card.service';
-import { TokenMatcherService } from './token-matcher.service';
 import { TokenBatchAccumulatorService } from './token-batch-accumulator.service';
 import { TokenListingUpsertService } from './token-listing-upsert.service';
-import { StorefrontOnboardingDryRunService } from './storefront-onboarding-dry-run.service';
 
 @Module({
   imports: [
