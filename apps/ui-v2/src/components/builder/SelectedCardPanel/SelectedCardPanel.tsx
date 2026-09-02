@@ -70,6 +70,49 @@ export function SelectedCardPanel({
     );
   }
 
+  // The selection changes before its offers arrive. Never render the card
+  // title or a misleading “0 options” state during that gap.
+  if (!lookup || lookup.state === 'pending') {
+    return (
+      <>
+        <Box sx={headerCardSx} aria-busy="true" aria-label="Loading card details">
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Skeleton variant="text" width={110} height={20} sx={{ mb: 1 }} />
+            <Skeleton variant="text" width="38%" height={42} />
+            <Skeleton variant="text" width="25%" height={24} />
+          </Box>
+        </Box>
+        <Box>
+          <Box sx={sectionHeaderSx}>
+            <Skeleton variant="text" width={180} height={28} />
+            <Skeleton variant="text" width={150} height={20} />
+          </Box>
+          <Box sx={offerGridSx}>
+            {Array.from({ length: 12 }, (_, i) => i).map((i) => (
+              <Skeleton
+                key={i}
+                variant="rectangular"
+                sx={(theme) => ({
+                  width: '100%',
+                  aspectRatio: '5 / 7',
+                  height: 'auto',
+                  borderRadius: '12px',
+                  opacity: 1,
+                  bgcolor: theme.palette.mode === 'dark'
+                    ? 'rgba(255,255,255,0.16)'
+                    : 'rgba(15,23,42,0.14)',
+                  boxShadow: theme.palette.mode === 'dark'
+                    ? '0 6px 18px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.12)'
+                    : '0 6px 16px rgba(15,23,42,0.22)',
+                })}
+              />
+            ))}
+          </Box>
+        </Box>
+      </>
+    );
+  }
+
   const setName =
     (lookup?.state === 'success' && lookup.cheapest?.set) || card.set || '—';
   const optionCount = filteredOffers.length;
@@ -145,19 +188,6 @@ export function SelectedCardPanel({
             Cheapest option is highlighted.
           </Box>
         </Box>
-
-        {lookup?.state === 'pending' && (
-          <Box sx={offerGridSx}>
-            {[0, 1, 2].map((i) => (
-              <Skeleton
-                key={i}
-                variant="rectangular"
-                height={132}
-                sx={{ borderRadius: '12px', bgcolor: 'background.paper' }}
-              />
-            ))}
-          </Box>
-        )}
 
         {lookup?.state === 'error' && (
           <Alert severity="error" sx={{ borderRadius: '12px' }}>
