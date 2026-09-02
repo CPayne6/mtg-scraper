@@ -69,7 +69,7 @@ export const previewActionSx: SxProps<Theme> = {
   background: 'transparent',
   color: '#fff',
   cursor: 'default',
-  opacity: 0,
+  opacity: 0.82,
   textShadow: '0 1px 3px rgba(0,0,0,0.75)',
   transition: 'opacity 160ms ease, transform 160ms ease',
   '&:hover, &:focus-visible': {

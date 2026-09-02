@@ -126,7 +126,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const save = useCallback(
-    async (name: string, cards: string[], cardNameIds?: number[]): Promise<string | null> => {
+    async (name: string, cards: string[], cardNameIds?: number[], ignoreBasicLands = false): Promise<string | null> => {
       if (cards.length === 0 && (!cardNameIds || cardNameIds.length === 0)) {
         enqueueSnackbar("Can't create an empty list", { variant: 'warning' });
         return null;
@@ -148,6 +148,7 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
         const created = await apiCreateList({
           name,
           ...(cardNameIds?.length ? { cardNameIds } : { cards }),
+          ...(ignoreBasicLands ? { ignoreBasicLands: true } : {}),
         });
         const full = await fetchList(created.id);
         const newList: ServerList = {
