@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StorefrontOnboardingApiService } from './storefront-onboarding.service';
+import { ApiStorefrontOnboardingExecutor } from './api-onboarding-executor.service';
 
 export interface StorefrontOnboardingExecutor {
   onboard(input: {
     url: string;
     proposedSlug?: string;
+    scope?: string;
+    parserProfile?: unknown;
     aiDiscovery: true;
     timeoutMs: number;
   }): Promise<Record<string, any>>;
@@ -19,7 +22,7 @@ export interface StorefrontOnboardingExecutor {
 export class StorefrontOnboardingExecutionService {
   private readonly logger = new Logger(StorefrontOnboardingExecutionService.name);
 
-  constructor(private readonly runs: StorefrontOnboardingApiService) {}
+  constructor(private readonly runs: StorefrontOnboardingApiService, private readonly executor: ApiStorefrontOnboardingExecutor) {}
 
   async execute(id: number, executor: StorefrontOnboardingExecutor) {
     const run = await this.runs.get(id);
@@ -28,6 +31,8 @@ export class StorefrontOnboardingExecutionService {
       const report = await executor.onboard({
         url: run.requestedUrl,
         proposedSlug: run.requestedSlug,
+        scope: run.requestedScope,
+        parserProfile: run.parserProfile,
         aiDiscovery: true,
         timeoutMs: 30_000,
       });
@@ -40,4 +45,5 @@ export class StorefrontOnboardingExecutionService {
       });
     }
   }
+  async executeApi(id: number) { return this.execute(id, this.executor); }
 }

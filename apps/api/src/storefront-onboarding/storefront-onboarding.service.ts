@@ -22,13 +22,13 @@ export class StorefrontOnboardingApiService {
   }
 
   /** Creates an auditable run. Execution is deliberately separate from approval. */
-  async createRun(input: { url: string; proposedSlug?: string }) {
+  async createRun(input: { url: string; proposedSlug?: string; scope?: string; parserProfile?: unknown }) {
     let url: URL;
     try { url = new URL(input.url); } catch { throw new BadRequestException('url must be absolute HTTP(S)'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
       throw new BadRequestException('url must be an unauthenticated HTTP(S) URL');
     url.pathname = '/'; url.search = ''; url.hash = '';
-    const run = this.runs.create({ requestedUrl: url.toString(), requestedSlug: input.proposedSlug, status: 'running' });
+    const run = this.runs.create({ requestedUrl: url.toString(), requestedSlug: input.proposedSlug, requestedScope: input.scope, parserProfile: input.parserProfile as Record<string, unknown>, status: 'running' });
     return this.runs.save(run);
   }
 

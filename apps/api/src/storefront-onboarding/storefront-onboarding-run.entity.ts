@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Store } from '@scoutlgs/core';
 
 export type StorefrontOnboardingRunStatus =
   | 'running' | 'proposal-ready' | 'rejected' | 'failed' | 'approved';
@@ -13,6 +14,8 @@ export class StorefrontOnboardingRun {
 
   @Column({ name: 'requested_slug', nullable: true })
   requestedSlug?: string;
+  @Column({ name: 'requested_scope', nullable: true }) requestedScope?: string;
+  @Column({ name: 'parser_profile', type: 'jsonb', nullable: true }) parserProfile?: Record<string, unknown>;
 
   @Column({ type: 'varchar' })
   status: StorefrontOnboardingRunStatus;
@@ -28,6 +31,8 @@ export class StorefrontOnboardingRun {
 
   @Column({ name: 'approved_store_id', type: 'int', nullable: true })
   approvedStoreId?: number;
+  @ManyToOne(() => Store, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'approved_store_id' }) approvedStore?: Store;
 
   @Column({ name: 'approved_by_user_uuid', nullable: true })
   approvedByUserUuid?: string;

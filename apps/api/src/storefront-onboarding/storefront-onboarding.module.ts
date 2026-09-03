@@ -17,6 +17,8 @@ import { StorefrontOnboardingRun } from './storefront-onboarding-run.entity';
 import { StorefrontOnboardingApiService } from './storefront-onboarding.service';
 import { StorefrontOnboardingIdentityService } from './storefront-onboarding-identity.service';
 import { StorefrontOnboardingExecutionService } from './storefront-onboarding-execution.service';
+import { ApiStorefrontOnboardingExecutor } from './api-onboarding-executor.service';
+import { AdminStoreStatusController } from './admin-store-status.controller';
 
 @Module({
   imports: [
@@ -31,7 +33,7 @@ import { StorefrontOnboardingExecutionService } from './storefront-onboarding-ex
       TokenPrinting,
     ]),
   ],
-  controllers: [StorefrontOnboardingController],
+  controllers: [StorefrontOnboardingController, AdminStoreStatusController],
   providers: [
     StorefrontOnboardingApiService,
     PrintingMatcherService,
@@ -39,6 +41,7 @@ import { StorefrontOnboardingExecutionService } from './storefront-onboarding-ex
     StorefrontOnboardingDryRunService,
     StorefrontOnboardingIdentityService,
     StorefrontOnboardingExecutionService,
+    ApiStorefrontOnboardingExecutor,
   ],
   exports: [StorefrontOnboardingIdentityService, StorefrontOnboardingExecutionService],
 })
