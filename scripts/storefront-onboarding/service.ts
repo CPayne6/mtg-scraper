@@ -410,7 +410,9 @@ export class StorefrontOnboardingService {
       ? await this.deps.identity.evaluate(validation.parsedVariants ?? [])
       : null;
     const identitySummary = summarizeIdentity(identity);
-    const valid = !!validation?.valid && (!this.deps.identity || identitySummary.valid);
+    // A proposal is never safe without the database-backed printing gate.
+    // Structural parser coverage alone is useful diagnostics, not onboarding.
+    const valid = !!validation?.valid && !!this.deps.identity && identitySummary.valid;
     const status = valid
       ? "proposal-ready"
       : validation?.valid && !this.deps.identity

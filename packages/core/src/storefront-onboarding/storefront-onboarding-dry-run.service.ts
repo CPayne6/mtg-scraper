@@ -7,13 +7,18 @@ export type OnboardingIdentityOutcome =
   | 'exact-printing'
   | 'ambiguous'
   | 'unmatched'
-  | 'token';
+  | 'token'
+  | 'image-mismatch'
+  | 'image-unavailable';
 
 export type OnboardingVariantEvaluation = {
   variant: ExtractedCardVariant;
   outcome: OnboardingIdentityOutcome;
   cardMatch: MatchResult;
   tokenPrintingId?: number | null;
+  sourceImageUrl?: string | null;
+  canonicalImageUri?: string | null;
+  imageVerified?: boolean;
   prospectiveListing?: {
     cardPrintingId: number | null;
     cardNameId: number | null;
@@ -53,11 +58,18 @@ export class StorefrontOnboardingDryRunService {
       variant.setName,
     );
     if (cardMatch.cardPrintingId) {
+      const canonicalImageUri = await this.printingMatcher.getPrintingImageUri(
+        cardMatch.cardPrintingId,
+      );
+      const image = imageEvidence(variant.imageUrl, canonicalImageUri);
       return {
         variant,
-        outcome: 'exact-printing',
+        outcome: image.imageVerified ? 'exact-printing' : image.failureOutcome!,
         cardMatch,
-        prospectiveListing: prospectiveListing(variant, cardMatch),
+        ...image,
+        ...(image.imageVerified
+          ? { prospectiveListing: prospectiveListing(variant, cardMatch) }
+          : {}),
       };
     }
     if (cardMatch.printingMatch === 'ambiguous')
@@ -73,16 +85,46 @@ export class StorefrontOnboardingDryRunService {
         variant.setName,
       );
       if (tokenMatch.tokenPrintingId) {
+        const canonicalImageUri = await this.tokenMatcher.getPrintingImageUri(
+          tokenMatch.tokenPrintingId,
+        );
+        const image = imageEvidence(variant.imageUrl, canonicalImageUri);
         return {
           variant,
-          outcome: 'token',
+          outcome: image.imageVerified ? 'token' : image.failureOutcome!,
           cardMatch,
           tokenPrintingId: tokenMatch.tokenPrintingId,
+          ...image,
         };
       }
     }
     return { variant, outcome: 'unmatched', cardMatch };
   }
+}
+
+function imageEvidence(
+  sourceImageUrl: string | undefined,
+  canonicalImageUri: string | null,
+): Pick<
+  OnboardingVariantEvaluation,
+  'sourceImageUrl' | 'canonicalImageUri' | 'imageVerified'
+> & { failureOutcome?: 'image-mismatch' | 'image-unavailable' } {
+  if (!sourceImageUrl || !canonicalImageUri)
+    return {
+      sourceImageUrl: sourceImageUrl ?? null,
+      canonicalImageUri,
+      imageVerified: false,
+      failureOutcome: 'image-unavailable',
+    };
+  return {
+    sourceImageUrl,
+    canonicalImageUri,
+    imageVerified: sourceImageUrl === canonicalImageUri,
+    failureOutcome:
+      sourceImageUrl === canonicalImageUri
+        ? undefined
+        : 'image-mismatch',
+  };
 }
 
 function prospectiveListing(

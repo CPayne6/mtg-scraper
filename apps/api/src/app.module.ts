@@ -10,6 +10,7 @@ import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 import { getDatabaseConfig } from '@scoutlgs/core';
 import { AuthModule } from './auth/auth.module';
+import { StorefrontOnboardingModule } from './storefront-onboarding/storefront-onboarding.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AuthModule } from './auth/auth.module';
     CardModule,
     V1Module,
     HealthModule,
+    StorefrontOnboardingModule,
   ],
 })
 export class AppModule {}

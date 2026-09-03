@@ -107,6 +107,15 @@ export class TokenMatcherService {
     };
   }
 
+  /** Returns the canonical seeded token image for onboarding verification. */
+  async getPrintingImageUri(tokenPrintingId: number): Promise<string | null> {
+    const rows = await this.dataSource.query(
+      `SELECT image_uri FROM token_printings WHERE id = $1 LIMIT 1`,
+      [tokenPrintingId],
+    );
+    return typeof rows[0]?.image_uri === 'string' ? rows[0].image_uri : null;
+  }
+
   /**
    * Stage 1: Resolve a normalized token name to a token_names.id.
    * Tries exact match first, then trgm fuzzy (threshold 0.7, lower than
