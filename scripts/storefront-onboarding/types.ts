@@ -45,7 +45,13 @@ export type ParserDryRun = {
 export type IdentityEvaluation = {
   productId: string;
   variantId: string;
-  outcome: "exact-printing" | "ambiguous" | "unmatched" | "token";
+  outcome:
+    | "exact-printing"
+    | "ambiguous"
+    | "unmatched"
+    | "token"
+    | "image-mismatch"
+    | "image-unavailable";
   cardPrintingId?: number | null;
   cardNameId?: number | null;
 };

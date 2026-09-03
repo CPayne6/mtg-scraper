@@ -600,12 +600,20 @@ function summarizeIdentity(identity: IdentityEvaluation[] | null) {
   const coverage = nonToken ? exact / nonToken : 0;
   return {
     status: "verified",
-    valid: identity.length >= 100 && coverage >= 0.9 && !(counts.ambiguous ?? 0) && !(counts.unmatched ?? 0),
+    valid:
+      identity.length >= 100 &&
+      coverage >= 0.9 &&
+      !(counts.ambiguous ?? 0) &&
+      !(counts.unmatched ?? 0) &&
+      !(counts["image-mismatch"] ?? 0) &&
+      !(counts["image-unavailable"] ?? 0),
     sampledVariants: identity.length,
     exactPrinting: exact,
     token: counts.token ?? 0,
     ambiguous: counts.ambiguous ?? 0,
     unmatched: counts.unmatched ?? 0,
+    imageMismatch: counts["image-mismatch"] ?? 0,
+    imageUnavailable: counts["image-unavailable"] ?? 0,
     coverage,
   };
 }
