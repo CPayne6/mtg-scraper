@@ -32,6 +32,30 @@ export class StorefrontOnboardingApiService {
     return this.runs.save(run);
   }
 
+  /**
+   * Persists an immutable, review-only execution result. A proposal is stored
+   * only after every executor gate has passed; no Store is created here.
+   */
+  async completeRun(id: number, report: Record<string, any>) {
+    const run = await this.runs.findOne({ where: { id } });
+    if (!run) throw new NotFoundException('Onboarding run not found');
+    if (run.status !== 'running')
+      throw new BadRequestException('Run is not awaiting execution');
+
+    const proposal = report.status === 'proposal-ready' && report.proposedStore
+      ? report.proposedStore
+      : null;
+    run.status = proposal ? 'proposal-ready' : report.status === 'validation-failed' || report.status === 'rejected'
+      ? 'rejected'
+      : 'failed';
+    run.report = report;
+    run.proposal = proposal;
+    run.digest = proposal
+      ? createHash('sha256').update(JSON.stringify(proposal)).digest('hex')
+      : undefined;
+    return this.runs.save(run);
+  }
+
   /** Approval consumes only the immutable server-side proposal. */
   async approve(id: number, digest: string, approverUuid: string) {
     return this.dataSource.transaction(async (manager) => {

@@ -16,6 +16,7 @@ import { StorefrontOnboardingController } from './storefront-onboarding.controll
 import { StorefrontOnboardingRun } from './storefront-onboarding-run.entity';
 import { StorefrontOnboardingApiService } from './storefront-onboarding.service';
 import { StorefrontOnboardingIdentityService } from './storefront-onboarding-identity.service';
+import { StorefrontOnboardingExecutionService } from './storefront-onboarding-execution.service';
 
 @Module({
   imports: [
@@ -37,7 +38,8 @@ import { StorefrontOnboardingIdentityService } from './storefront-onboarding-ide
     TokenMatcherService,
     StorefrontOnboardingDryRunService,
     StorefrontOnboardingIdentityService,
+    StorefrontOnboardingExecutionService,
   ],
-  exports: [StorefrontOnboardingIdentityService],
+  exports: [StorefrontOnboardingIdentityService, StorefrontOnboardingExecutionService],
 })
 export class StorefrontOnboardingModule {}
