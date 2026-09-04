@@ -19,6 +19,7 @@ import {
   CardList,
   CardListEntry,
 } from '@scoutlgs/core';
+import { StorefrontOnboardingRun } from '../storefront-onboarding/storefront-onboarding-run.entity';
 
 // TypeORM CLI configuration for migrations
 // In development: uses ts-node with .ts files (migration:run)
@@ -55,6 +56,7 @@ export default new DataSource({
     CardCart,
     CardList,
     CardListEntry,
+    StorefrontOnboardingRun,
   ],
   migrations: isProduction
     ? ['dist/database/migrations/*.js']

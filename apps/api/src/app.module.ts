@@ -10,6 +10,7 @@ import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 import { getDatabaseConfig } from '@scoutlgs/core';
 import { AuthModule } from './auth/auth.module';
+import { StorefrontOnboardingModule } from './storefront-onboarding/storefront-onboarding.module';
 
 @Module({
   imports: [
@@ -21,7 +22,12 @@ import { AuthModule } from './auth/auth.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: getDatabaseConfig
+      useFactory: (configService: ConfigService) => ({
+        ...getDatabaseConfig(configService),
+        autoLoadEntities: true,
+      }),
+      // API-owned entities (such as onboarding audit runs) are not part of
+      // @scoutlgs/core's shared database configuration.
     }),
     StoreModule,
     AuthModule,
@@ -29,6 +35,7 @@ import { AuthModule } from './auth/auth.module';
     CardModule,
     V1Module,
     HealthModule,
+    StorefrontOnboardingModule,
   ],
 })
 export class AppModule {}

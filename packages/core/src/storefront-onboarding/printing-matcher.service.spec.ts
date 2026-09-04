@@ -1,7 +1,10 @@
+import 'reflect-metadata';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PrintingMatcherService } from './printing-matcher.service';
-import { Repository, DataSource } from 'typeorm';
-import { CardName, CardPrinting, ScryfallSet } from '@scoutlgs/core';
+import type { Repository, DataSource } from 'typeorm';
+import type { CardName } from '../database/card-name.entity';
+import type { CardPrinting } from '../database/card-printing.entity';
+import type { ScryfallSet } from '../database/scryfall-set.entity';
 
 /**
  * Simulated card name data (card_names table).
@@ -226,6 +229,11 @@ describe('PrintingMatcherService', () => {
       const result = await service.match('Lightning  Bolt', undefined, undefined);
       expect(result.cardPrintingId).toBe(1);
       expect(result.cardNameId).toBe(1);
+    });
+
+    it('normalizes a spaced double-faced card separator', () => {
+      expect((service as any).normalizeCardName('Pyrite Spellbomb / Boogie Bomb'))
+        .toBe('pyrite spellbomb // boogie bomb');
     });
 
     it("smart quotes: Urza\u2019s Saga", async () => {
