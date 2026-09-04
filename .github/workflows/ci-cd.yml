@@ -295,6 +295,11 @@ jobs:
           scp scripts/deploy.sh scoutlgs-prod:${{ env.PROJECT_DIR }}/scripts/
           scp docker-compose.prod.yml scoutlgs-prod:${{ env.PROJECT_DIR }}/
 
+      - name: Copy price-history initialization files
+        run: |
+          ssh scoutlgs-prod "mkdir -p ${{ env.PROJECT_DIR }}/infrastructure/price-history"
+          scp -r infrastructure/price-history/init scoutlgs-prod:${{ env.PROJECT_DIR }}/infrastructure/price-history/
+
       - name: Make deployment script executable
         run: |
           ssh scoutlgs-prod "chmod +x ${{ env.PROJECT_DIR }}/scripts/deploy.sh"
