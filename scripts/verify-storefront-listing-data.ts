@@ -5,6 +5,8 @@
  * queues work, or changes parser configuration.
  */
 import { loadLocalEnv } from './lib/load-local-env.ts';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_API_VERSION = process.env.SHOPIFY_STOREFRONT_API_VERSION ?? '2026-04';
 const DEFAULT_SAMPLE_SIZE = 5;
@@ -286,6 +288,10 @@ export async function main() {
   process.exitCode = deterministic.status === 'pass' && (!report.aiVerification || report.aiVerification.verdict !== 'fail') ? 0 : 2;
 }
 
-if (import.meta.main) {
+function isMainModule() {
+  return process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+}
+
+if (isMainModule()) {
   main().catch((error) => { console.error(`Listing verification failed: ${error.message}`); usage(); process.exitCode = 1; });
 }

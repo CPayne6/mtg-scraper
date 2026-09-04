@@ -2,7 +2,9 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Raw } from 'typeorm';
-import { CardPrinting, CardName, ScryfallSet } from '@scoutlgs/core';
+import { CardPrinting } from '../database/card-printing.entity';
+import { CardName } from '../database/card-name.entity';
+import { ScryfallSet } from '../database/scryfall-set.entity';
 import { LRUCache } from 'lru-cache';
 import Redis from 'ioredis';
 import { PUBSUB_CHANNELS } from '@scoutlgs/shared';
@@ -264,6 +266,18 @@ export class PrintingMatcherService implements OnModuleDestroy {
   }
 
   /**
+   * Returns the canonical seeded Scryfall image without broadening the
+   * matching contract. Onboarding uses this as literal source-image evidence.
+   */
+  async getPrintingImageUri(cardPrintingId: number): Promise<string | null> {
+    const rows = await this.dataSource.query(
+      `SELECT image_uri FROM card_printings WHERE id = $1 LIMIT 1`,
+      [cardPrintingId],
+    );
+    return typeof rows[0]?.image_uri === 'string' ? rows[0].image_uri : null;
+  }
+
+  /**
    * Stage 1: Resolve a normalized card name to a card_names.id.
    * Tries exact match first, then trgm fuzzy (threshold 0.8).
    */
@@ -459,6 +473,9 @@ export class PrintingMatcherService implements OnModuleDestroy {
     return name
       .toLowerCase()
       .trim()
+      // Some storefronts display a double-faced card separator as " / ".
+      // Preserve unspaced slashes used in ordinary card names.
+      .replace(/\s+\/\s+/g, ' // ')
       .replace(/\s+/g, ' ')
       .replace(/['']/g, "'")
       .replace(/[""]/g, '"');

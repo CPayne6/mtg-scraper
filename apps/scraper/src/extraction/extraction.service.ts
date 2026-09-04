@@ -6,11 +6,10 @@ import {
   ProductUrl,
 } from '@scoutlgs/core';
 import type { ExtractedCardVariant } from '@scoutlgs/core';
-import { PrintingMatcherService } from './printing-matcher.service';
+import { PrintingMatcherService, TokenMatcherService } from '@scoutlgs/core';
 import { BatchAccumulatorService } from './batch-accumulator.service';
 import { ListingUpsertService } from './listing-upsert.service';
 import { UnmatchedCardService } from './unmatched-card.service';
-import { TokenMatcherService } from './token-matcher.service';
 import { TokenBatchAccumulatorService } from './token-batch-accumulator.service';
 import { TokenListingUpsertService } from './token-listing-upsert.service';
 import type { ListingRow, VariantRow, ListingWithVariants } from './listing-upsert.service';

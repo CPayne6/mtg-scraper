@@ -164,6 +164,28 @@ describe('ListsService', () => {
       ]);
     });
 
+    it('should exclude basic lands when requested', async () => {
+      cardNameResolver.resolveCardNames.mockResolvedValue({
+        resolved: [
+          { input: 'Plains', cardNameId: 1, resolvedName: 'Plains', fuzzy: false },
+          { input: 'Sol Ring', cardNameId: 2, resolvedName: 'Sol Ring', fuzzy: false },
+        ],
+        unresolved: [],
+      });
+
+      const result = await service.createList(
+        { name: 'Commander', cards: ['Plains', 'Sol Ring'], ignoreBasicLands: true },
+        OWNER_COOKIE,
+        'anonymous',
+      );
+
+      expect(result.cardCount).toBe(1);
+      expect(result.warnings).toContain('Ignored 1 basic land');
+      expect(cardListEntryRepo.save).toHaveBeenCalledWith([
+        expect.objectContaining({ cardNameId: 2, position: 1 }),
+      ]);
+    });
+
     it('should preserve preferred set codes from card input', async () => {
       cardNameResolver.resolveCardNames.mockResolvedValue({
         resolved: [

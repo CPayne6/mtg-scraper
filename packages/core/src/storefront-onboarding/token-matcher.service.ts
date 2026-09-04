@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { TokenName, TokenPrinting, ScryfallSet } from '@scoutlgs/core';
+import { TokenName } from '../database/token-name.entity';
+import { TokenPrinting } from '../database/token-printing.entity';
+import { ScryfallSet } from '../database/scryfall-set.entity';
 import { LRUCache } from 'lru-cache';
 
 export interface TokenMatchResult {
@@ -103,6 +105,15 @@ export class TokenMatcherService {
       tokenNameId: nameResult.tokenNameId,
       confidence: nameResult.confidence,
     };
+  }
+
+  /** Returns the canonical seeded token image for onboarding verification. */
+  async getPrintingImageUri(tokenPrintingId: number): Promise<string | null> {
+    const rows = await this.dataSource.query(
+      `SELECT image_uri FROM token_printings WHERE id = $1 LIMIT 1`,
+      [tokenPrintingId],
+    );
+    return typeof rows[0]?.image_uri === 'string' ? rows[0].image_uri : null;
   }
 
   /**

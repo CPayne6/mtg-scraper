@@ -128,9 +128,11 @@ services:
       - AUTH_JWT_ISSUER=scoutlgs-auth
       - AUTH_JWT_AUDIENCE=scoutlgs-api
       - SCHEDULER_INTERNAL_URL=http://scheduler:5001
+      - GROQ_API_KEY_FILE=/run/secrets/groq_api_key
     secrets:
       - api_frontend_url
       - api_database_password
+      - groq_api_key
     networks:
       - redis-network
       - postgres-network
@@ -446,6 +448,9 @@ secrets:
   api_database_password:
     external: true
     name: api_database_password
+  groq_api_key:
+    external: true
+    name: groq_api_key
 
   # Auth secrets
   auth_database_password:

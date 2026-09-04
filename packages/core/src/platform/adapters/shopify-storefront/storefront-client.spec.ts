@@ -1,27 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StorefrontClient } from './storefront-client';
-import { ExtractionHttpError } from '../shopify/extraction-http-error';
-import { DEFAULT_STOREFRONT_API_VERSION } from './storefront.queries';
-import type { Store } from '../../../database/store.entity';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { StorefrontClient } from "./storefront-client";
+import { ExtractionHttpError } from "../shopify/extraction-http-error";
+import { DEFAULT_STOREFRONT_API_VERSION } from "./storefront.queries";
+import type { Store } from "../../../database/store.entity";
 
 // Mock undici.fetch
-vi.mock('undici', () => ({
+vi.mock("undici", () => ({
   fetch: vi.fn(),
 }));
 
-import { fetch } from 'undici';
+import { fetch } from "undici";
 
 const mockFetch = vi.mocked(fetch);
 
 function createMockStore(overrides: Partial<Store> = {}): Store {
   return {
     id: 1,
-    uuid: 'test-uuid',
-    name: 'test-store',
-    displayName: 'Test Store',
-    baseUrl: 'https://test-store.myshopify.com',
+    uuid: "test-uuid",
+    name: "test-store",
+    displayName: "Test Store",
+    baseUrl: "https://test-store.myshopify.com",
     isActive: true,
-    scraperType: 'binderpos',
+    scraperType: "binderpos",
     rateLimitPerSecond: 2,
     scraperConfig: {},
     createdAt: new Date(),
@@ -41,11 +41,13 @@ function createMockDeps() {
       getNextProxyNumber: vi.fn().mockResolvedValue(1),
     },
     rateLimiter: {
-      acquireWithRotation: vi.fn().mockImplementation(
-        async (_name: string, _rate: number, fn: () => Promise<number>) => ({
-          proxyNumber: await fn(),
-        }),
-      ),
+      acquireWithRotation: vi
+        .fn()
+        .mockImplementation(
+          async (_name: string, _rate: number, fn: () => Promise<number>) => ({
+            proxyNumber: await fn(),
+          }),
+        ),
     },
     webBotAuth: {
       isEnabled: () => false,
@@ -71,7 +73,8 @@ function mockResponse(
   return {
     ok: status >= 200 && status < 300,
     status,
-    statusText: status === 200 ? 'OK' : status === 429 ? 'Too Many Requests' : 'Error',
+    statusText:
+      status === 200 ? "OK" : status === 429 ? "Too Many Requests" : "Error",
     headers: {
       get: (key: string) => headers[key.toLowerCase()] ?? null,
     },
@@ -79,7 +82,7 @@ function mockResponse(
   };
 }
 
-describe('StorefrontClient', () => {
+describe("StorefrontClient", () => {
   let client: StorefrontClient;
 
   beforeEach(() => {
@@ -87,10 +90,10 @@ describe('StorefrontClient', () => {
     client = createClient();
   });
 
-  describe('getEndpointUrl', () => {
-    it('uses scraperConfig.shopifyUrl when present', () => {
+  describe("getEndpointUrl", () => {
+    it("uses scraperConfig.shopifyUrl when present", () => {
       const store = createMockStore({
-        scraperConfig: { shopifyUrl: 'custom-store.myshopify.com' },
+        scraperConfig: { shopifyUrl: "custom-store.myshopify.com" },
       });
       const url = client.getEndpointUrl(store);
       expect(url).toBe(
@@ -98,9 +101,25 @@ describe('StorefrontClient', () => {
       );
     });
 
-    it('falls back to baseUrl host when shopifyUrl is not set', () => {
+    it("normalizes a legacy absolute shopifyUrl without duplicating its scheme", () => {
       const store = createMockStore({
-        baseUrl: 'https://example-store.com',
+        scraperConfig: { shopifyUrl: "https://CUSTOM-store.myshopify.com/" },
+      });
+      expect(client.getEndpointUrl(store)).toBe(
+        `https://custom-store.myshopify.com/api/${DEFAULT_STOREFRONT_API_VERSION}/graphql.json`,
+      );
+    });
+
+    it("rejects a configured host with a path", () => {
+      const store = createMockStore({
+        scraperConfig: { shopifyUrl: "custom-store.myshopify.com/path" },
+      });
+      expect(() => client.getEndpointUrl(store)).toThrow("Storefront host");
+    });
+
+    it("falls back to baseUrl host when shopifyUrl is not set", () => {
+      const store = createMockStore({
+        baseUrl: "https://example-store.com",
         scraperConfig: {},
       });
       const url = client.getEndpointUrl(store);
@@ -109,31 +128,31 @@ describe('StorefrontClient', () => {
       );
     });
 
-    it('uses per-store Storefront API version override when present', () => {
+    it("uses per-store Storefront API version override when present", () => {
       const store = createMockStore({
-        scraperConfig: { storefrontApiVersion: '2026-01' },
+        scraperConfig: { storefrontApiVersion: "2026-01" },
       });
       const url = client.getEndpointUrl(store);
       expect(url).toBe(
-        'https://test-store.myshopify.com/api/2026-01/graphql.json',
+        "https://test-store.myshopify.com/api/2026-01/graphql.json",
       );
     });
   });
 
-  describe('query', () => {
+  describe("query", () => {
     const store = createMockStore();
-    const gql = 'query { product { title } }';
-    const variables = { handle: 'test' };
+    const gql = "query { product { title } }";
+    const variables = { handle: "test" };
 
-    it('returns data on successful response', async () => {
-      const data = { product: { title: 'Lightning Bolt' } };
+    it("returns data on successful response", async () => {
+      const data = { product: { title: "Lightning Bolt" } };
       mockFetch.mockResolvedValue(mockResponse(200, { data }) as any);
 
       const result = await client.query(store, gql, variables);
       expect(result).toEqual(data);
     });
 
-    it('does not set Storefront access token headers for tokenless mode', async () => {
+    it("does not set Storefront access token headers for tokenless mode", async () => {
       mockFetch.mockResolvedValue(
         mockResponse(200, { data: { product: null } }) as any,
       );
@@ -143,18 +162,21 @@ describe('StorefrontClient', () => {
       const callArgs = mockFetch.mock.calls[0];
       const fetchOptions = callArgs[1] as any;
       expect(
-        fetchOptions.headers['X-Shopify-Storefront-Access-Token'],
+        fetchOptions.headers["X-Shopify-Storefront-Access-Token"],
       ).toBeUndefined();
-      expect(fetchOptions.headers['Shopify-Storefront-Private-Token']).toBeUndefined();
+      expect(
+        fetchOptions.headers["Shopify-Storefront-Private-Token"],
+      ).toBeUndefined();
     });
 
-    it('merges Web Bot Auth headers when enabled', async () => {
+    it("merges Web Bot Auth headers when enabled", async () => {
       const deps = createMockDeps();
       (deps.webBotAuth as any).isEnabled = () => true;
       deps.webBotAuth.signRequest.mockResolvedValue({
-        'Signature-Input': 'sig=("@authority" "signature-agent")',
-        Signature: 'sig=:abc123:',
-        'Signature-Agent': '"https://bot.example/.well-known/http-message-signatures-directory"',
+        "Signature-Input": 'sig=("@authority" "signature-agent")',
+        Signature: "sig=:abc123:",
+        "Signature-Agent":
+          '"https://bot.example/.well-known/http-message-signatures-directory"',
       });
       client = createClient(deps);
       mockFetch.mockResolvedValue(
@@ -164,15 +186,15 @@ describe('StorefrontClient', () => {
       await client.query(store, gql, variables);
 
       const fetchOptions = mockFetch.mock.calls[0][1] as any;
-      expect(fetchOptions.headers['Signature-Agent']).toBe(
+      expect(fetchOptions.headers["Signature-Agent"]).toBe(
         '"https://bot.example/.well-known/http-message-signatures-directory"',
       );
-      expect(fetchOptions.headers.Signature).toBe('sig=:abc123:');
+      expect(fetchOptions.headers.Signature).toBe("sig=:abc123:");
     });
 
-    it('throws ExtractionHttpError with retryAfter on HTTP 429', async () => {
+    it("throws ExtractionHttpError with retryAfter on HTTP 429", async () => {
       mockFetch.mockResolvedValue(
-        mockResponse(429, {}, { 'retry-after': '5' }) as any,
+        mockResponse(429, {}, { "retry-after": "5" }) as any,
       );
 
       await expect(client.query(store, gql, variables)).rejects.toThrow(
@@ -184,7 +206,7 @@ describe('StorefrontClient', () => {
       });
     });
 
-    it('throws ExtractionHttpError on HTTP 430', async () => {
+    it("throws ExtractionHttpError on HTTP 430", async () => {
       mockFetch.mockResolvedValue(mockResponse(430, {}) as any);
 
       await expect(client.query(store, gql, variables)).rejects.toThrow(
@@ -195,7 +217,7 @@ describe('StorefrontClient', () => {
       });
     });
 
-    it('throws ExtractionHttpError on HTTP 5xx', async () => {
+    it("throws ExtractionHttpError on HTTP 5xx", async () => {
       mockFetch.mockResolvedValue(mockResponse(500, {}) as any);
 
       await expect(client.query(store, gql, variables)).rejects.toThrow(
@@ -206,13 +228,13 @@ describe('StorefrontClient', () => {
       });
     });
 
-    it('throws ExtractionHttpError with computed retryAfter on GraphQL THROTTLED', async () => {
+    it("throws ExtractionHttpError with computed retryAfter on GraphQL THROTTLED", async () => {
       const throttledBody = {
         data: null,
         errors: [
           {
-            message: 'Throttled',
-            extensions: { code: 'THROTTLED' },
+            message: "Throttled",
+            extensions: { code: "THROTTLED" },
           },
         ],
         extensions: {
@@ -243,19 +265,19 @@ describe('StorefrontClient', () => {
       }
     });
 
-    it('throws Error (not ExtractionHttpError) on non-throttle GraphQL error', async () => {
+    it("throws Error (not ExtractionHttpError) on non-throttle GraphQL error", async () => {
       const errorBody = {
         data: null,
-        errors: [{ message: 'Something went wrong' }],
+        errors: [{ message: "Something went wrong" }],
       };
       mockFetch.mockResolvedValue(mockResponse(200, errorBody) as any);
 
       await expect(client.query(store, gql, variables)).rejects.toThrow(
-        'GraphQL errors from test-store: Something went wrong',
+        "GraphQL errors from test-store: Something went wrong",
       );
-      await expect(client.query(store, gql, variables)).rejects.not.toBeInstanceOf(
-        ExtractionHttpError,
-      );
+      await expect(
+        client.query(store, gql, variables),
+      ).rejects.not.toBeInstanceOf(ExtractionHttpError);
     });
   });
 });
