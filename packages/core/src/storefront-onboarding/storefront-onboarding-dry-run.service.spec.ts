@@ -55,7 +55,7 @@ describe('StorefrontOnboardingDryRunService', () => {
     expect(tokenMatcher.match).not.toHaveBeenCalled();
   });
 
-  it('rejects an otherwise exact printing when the original listing image differs', async () => {
+  it('records URL differences without rejecting an exact printing', async () => {
     const printingMatcher = {
       match: vi.fn().mockResolvedValue({
         cardPrintingId: 7, cardNameId: 5, confidence: 'exact',
@@ -68,11 +68,12 @@ describe('StorefrontOnboardingDryRunService', () => {
     const [result] = await service.evaluate([variant]);
 
     expect(result).toMatchObject({
-      outcome: 'image-mismatch',
+      outcome: 'exact-printing',
       imageVerified: false,
+      imageComparison: 'url-different',
       sourceImageUrl: 'https://img.example/bolt.jpg',
       canonicalImageUri: 'https://img.example/other.jpg',
     });
-    expect(result.prospectiveListing).toBeUndefined();
+    expect(result.prospectiveListing).toMatchObject({ cardPrintingId: 7 });
   });
 });

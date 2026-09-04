@@ -84,6 +84,8 @@ services:
       - "5000:5000"
     env_file:
       - apps/api/.env
+      # Local-only AI credentials used by the protected onboarding prototype.
+      - .env.local
     environment:
       - NODE_ENV=development
       - REDIS_HOST=redis

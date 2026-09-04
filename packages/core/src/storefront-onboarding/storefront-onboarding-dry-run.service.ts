@@ -8,7 +8,6 @@ export type OnboardingIdentityOutcome =
   | 'ambiguous'
   | 'unmatched'
   | 'token'
-  | 'image-mismatch'
   | 'image-unavailable';
 
 export type OnboardingVariantEvaluation = {
@@ -19,6 +18,7 @@ export type OnboardingVariantEvaluation = {
   sourceImageUrl?: string | null;
   canonicalImageUri?: string | null;
   imageVerified?: boolean;
+  imageComparison?: 'url-match' | 'url-different' | 'unavailable';
   prospectiveListing?: {
     cardPrintingId: number | null;
     cardNameId: number | null;
@@ -64,10 +64,10 @@ export class StorefrontOnboardingDryRunService {
       const image = imageEvidence(variant.imageUrl, canonicalImageUri);
       return {
         variant,
-        outcome: image.imageVerified ? 'exact-printing' : image.failureOutcome!,
+        outcome: image.failureOutcome ?? 'exact-printing',
         cardMatch,
         ...image,
-        ...(image.imageVerified
+        ...(!image.failureOutcome
           ? { prospectiveListing: prospectiveListing(variant, cardMatch) }
           : {}),
       };
@@ -91,7 +91,7 @@ export class StorefrontOnboardingDryRunService {
         const image = imageEvidence(variant.imageUrl, canonicalImageUri);
         return {
           variant,
-          outcome: image.imageVerified ? 'token' : image.failureOutcome!,
+          outcome: image.failureOutcome ?? 'token',
           cardMatch,
           tokenPrintingId: tokenMatch.tokenPrintingId,
           ...image,
@@ -107,23 +107,29 @@ function imageEvidence(
   canonicalImageUri: string | null,
 ): Pick<
   OnboardingVariantEvaluation,
-  'sourceImageUrl' | 'canonicalImageUri' | 'imageVerified'
-> & { failureOutcome?: 'image-mismatch' | 'image-unavailable' } {
-  if (!sourceImageUrl || !canonicalImageUri)
+  'sourceImageUrl' | 'canonicalImageUri' | 'imageVerified' | 'imageComparison'
+> & { failureOutcome?: 'image-unavailable' } {
+  if (!sourceImageUrl)
     return {
-      sourceImageUrl: sourceImageUrl ?? null,
-      canonicalImageUri,
+      sourceImageUrl: null,
+      canonicalImageUri: canonicalImageUri ?? null,
       imageVerified: false,
+      imageComparison: 'unavailable',
       failureOutcome: 'image-unavailable',
+    };
+  if (!canonicalImageUri)
+    return {
+      sourceImageUrl,
+      canonicalImageUri: null,
+      imageVerified: false,
+      imageComparison: 'unavailable',
     };
   return {
     sourceImageUrl,
     canonicalImageUri,
     imageVerified: sourceImageUrl === canonicalImageUri,
-    failureOutcome:
-      sourceImageUrl === canonicalImageUri
-        ? undefined
-        : 'image-mismatch',
+    imageComparison:
+      sourceImageUrl === canonicalImageUri ? 'url-match' : 'url-different',
   };
 }
 

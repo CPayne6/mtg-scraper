@@ -22,7 +22,12 @@ import { StorefrontOnboardingModule } from './storefront-onboarding/storefront-o
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: getDatabaseConfig
+      useFactory: (configService: ConfigService) => ({
+        ...getDatabaseConfig(configService),
+        autoLoadEntities: true,
+      }),
+      // API-owned entities (such as onboarding audit runs) are not part of
+      // @scoutlgs/core's shared database configuration.
     }),
     StoreModule,
     AuthModule,

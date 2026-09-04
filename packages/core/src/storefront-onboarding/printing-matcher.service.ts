@@ -473,6 +473,9 @@ export class PrintingMatcherService implements OnModuleDestroy {
     return name
       .toLowerCase()
       .trim()
+      // Some storefronts display a double-faced card separator as " / ".
+      // Preserve unspaced slashes used in ordinary card names.
+      .replace(/\s+\/\s+/g, ' // ')
       .replace(/\s+/g, ' ')
       .replace(/['']/g, "'")
       .replace(/[""]/g, '"');

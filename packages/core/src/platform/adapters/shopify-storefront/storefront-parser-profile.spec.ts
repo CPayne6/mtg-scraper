@@ -152,6 +152,33 @@ describe("Storefront parser profile grammar", () => {
     );
   });
 
+  it("recognizes underscore-delimited non-foil tag values", () => {
+    const mapping: any = {
+      kind: "mapping",
+      version: 1,
+      fields: {
+        foil: {
+          candidates: [
+            {
+              source: "product.tags",
+              transforms: [
+                { type: "tagValue", mode: "contains", value: "foil" },
+                { type: "foil" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(
+      evaluateStorefrontParserProfile(mapping, {
+        ...input,
+        product: { ...input.product, tags: ["Finish_nonfoil"] },
+      } as any).foil,
+    ).toBe(false);
+  });
+
   it("honours predicates, candidate fallback, and boolean false", () => {
     const tested = {
       kind: "mapping" as const,

@@ -386,8 +386,16 @@ function apply(v: unknown, r: Transform): unknown | typeof missing {
     }
     case "foil": {
       const x = t.trim().toLowerCase();
-      if (/(?:^|\W)(?:non[-\s]?foil|normal|nf)(?:$|\W)/.test(x)) return false;
-      if (/(?:^|\W)(?:foil|fo|etched)(?:$|\W)/.test(x)) return true;
+      const tokenBoundary = "(?:^|[^a-z0-9])";
+      const tokenEnd = "(?:$|[^a-z0-9])";
+      if (
+        new RegExp(`${tokenBoundary}(?:non[-_\\s]?foil|normal|nf)${tokenEnd}`).test(
+          x,
+        )
+      )
+        return false;
+      if (new RegExp(`${tokenBoundary}(?:foil|fo|etched)${tokenEnd}`).test(x))
+        return true;
       return missing;
     }
     case "booleanTokens": {
