@@ -26,6 +26,7 @@ import {
   ExtractionHttpError,
   PlatformAdapterFactory,
   StorefrontPaginationLimitError,
+  generateYearlyBuckets,
 } from '@scoutlgs/core';
 import type { ExtractedCardVariant } from '@scoutlgs/core';
 import type { StorefrontExtractionAdapter } from '@scoutlgs/core';
@@ -1117,32 +1118,6 @@ export class StorefrontProcessor implements OnModuleInit {
       await queueJob.progress(progress);
     }
   }
-}
-
-/**
- * Split [minCreatedAt, maxCreatedAt] into yearly buckets aligned to Jan 1
- * UTC boundaries. The first bucket starts at the actual `minCreatedAt`
- * (not the year start) so the catalog's true earliest product is included.
- * The last bucket ends one second past `maxCreatedAt` so the most recent
- * product is included (created_at filter is exclusive on the upper bound).
- */
-export function generateYearlyBuckets(
-  minCreatedAt: string,
-  maxCreatedAt: string,
-): { start: string; end: string }[] {
-  const min = new Date(minCreatedAt);
-  const max = new Date(maxCreatedAt);
-  if (min > max) return [];
-
-  const buckets: { start: string; end: string }[] = [];
-  let cursor = min;
-  while (cursor <= max) {
-    const nextYear = new Date(Date.UTC(cursor.getUTCFullYear() + 1, 0, 1));
-    const end = nextYear > max ? new Date(max.getTime() + 1000) : nextYear;
-    buckets.push({ start: cursor.toISOString(), end: end.toISOString() });
-    cursor = nextYear;
-  }
-  return buckets;
 }
 
 /**

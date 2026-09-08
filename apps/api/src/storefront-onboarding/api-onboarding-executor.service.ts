@@ -9,6 +9,7 @@ import {
   PRODUCTS_BY_CREATED_AT_QUERY,
   PRODUCT_CREATED_AT_ASC_QUERY,
   PRODUCT_CREATED_AT_DESC_QUERY,
+  generateYearlyBuckets,
   VerifiedStorefrontOnboardingService,
 } from '@scoutlgs/core';
 import { validateStorefrontMappingProfileContract } from '@scoutlgs/shared';
@@ -316,21 +317,6 @@ export class ShopifyStorefrontOnboardingExplorer {
       };
     }
   }
-}
-
-function generateYearlyBuckets(minCreatedAt: string, maxCreatedAt: string) {
-  const min = new Date(minCreatedAt);
-  const max = new Date(maxCreatedAt);
-  if (Number.isNaN(min.getTime()) || Number.isNaN(max.getTime()) || min > max) return [] as Array<{ start: string; end: string }>;
-  const buckets: Array<{ start: string; end: string }> = [];
-  let cursor = min;
-  while (cursor <= max) {
-    const nextYear = new Date(Date.UTC(cursor.getUTCFullYear() + 1, 0, 1));
-    const end = nextYear > max ? new Date(max.getTime() + 1000) : nextYear;
-    buckets.push({ start: cursor.toISOString(), end: end.toISOString() });
-    cursor = nextYear;
-  }
-  return buckets;
 }
 
 function parserDraftAstSchema() {
