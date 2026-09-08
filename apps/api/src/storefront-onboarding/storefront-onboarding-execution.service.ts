@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StorefrontOnboardingApiService } from './storefront-onboarding.service';
-import { ApiStorefrontOnboardingExecutor } from './api-onboarding-executor.service';
+import { ApiStorefrontOnboardingExecutor } from './onboarding-explorer-registry.service';
 
 export interface StorefrontOnboardingExecutor {
   onboard(input: {

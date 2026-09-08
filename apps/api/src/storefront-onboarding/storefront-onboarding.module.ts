@@ -18,9 +18,10 @@ import { StorefrontOnboardingRun } from './storefront-onboarding-run.entity';
 import { StorefrontOnboardingApiService } from './storefront-onboarding.service';
 import { StorefrontOnboardingIdentityService } from './storefront-onboarding-identity.service';
 import { StorefrontOnboardingExecutionService } from './storefront-onboarding-execution.service';
-import { ApiStorefrontOnboardingExecutor } from './api-onboarding-executor.service';
+import { ShopifyStorefrontOnboardingExplorer } from './api-onboarding-executor.service';
 import { AdminStoreStatusController } from './admin-store-status.controller';
 import { ConductCommerceOnboardingExplorer } from './conduct-commerce-onboarding-explorer.service';
+import { ApiStorefrontOnboardingExecutor, ONBOARDING_EXPLORERS } from './onboarding-explorer-registry.service';
 
 @Module({
   imports: [
@@ -44,8 +45,14 @@ import { ConductCommerceOnboardingExplorer } from './conduct-commerce-onboarding
     StorefrontOnboardingDryRunService,
     StorefrontOnboardingIdentityService,
     StorefrontOnboardingExecutionService,
-    ApiStorefrontOnboardingExecutor,
+    ShopifyStorefrontOnboardingExplorer,
     ConductCommerceOnboardingExplorer,
+    {
+      provide: ONBOARDING_EXPLORERS,
+      useFactory: (conduct: ConductCommerceOnboardingExplorer, shopify: ShopifyStorefrontOnboardingExplorer) => [conduct, shopify],
+      inject: [ConductCommerceOnboardingExplorer, ShopifyStorefrontOnboardingExplorer],
+    },
+    ApiStorefrontOnboardingExecutor,
   ],
   exports: [StorefrontOnboardingIdentityService, StorefrontOnboardingExecutionService],
 })
