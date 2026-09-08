@@ -60,8 +60,22 @@ export class ConductCommerceOnboardingExplorer {
     for (const category of [...magic.categories].sort((a: any, b: any) => String(a.uniqueDisplayName).localeCompare(String(b.uniqueDisplayName)))) {
       try {
         const response = await this.client.listings(store, { productTypeID: magic.id, category: category.uniqueDisplayName });
-        const variants = this.adapter.normalizeListings(store, response.listings).flatMap((product) =>
-          product.variants.map((variant) => ({ productId: String(product.inventoryID), variantId: variant.platformVariantId ?? String(product.inventoryID), variant })));
+        const variants: Array<{ productId: string; variantId: string; variant: ExtractedCardVariant }> = [];
+        // This is intentionally the same enrichment boundary used by the
+        // routine Conduct processor.  Onboarding must never approve a parser
+        // based on less identity data than production persists.
+        for (const listing of [...response.listings].sort((left, right) => left.inventoryID - right.inventoryID)) {
+          const normalized = await this.adapter.normalizeListingForExtraction(store, listing);
+          variants.push(...normalized.map((variant) => ({
+            productId: String(listing.inventoryID),
+            variantId: variant.platformVariantId ?? String(listing.inventoryID),
+            variant,
+          })));
+          // A deterministic onboarding sample needs 100 variants, not every
+          // inventory item in the category.  Avoid unnecessary detail calls
+          // while retaining the full traversal in the production processor.
+          if (parsed.length + variants.length >= 100) break;
+        }
         if (variants.length) { sampledCategories.push(category.uniqueDisplayName); parsed.push(...variants); }
         if (parsed.length >= 100) break;
       } catch (error) { return this.report('failed', url, input, { warnings: [error instanceof Error ? error.message : 'Conduct category probe failed'] }); }

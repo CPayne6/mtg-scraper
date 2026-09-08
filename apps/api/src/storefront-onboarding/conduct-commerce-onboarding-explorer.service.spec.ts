@@ -15,6 +15,13 @@ describe('ConductCommerceOnboardingExplorer', () => {
     const client = {
       settings: async () => ({ categories: [{ id: 7, name: 'Magic Singles', categories: [{ uniqueDisplayName: 'Empty' }, { uniqueDisplayName: 'Magic 2010' }] }] }),
       listings: async (_store: unknown, input: { category: string }) => ({ listings: input.category === 'Empty' ? [] : listings }),
+      details: async (_store: unknown, inventoryID: number) => ({
+        ...listings.find((listing) => listing.inventoryID === inventoryID),
+        fields: [
+          { name: 'Set', value: 'Magic 2010' },
+          { name: 'Collector Number', value: String(inventoryID) },
+        ],
+      }),
     };
     const adapter = new ConductCommerceExtractionAdapter(client as any, new ConductCardDetailExtractor());
     const identity = { evaluate: async (variants: any[]) => variants.map((variant) => ({ productId: variant.productId, variantId: variant.variantId, outcome: 'exact-printing' })) };

@@ -6,5 +6,5 @@ export type ConductCategory = { id: number; name: string; uniqueDisplayName: str
 export type ConductProductType = { id: number; name: string; categories: ConductCategory[] };
 export type ConductSettings = { categories: ConductProductType[]; magicConditions?: Array<{ conditionID: number; name: string; default?: number }> };
 export type ConductListingsResult = { listings: ConductListing[]; linkedCategories?: unknown[]; productTypeID?: number };
-export type ConductDetailField = { name: string; value: string };
+export type ConductDetailField = { name: string; value: string | number | null };
 export type ConductProductDetails = ConductListing & { fields?: ConductDetailField[]; images?: string[] };

@@ -124,10 +124,12 @@ processor:
    present in `getStoreSettings`, then fetches every discovered category
    snapshot through `getProductListings`, including categories marked hidden;
    it does not hard-code the ID `1` convention.
-2. Normalize listing variants directly. Use `inventoryID + variantCombinationID`
-   as the fallback platform variant key; do not depend on nullable `variant.id`.
-3. `getProductDetails` supports exact-ID refresh and enriches set/collector
-   identity where the listing snapshot alone is insufficient.
+2. Normalize listing variants through the adapter. When a listing lacks either
+   a set code or collector number, call `getProductDetails` before matching or
+   persistence; use `inventoryID + variantCombinationID` as the fallback
+   platform variant key and do not depend on nullable `variant.id`.
+3. `getProductDetails` is therefore part of the production identity contract,
+   not merely an optional exact-ID refresh.
 4. Construct images with the verified Conduct catalog-image URL rule and use
    `/store/item/{inventoryID}` as the first-party product URL pattern.
 5. Treat every successful category response as a snapshot. Persist its listing
@@ -141,9 +143,10 @@ processor:
    network/429/5xx failures conservatively (initially one request/sec/store);
    classify invalid hosts, malformed payloads, and unknown operations as
    permanent failures.
-8. The existing Shopify-only onboarding flow must be extended with Conduct
-   detection, a deterministic 100+ variant identity gate, and a required
-   merchant-confirmed currency before it creates Conduct proposals.
+8. Conduct onboarding detects explicit Conduct page signals, verifies
+   `getStoreSettings`, uses the same details-enriched normalization as routine
+   extraction, and requires a deterministic 100-variant identity gate plus a
+   merchant-confirmed currency before it creates a proposal.
 9. Obtain written authorization and official API guidance from
    `sales@conductcommerce.com`; no generic HTML fallback is permitted.
 

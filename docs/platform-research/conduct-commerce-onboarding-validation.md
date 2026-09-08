@@ -1,8 +1,8 @@
 # Conduct Commerce parser and onboarding validation
 
-Validated on 2026-09-08 against Conduct's first-party public storefront API.
-This is an evidence report, not a claim that Conduct onboarding is already
-implemented.
+Validated on 2026-09-08 against Conduct's first-party public storefront API
+and the local production matcher. Conduct onboarding is implemented; every
+proposal remains disabled and approval-required.
 
 ## Live parser-contract probes
 
@@ -29,9 +29,10 @@ they do not make live network calls in CI.
 
 ### Compiled-adapter live smoke result
 
-The compiled `ConductCommerceExtractionAdapter.normalizeListings` was then run
-against the retrieved responses, with a merchant-confirmed `CAD` test
-currency.  It emitted valid normalized variants for Prisma (164/164),
+The compiled `ConductCommerceExtractionAdapter` was then run against the
+retrieved responses, with a merchant-confirmed `CAD` test currency. It emits
+listing quantity/stock/image data and enriches missing printing identity with
+`getProductDetails` before matching. It emitted valid normalized variants for Prisma (164/164),
 Laughing Dragon (3,860/3,860), Paragon (1,000/1,000), and Heavy J's
 (3,300/3,300); all emitted variants in those samples retained quantity.
 Magic Stronghold's first category was an Art Series category and correctly
@@ -40,15 +41,23 @@ first category returned zero listings. These are valid catalogue states, not
 parser failures, and prove that onboarding must continue through sorted
 categories until it obtains its 100 normalized-variant sample.
 
-## Onboarding assessment
+## Onboarding result
 
-The current automatic onboarding executor is Shopify Storefront-specific: it
-detects Shopify homepage signals, probes Storefront GraphQL, and invokes the
-Shopify parser dry run.  It cannot currently onboard a Conduct store.  This is
-the remaining implementation gap.
+The automatic executor routes explicit Conduct detections to a Conduct-specific
+explorer. It verifies the API settings envelope, discovers the tenant's Magic
+Singles product type, and performs a deterministic details-enriched sample
+before it proposes a store.
 
-Conduct fits the existing *verified onboarding* model cleanly if the generic
-executor is split behind a small platform-onboarding adapter boundary:
+On 2026-09-08, real database-backed onboarding produced proposal-ready,
+disabled configurations for both `prismatcg.com` and `heavyjs.com` with 100/100
+`exact-printing` identity outcomes. A full selected-category read-only check
+also passed: Prisma's `15th Anniversary` (8 variants) and Heavy J's
+`HarperPrism Book Promos` (20 variants) retained image URLs and quantities and
+matched exactly. A separate Heavy J's in-stock probe verified quantity `2`
+maps to `inStock: true`, while zero-quantity variants map to `false`.
+
+Conduct fits the existing *verified onboarding* model through a small
+platform-onboarding adapter boundary:
 
 1. **Detect** Conduct only from explicit page signals such as an
    `api.conductcommerce.com` frontend reference; never infer it from theme
@@ -59,10 +68,10 @@ executor is split behind a small platform-onboarding adapter boundary:
 3. **Discover scope** by selecting a product type whose normalized name is
    `Magic Singles`, then persist its discovered ID and the merchant-confirmed
    ISO currency in `ConductCommerceConfig`; do not hard-code ID 1.
-4. **Sample** stable category names in sorted order through
+4. **Sample** stable category names and inventory IDs in sorted order through
    `getProductListings` until at least 100 *normalized* variants are
-   available (skipping empty and intentionally excluded Art Series
-   categories), normalize them with `ConductCommerceExtractionAdapter`, and
+   available (skipping empty and intentionally excluded Art Series categories),
+   enrich incomplete listing identity with `getProductDetails`, and
    run the existing card identity gate on that production-equivalent output.
 5. **Propose** a disabled store only after every gate succeeds, with
    `platformType: 'conduct_commerce'`, `scraperType: 'conduct'`, and the

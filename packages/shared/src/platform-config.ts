@@ -58,7 +58,8 @@ export type ConductCommerceConfig = {
   /** ISO-4217 currency; Conduct's tested public responses do not include it. */
   currency: string;
   source: ConductCommerceSource;
-  parser: BuiltinOrMappingParserProfile;
+  /** Conduct's details fields and title conventions have one supported parser. */
+  parser: BuiltinProfile<'conduct'>;
   parserConfig: ConductParserConfig;
 };
 

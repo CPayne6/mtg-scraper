@@ -6,7 +6,7 @@ import { ConductCardDetailExtractor } from './conduct-card-detail.extractor';
 const store = { baseUrl: 'https://merchant.example', scraperConfig: { currency: 'CAD' } } as any;
 
 describe('ConductCommerceExtractionAdapter', () => {
-  it('normalizes a listing and derives a stable fallback variant ID', () => {
+  it('keeps a lightweight listing identifiable for enrichment rather than inventing a collector number', () => {
     const adapter = new ConductCommerceExtractionAdapter({} as any, new ConductCardDetailExtractor());
     const [{ variants: [variant] }] = adapter.normalizeListings(store, [{
       inventoryID: 3212, inventoryName: 'Sol Ring', categoryName: 'Kamigawa: Neon Dynasty Commander',
@@ -14,6 +14,7 @@ describe('ConductCommerceExtractionAdapter', () => {
       variants: [{ id: null, price: 3.14, quantity: 2, name: 'NM/Mint', variantCombinationID: 4 }],
     }]);
     expect(variant).toMatchObject({ cardName: 'Sol Ring', setName: 'Kamigawa: Neon Dynasty Commander', condition: Condition.NM, foil: true, price: 3.14, currency: 'CAD', inStock: true, quantity: 2, platformVariantId: '3212:4', imageUrl: 'https://conduct-catalog-images.s3-us-west-2.amazonaws.com/normal/magic_singles/nec/sol-ring.jpg', productUrl: 'https://merchant.example/store/item/3212' });
+    expect(variant.collectorNumber).toBeUndefined();
   });
 
   it('uses product details for collector number and explicit set identity', () => {
@@ -23,6 +24,28 @@ describe('ConductCommerceExtractionAdapter', () => {
       fields: [{ name: 'Set', value: 'Kamigawa: Neon Dynasty' }, { name: 'Collector Number', value: '161' }, { name: 'Finish', value: 'Regular' }],
     });
     expect(variant).toMatchObject({ setName: 'Kamigawa: Neon Dynasty', collectorNumber: '161', platformVariantId: '9', inStock: false });
+  });
+
+  it('enriches a lightweight listing before extraction when it lacks printing identity', async () => {
+    const listing = {
+      inventoryID: 3212, inventoryName: 'Sol Ring', categoryName: 'Wrong category',
+      variants: [{ id: 9, price: 3.14, quantity: 2, name: 'NM/Mint' }],
+    };
+    const client = {
+      details: async (_store: unknown, inventoryID: number) => ({
+        ...listing,
+        inventoryID,
+        fields: [
+          { name: 'Set', value: 'Kamigawa: Neon Dynasty' },
+          { name: 'Collector Number', value: '161' },
+        ],
+      }),
+    };
+    const adapter = new ConductCommerceExtractionAdapter(client as any, new ConductCardDetailExtractor());
+
+    await expect(adapter.normalizeListingForExtraction(store, listing)).resolves.toMatchObject([
+      { setName: 'Kamigawa: Neon Dynasty', collectorNumber: '161', quantity: 2 },
+    ]);
   });
 
   it('streams every configured Magic category, including hidden categories', async () => {
@@ -35,6 +58,11 @@ describe('ConductCommerceExtractionAdapter', () => {
         inventoryID: input.category === 'Hidden' ? 2 : 1, inventoryName: 'Sol Ring', categoryName: input.category!,
         variants: [{ id: 1, price: 1, quantity: 1, name: 'NM/Mint' }],
       }] }),
+      details: async (_store: unknown, inventoryID: number) => ({
+        inventoryID, inventoryName: 'Sol Ring', categoryName: 'Kamigawa: Neon Dynasty',
+        variants: [{ id: 1, price: 1, quantity: 1, name: 'NM/Mint' }],
+        fields: [{ name: 'Set', value: 'Kamigawa: Neon Dynasty' }, { name: 'Collector Number', value: '161' }],
+      }),
     };
     const adapter = new ConductCommerceExtractionAdapter(client as any, new ConductCardDetailExtractor());
     const seen: string[] = [];
