@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import { fetch } from 'undici';
 import {
   dryRunStorefrontBinderposParser,
+  dryRunStorefrontBuiltinParser,
   dryRunStorefrontMappingProfile,
   VerifiedStorefrontOnboardingService,
 } from '@scoutlgs/core';
@@ -63,11 +64,11 @@ export class ShopifyStorefrontOnboardingExplorer {
   }
   private parser() {
     return {
-      validate: (profile: any) => profile?.kind === 'builtin' ? (profile.version === 1 && profile.parserType === 'binderpos' ? { valid: true, errors: [], warnings: [] } : { valid: false, errors: ['Only BinderPOS is a supported builtin'], warnings: [] }) : validateStorefrontMappingProfileContract(profile),
-      dryRun: (profile: any, products: any[], scope: any) => {
+      validate: (profile: any) => profile?.kind === 'builtin' ? (profile.version === 1 ? { valid: true, errors: [], warnings: [] } : { valid: false, errors: ['Unsupported builtin parser version'], warnings: [] }) : validateStorefrontMappingProfileContract(profile),
+      dryRun: (profile: any, products: any[], scope: any, parserSettings: any = {}) => {
         const contract = profile?.kind === 'builtin' ? this.parser().validate(profile) : validateStorefrontMappingProfileContract(profile);
         if (!contract.valid) return { valid: false, errors: contract.errors, warnings: contract.warnings, parsedVariants: [] };
-        const report = profile.kind === 'builtin' ? dryRunStorefrontBinderposParser(products) : dryRunStorefrontMappingProfile({ uuid: '00000000-0000-4000-8000-000000000000', name: 'onboarding', displayName: 'onboarding', baseUrl: 'https://onboarding.invalid', isActive: false, scraperType: 'default', platformType: 'shopify_storefront', rateLimitPerSecond: 1, discoveryConfig: { discoveryEnabled: false }, scraperConfig: { parser: profile } } as any, products);
+        const report = profile.kind === 'builtin' ? dryRunStorefrontBuiltinParser(products, profile.parserType, { excludeF2fScanListings: parserSettings.excludeScanListings === true }) : dryRunStorefrontMappingProfile({ uuid: '00000000-0000-4000-8000-000000000000', name: 'onboarding', displayName: 'onboarding', baseUrl: 'https://onboarding.invalid', isActive: false, scraperType: 'default', platformType: 'shopify_storefront', rateLimitPerSecond: 1, discoveryConfig: { discoveryEnabled: false }, scraperConfig: { parser: profile } } as any, products);
         const parsedVariants = report.variants.flatMap((v) =>
           v.result.ok
             ? [{ productId: v.productId, variantId: v.variantId, variant: v.result.variant }]

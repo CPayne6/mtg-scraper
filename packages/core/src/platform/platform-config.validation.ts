@@ -73,6 +73,9 @@ export function validateParserConfig(
       if (settings.profile.kind === 'mapping' && config.parserType !== 'mapping')
         errors.push('parserConfig: mapping profile requires parserType mapping');
     }
+    const excludeScanListings = (config.settings as { excludeScanListings?: unknown }).excludeScanListings;
+    if (excludeScanListings !== undefined && (config.parserType !== 'f2f' || excludeScanListings !== true))
+      errors.push('parserConfig.settings.excludeScanListings: supported only as true for f2f');
   }
   if (profile && typeof profile === 'object') {
     const selected = profile as StorefrontParserProfile;

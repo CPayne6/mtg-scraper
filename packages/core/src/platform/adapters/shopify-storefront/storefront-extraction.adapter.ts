@@ -7,6 +7,11 @@ import type {
 } from "../../platform.interfaces";
 import { CardDetailExtractorRegistry } from "../shopify/card-detail-extractor.registry";
 import { BinderposCardDetailExtractor } from "../shopify/extractors/binderpos/binderpos-card-detail.extractor";
+import { F2fCardDetailExtractor } from "../shopify/extractors/f2f/f2f-card-detail.extractor";
+import { HobbiesvilleCardDetailExtractor } from "../shopify/extractors/hobbiesville/hobbiesville-card-detail.extractor";
+import { _401CardDetailExtractor } from "../shopify/extractors/_401/_401-card-detail.extractor";
+import { CgRealmCardDetailExtractor } from "../shopify/extractors/cgrealm/cgrealm-card-detail.extractor";
+import { DefaultCardDetailExtractor } from "../shopify/extractors/default/default-card-detail.extractor";
 import { ExtractionHttpError } from "../shopify/extraction-http-error";
 import { parseConditionAndFoil } from "../shopify/shopify-variant.utils";
 import { StorefrontPaginationLimitError } from "./pagination-limit-error";
@@ -190,6 +195,36 @@ export function dryRunStorefrontBinderposParser(
     failuresByCode,
     variants: parsed,
   };
+}
+
+/** Read-only production-parser dry run for every built-in Shopify parser. */
+export type StorefrontBuiltinDryRunOptions = {
+  /** F2F Scan inventory has no safe printing/condition metadata. */
+  excludeF2fScanListings?: boolean;
+};
+
+export function isF2fScanListing(productTitle: string | undefined, sku: string | undefined): boolean {
+  return /\bscan\s+\d+\b/i.test(productTitle ?? '') || /^SIN-SCAN-/i.test(sku ?? '');
+}
+
+export function dryRunStorefrontBuiltinParser(
+  products: StorefrontProduct[],
+  parserType: string,
+  options: StorefrontBuiltinDryRunOptions = {},
+): StorefrontParserDryRunReport {
+  if (parserType === 'binderpos') return dryRunStorefrontBinderposParser(products);
+  const extractor = parserType === 'f2f' ? new F2fCardDetailExtractor() : parserType === 'hobbies' ? new HobbiesvilleCardDetailExtractor() : parserType === '401' ? new _401CardDetailExtractor() : parserType === 'cgrealm' ? new CgRealmCardDetailExtractor() : new DefaultCardDetailExtractor();
+  const variants: any[] = [];
+  const failuresByCode: any = { 'missing-card-name': 0, 'missing-set-identity': 0, 'unknown-condition': 0, 'unknown-finish': 0, 'invalid-price': 0, 'missing-currency': 0, 'missing-variant-id': 0 };
+  for (const product of products) for (const input of normalizeStorefrontProfileInputs(product)) {
+    const variant = input.variant, title = extractor.parseTitle(product.title ?? ''), sku = extractor.parseSkuInfo(variant.sku), tag = extractor.parseTags(product.tags), condition = parseConditionAndFoil({ option1: variant.selectedOptions[0]?.value, option2: variant.selectedOptions[1]?.value, title: variant.title });
+    if (parserType === 'f2f' && options.excludeF2fScanListings && isF2fScanListing(product.title, variant.sku)) continue;
+    const failures: any[] = [];
+    if (!title.cardName) failures.push('missing-card-name'); if (!(title.setName || sku.setCode || tag.setName)) failures.push('missing-set-identity'); if (condition.condition === Condition.UNKNOWN) failures.push('unknown-condition'); if (!Number.isFinite(Number(variant.price?.amount))) failures.push('invalid-price'); if (!variant.price?.currencyCode) failures.push('missing-currency'); if (!variant.id) failures.push('missing-variant-id');
+    failures.forEach(f => failuresByCode[f]++);
+    variants.push({ productId: product.id?.split('/').pop() ?? '', variantId: variant.id?.split('/').pop() ?? '', result: failures.length ? { ok:false, failures: failures.map(code => ({code})) } : { ok:true, variant: { cardName:title.cardName, setName:title.setName || tag.setName || '', setCode:sku.setCode || title.setCode, collectorNumber:sku.collectorNumber || title.collectorNumber, condition:condition.condition, foil:sku.foil ?? title.foil ?? condition.foil, isToken:!!sku.isToken, price:Number(variant.price.amount), currency:variant.price.currencyCode, inStock:!!variant.availableForSale, imageUrl:input.product.images[0]?.url, platformVariantId:variant.id.split('/').pop() } } });
+  }
+  const validVariants = variants.filter(v => v.result.ok).length; return { sampledProducts: products.length, sampledVariants: variants.length, validVariants, rejectedVariants: variants.length-validVariants, coverage: variants.length ? validVariants/variants.length : 1, failuresByCode, variants };
 }
 
 @Injectable()
@@ -531,6 +566,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
       });
     }
     const extractor = this.extractorRegistry.get(this.parserType(store));
+    const excludeF2fScanListings = this.excludeF2fScanListings(store);
 
     // Parse product-level info
     const titleInfo = extractor.parseTitle(product.title);
@@ -553,6 +589,10 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const variants: ExtractedCardVariant[] = [];
 
     for (const { node: variant } of product.variants.edges) {
+      if (excludeF2fScanListings && isF2fScanListing(product.title, variant.sku ?? undefined)) {
+        this.logger.debug(`Skipped unsupported F2F Scan listing store=${store.name} product=${product.id.split('/').pop()} variant=${variant.id.split('/').pop()}`);
+        continue;
+      }
       // Map selectedOptions positionally to option1/option2/option3
       const option1 = variant.selectedOptions[0]?.value;
       const option2 = variant.selectedOptions[1]?.value;
@@ -644,6 +684,17 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const profile = storefrontParserProfile(store);
     return config?.parserConfig?.parserType ??
       (profile?.kind === "builtin" ? profile.parserType : store.scraperType);
+  }
+
+  private excludeF2fScanListings(store: Store): boolean {
+    const config = store.scraperConfig as {
+      parserConfig?: {
+        parserType?: string;
+        settings?: { excludeScanListings?: boolean };
+      };
+    } | undefined;
+    return config?.parserConfig?.parserType === 'f2f' &&
+      config.parserConfig.settings?.excludeScanListings === true;
   }
 
   /** Converts Storefront edges to the profile contract. Tools can create this same shape from nodes. */

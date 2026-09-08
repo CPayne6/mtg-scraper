@@ -99,6 +99,21 @@ export function validateStorefrontStoreConfig(
     if (!parser.valid)
       errors.push(...parser.errors.map((error) => `parser: ${error}`));
   }
+  const parserConfig = (config as {
+    parserConfig?: {
+      parserType?: unknown;
+      settings?: { profile?: unknown; excludeScanListings?: unknown };
+    };
+  }).parserConfig;
+  if (parserConfig?.parserType === 'f2f') {
+    const profile = parserConfig.settings?.profile as { kind?: unknown; version?: unknown; parserType?: unknown } | undefined;
+    if (profile?.kind !== 'builtin' || profile.version !== 1 || profile.parserType !== 'f2f')
+      errors.push('parserConfig.settings.profile: expected builtin f2f profile');
+    if (parserConfig.settings?.excludeScanListings !== undefined && parserConfig.settings.excludeScanListings !== true)
+      errors.push('parserConfig.settings.excludeScanListings: expected true when set');
+  } else if (parserConfig?.settings?.excludeScanListings !== undefined) {
+    errors.push('parserConfig.settings.excludeScanListings: supported only as true for f2f');
+  }
   return errors.length
     ? { valid: false, errors }
     : {

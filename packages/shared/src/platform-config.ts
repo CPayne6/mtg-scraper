@@ -11,7 +11,15 @@ export type BuiltinOrMappingParserProfile = StorefrontParserProfile;
 type BuiltinProfile<T extends string> = { kind: 'builtin'; version: 1; parserType: T };
 export type DefaultParserConfig = { parserType: 'default'; settings: { profile: BuiltinProfile<'default'> } };
 export type BinderposParserConfig = { parserType: 'binderpos'; settings: { profile: BuiltinProfile<'binderpos'> } };
-export type F2fParserConfig = { parserType: 'f2f'; settings: { profile: BuiltinProfile<'f2f'> } };
+/** F2F Scan rows expose no safe printing/condition identity and are excluded
+ * deliberately, rather than being guessed or allowed to dilute onboarding. */
+export type F2fParserConfig = {
+  parserType: 'f2f';
+  settings: {
+    profile: BuiltinProfile<'f2f'>;
+    excludeScanListings?: true;
+  };
+};
 export type _401ParserConfig = { parserType: '401'; settings: { profile: BuiltinProfile<'401'> } };
 export type HobbiesParserConfig = { parserType: 'hobbies'; settings: { profile: BuiltinProfile<'hobbies'> } };
 export type CgRealmParserConfig = { parserType: 'cgrealm'; settings: { profile: BuiltinProfile<'cgrealm'> } };
