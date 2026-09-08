@@ -52,6 +52,11 @@ export class ShopifyStorefrontOnboardingExplorer {
     try {
       const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'ScoutLGS onboarding probe' }, body: JSON.stringify({ query: PRODUCTS, variables: { first, query: scope } }), signal: AbortSignal.timeout(timeoutMs) });
       const body: any = await response.json();
+      // Some otherwise valid Storefront tenants reject high-complexity probes
+      // (many products × variants) with an internal GraphQL error. Sampling is
+      // sufficient for onboarding, so retry once with a smaller bounded page.
+      if (body.errors?.length && first > 50)
+        return this.products(url, version, scope, timeoutMs, 50);
       if (!response.ok || body.errors?.length) return { ok: false, products: [], error: body.errors?.map((e: any) => e.message).join('; ') ?? `HTTP ${response.status}` };
       return { ok: true, products: body.data?.products?.nodes ?? [] };
     } catch (error) { return { ok: false, products: [], error: error instanceof Error ? error.message : 'catalog unavailable' }; }

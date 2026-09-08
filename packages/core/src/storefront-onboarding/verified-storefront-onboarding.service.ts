@@ -191,7 +191,10 @@ export class VerifiedStorefrontOnboardingService {
     for (const candidate of candidates) {
       const result = await this.deps.storefront.products(url, apiVersion, candidate.query, timeoutMs, 250);
       const products = result.products ?? []; const variants = products.reduce((n, p) => n + productVariants(p).length, 0);
-      const contaminated = products.some(p => !/single/i.test(String(p.productType ?? p.product_type ?? '')) || !(/magic|mtg/i.test(`${p.productType ?? ''} ${tags(p).join(' ')}`)));
+      // Some Shopify tenants (for example Face to Face) express the game as
+      // the vendor rather than a tag. A manual or inferred vendor:Magic scope
+      // is just as explicit as a Magic tag and must not be rejected.
+      const contaminated = products.some(p => !/single/i.test(String(p.productType ?? p.product_type ?? '')) || !(/magic|mtg/i.test(`${p.productType ?? ''} ${p.vendor ?? ''} ${tags(p).join(' ')}`)));
       const assessed = { ...candidate, ok: result.ok && products.length > 0 && !contaminated, productCount: products.length, variantCount: variants, warnings: result.ok && products.length && !contaminated ? [] : ['unsafe, empty, or mixed catalogue scope'] };
       scope ??= assessed; if (assessed.ok) { scope = assessed; scoped = products; break; }
     }
