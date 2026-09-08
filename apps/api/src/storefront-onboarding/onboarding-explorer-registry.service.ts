@@ -1,6 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ConductCommerceOnboardingExplorer } from './conduct-commerce-onboarding-explorer.service';
+import { ShopifyStorefrontOnboardingExplorer } from './api-onboarding-executor.service';
 
-export const ONBOARDING_EXPLORERS = Symbol('ONBOARDING_EXPLORERS');
 
 export type UnifiedOnboardingInput = {
   url: string; proposedSlug?: string; scope?: string; currency?: string;
@@ -16,11 +17,17 @@ export interface StoreOnboardingExplorer {
 
 @Injectable()
 export class ApiStorefrontOnboardingExecutor {
-  constructor(@Inject(ONBOARDING_EXPLORERS) private readonly explorers: StoreOnboardingExplorer[]) {}
+  constructor(
+    private readonly conduct: ConductCommerceOnboardingExplorer,
+    private readonly shopify: ShopifyStorefrontOnboardingExplorer,
+  ) {}
 
   async onboard(input: UnifiedOnboardingInput): Promise<Record<string, any>> {
     const url = new URL(input.url); url.pathname = '/'; url.search = ''; url.hash = '';
-    for (const explorer of this.explorers) {
+    // Conduct is checked first because its frontend can carry Shopify-like
+    // theme artifacts; every candidate still has to verify its own API.
+    const explorers: StoreOnboardingExplorer[] = [this.conduct, this.shopify];
+    for (const explorer of explorers) {
       if (await explorer.detects(url, input.timeoutMs)) return explorer.onboard({ ...input, url: url.toString() });
     }
     return {
