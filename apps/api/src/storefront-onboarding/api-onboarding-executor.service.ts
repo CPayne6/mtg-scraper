@@ -36,7 +36,12 @@ export class ShopifyStorefrontOnboardingExplorer {
     const service = new VerifiedStorefrontOnboardingService({
       storefront: {
         homepage: (url, timeoutMs) => this.homepage(url, timeoutMs),
-        products: (url, version, scope, timeoutMs, first) => this.products(url, version, scope, timeoutMs, first),
+        // The unscoped probe only discovers candidate scope values; the
+        // scoped probe uses the production-style bucket traversal to gather
+        // the deterministic identity sample.
+        products: (url, version, scope, timeoutMs, first) => scope
+          ? this.products(url, version, scope, timeoutMs, first)
+          : this.products(url, version, scope, timeoutMs, first, 1, 0),
         productsByTitle: (url, version, title, timeoutMs) =>
           this.products(url, version, `title:${JSON.stringify(title)}`, timeoutMs, 20, 1, 0),
       },
