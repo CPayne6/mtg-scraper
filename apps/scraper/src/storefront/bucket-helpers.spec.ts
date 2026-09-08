@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  generateYearlyBuckets,
   halveDateRange,
   canSplitDateRange,
 } from './storefront.processor';
+import { generateYearlyBuckets } from '@scoutlgs/core';
 
 describe('generateYearlyBuckets', () => {
   it('produces one bucket per year aligned to Jan 1 UTC boundaries', () => {

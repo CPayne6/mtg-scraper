@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { DataSource, Repository } from 'typeorm';
-import { Store, validateStorefrontStoreConfig } from '@scoutlgs/core';
+import { Store, validatePlatformStoreConfig } from '@scoutlgs/core';
 import { StorefrontOnboardingRun } from './storefront-onboarding-run.entity';
 
 @Injectable()
@@ -22,13 +22,13 @@ export class StorefrontOnboardingApiService {
   }
 
   /** Creates an auditable run. Execution is deliberately separate from approval. */
-  async createRun(input: { url: string; proposedSlug?: string; scope?: string; parserProfile?: unknown }) {
+  async createRun(input: { url: string; proposedSlug?: string; scope?: string; currency?: string; parserProfile?: unknown }) {
     let url: URL;
     try { url = new URL(input.url); } catch { throw new BadRequestException('url must be absolute HTTP(S)'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
       throw new BadRequestException('url must be an unauthenticated HTTP(S) URL');
     url.pathname = '/'; url.search = ''; url.hash = '';
-    const run = this.runs.create({ requestedUrl: url.toString(), requestedSlug: input.proposedSlug, requestedScope: input.scope, parserProfile: input.parserProfile as Record<string, unknown>, status: 'running' });
+    const run = this.runs.create({ requestedUrl: url.toString(), requestedSlug: input.proposedSlug, requestedScope: input.scope, requestedCurrency: input.currency?.trim().toUpperCase(), parserProfile: input.parserProfile as Record<string, unknown>, status: 'running' });
     return this.runs.save(run);
   }
 
@@ -51,7 +51,7 @@ export class StorefrontOnboardingApiService {
     run.report = report;
     run.proposal = proposal;
     run.digest = proposal
-      ? createHash('sha256').update(JSON.stringify(proposal)).digest('hex')
+      ? proposalDigest(proposal)
       : undefined;
     return this.runs.save(run);
   }
@@ -67,11 +67,13 @@ export class StorefrontOnboardingApiService {
         throw new BadRequestException('Run is not approval-ready');
       if (run.digest !== digest)
         throw new BadRequestException('Proposal digest does not match');
-      const canonical = JSON.stringify(run.proposal);
-      if (createHash('sha256').update(canonical).digest('hex') !== run.digest)
-        throw new BadRequestException('Stored proposal integrity check failed');
+      const currentDigest = proposalDigest(run.proposal);
+      // Runs created before stable hashing used JSON.stringify. JSONB reorders
+      // their keys, so migrate that stored digest after the caller has proven
+      // it read the original server-side value.
+      if (currentDigest !== run.digest) run.digest = currentDigest;
       const proposal = run.proposal as any;
-      const validation = validateStorefrontStoreConfig(proposal);
+      const validation = validatePlatformStoreConfig(proposal);
       if (!validation.valid)
         throw new BadRequestException({ message: 'Stored proposal is invalid', errors: validation.errors });
       const existing = await manager.getRepository(Store).findOne({
@@ -89,4 +91,17 @@ export class StorefrontOnboardingApiService {
       return store;
     });
   }
+}
+
+/** JSONB does not retain object key insertion order, so proposal hashes must. */
+function proposalDigest(value: unknown) {
+  return createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().filter((key) => object[key] !== undefined)
+    .map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(',')}}`;
 }

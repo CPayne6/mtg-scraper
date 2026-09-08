@@ -343,7 +343,8 @@ export class StorefrontClient {
    * Build the Storefront API GraphQL endpoint URL for a store.
    */
   getEndpointUrl(store: Store): string {
-    const configuredHost = store.scraperConfig?.shopifyUrl;
+    const storefrontConfig = store.scraperConfig as { shopifyUrl?: string; storefrontApiVersion?: string } | undefined;
+    const configuredHost = storefrontConfig?.shopifyUrl;
     const host = normalizeStorefrontHost(configuredHost, store.baseUrl);
     if (
       configuredHost?.startsWith("http://") ||
@@ -353,7 +354,7 @@ export class StorefrontClient {
         `Deprecated absolute scraperConfig.shopifyUrl for ${store.name}; use host[:port]`,
       );
     const apiVersion =
-      store.scraperConfig?.storefrontApiVersion || getStorefrontApiVersion();
+      storefrontConfig?.storefrontApiVersion || getStorefrontApiVersion();
     return `https://${host}/api/${apiVersion}/graphql.json`;
   }
 }

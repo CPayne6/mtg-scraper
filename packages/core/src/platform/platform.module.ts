@@ -15,6 +15,9 @@ import { CardDetailExtractorRegistry } from './adapters/shopify/card-detail-extr
 import { StorefrontClient } from './adapters/shopify-storefront/storefront-client';
 import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
 import { PlatformAdapterFactory } from './platform-adapter.factory';
+import { ConductCommerceExtractionAdapter } from './adapters/conduct-commerce/conduct-commerce-extraction.adapter';
+import { ConductCommerceClient } from './adapters/conduct-commerce/conduct-commerce.client';
+import { ConductCardDetailExtractor } from './adapters/conduct-commerce/conduct-card-detail.extractor';
 
 /**
  * Token for injecting the proxy agent factory function
@@ -35,11 +38,16 @@ export const PLATFORM_PROXY_FACTORY = 'PLATFORM_PROXY_FACTORY';
     CardDetailExtractorRegistry,
     StorefrontClient,
     StorefrontExtractionAdapter,
+    ConductCommerceClient,
+    ConductCardDetailExtractor,
+    ConductCommerceExtractionAdapter,
     PlatformAdapterFactory,
   ],
   exports: [
     StorefrontClient,
     StorefrontExtractionAdapter,
+    ConductCommerceExtractionAdapter,
+    ConductCommerceClient,
     PlatformAdapterFactory,
     CardDetailExtractorRegistry,
     DefaultCardDetailExtractor,

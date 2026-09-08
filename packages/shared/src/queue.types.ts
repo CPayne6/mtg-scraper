@@ -1,5 +1,7 @@
 export const QUEUE_NAMES = {
   STOREFRONT_EXTRACTION: 'storefront-extraction',
+  /** Full catalog scans through Conduct Commerce's public storefront API. */
+  CONDUCT_COMMERCE_EXTRACTION: 'conduct-commerce-extraction',
   /** Interactive exact-ID offer refreshes must not wait behind catalog discovery. */
   LIST_REFRESH: 'list-refresh',
   CARD_OPTIMIZATION: 'card-optimization',
@@ -32,6 +34,7 @@ export const JOB_NAMES = {
   REEXTRACT_UNMATCHED: 'reextract-unmatched',
   /** Recover locally-known offers when a created_at bucket cannot split further. */
   STOREFRONT_KNOWN_OFFER_RECOVERY: 'storefront-known-offer-recovery',
+  CONDUCT_COMMERCE_CATALOG: 'conduct-commerce-catalog',
   CART_PRODUCT_REFRESH: 'cart-product-refresh',
 } as const;
 
@@ -57,7 +60,12 @@ export interface CardOptimizationJobData {
 /**
  * Platform types for extraction adapters
  */
-export type PlatformType = 'shopify' | 'shopify_storefront' | 'conduct_commerce';
+/** `shopify` remains readable for legacy rows but is not an adapter target. */
+export type PlatformType =
+  | 'shopify'
+  | 'shopify_storefront'
+  | 'crystal_commerce'
+  | 'conduct_commerce';
 
 /**
  * Per-store opt-in flag for scheduled extraction. Stored in
@@ -117,6 +125,9 @@ export interface CartProductRefreshJobData {
 export interface CartRefreshItemResult { variantId: number; title: string; cardKey?: string; outcome: CartRefreshOutcome; previousPrice: number; price?: number; message?: string; }
 export interface CartProductRefreshJobResult { items: CartRefreshItemResult[]; success: boolean; }
 export interface StorefrontKnownOfferRecoveryJobData { storeId: number; createdAtStart: string; createdAtEnd: string; discoveryRunId?: number; }
+
+/** One complete, source-scoped Conduct Commerce catalog refresh. */
+export interface ConductCommerceCatalogJobData { storeId: number; discoveryRunId?: number; }
 
 /**
  * Per-store plan job. Probes the store's `created_at` range and fans out

@@ -27,6 +27,8 @@ export interface Card {
   // Numeric Shopify variant ID. Drives per-store cart permalinks
   // (`https://{shop}/cart/{variant_id}:{qty}`) on POST /api/v1/checkout/build.
   variant_id?: string;
+  /** Exact merchant inventory count when the platform exposes it. */
+  quantity?: number;
 }
 
 // `store` is the store's displayName (human-readable, e.g. "Face to Face Games").

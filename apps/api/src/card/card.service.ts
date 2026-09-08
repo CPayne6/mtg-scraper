@@ -100,7 +100,7 @@ export class CardService {
       const scryfallId = listing.cardPrinting?.scryfallId;
       const title = `${cardNameRecord.name}${setName ? ` [${setName}]` : ''}`;
       const productLink = listing.productUrl
-        ? `${listing.store.baseUrl}/products/${listing.productUrl.handle}`
+        ? this.productLink(listing.store, listing.productUrl.handle)
         : listing.store.baseUrl;
 
       for (const variant of listing.variants ?? []) {
@@ -117,6 +117,7 @@ export class CardService {
           card_number: collectorNumber,
           scryfall_id: scryfallId,
           variant_id: variant.platformVariantId,
+          quantity: variant.quantity,
           store: listing.store.displayName,
           store_key: listing.store.name,
         });
@@ -138,6 +139,12 @@ export class CardService {
       .replace(/\s+/g, ' ')
       .replace(/[‘’]/g, "'")
       .replace(/[“”]/g, '"');
+  }
+
+  private productLink(store: Store, handle: string): string {
+    return store.platformType === 'conduct_commerce'
+      ? new URL(`/store/item/${handle}`, store.baseUrl).toString()
+      : new URL(`/products/${handle}`, store.baseUrl).toString();
   }
 
   /**

@@ -6,3 +6,4 @@ export { StorefrontOnboardingDryRunService } from './storefront-onboarding-dry-r
 export type { OnboardingVariantEvaluation, OnboardingIdentityOutcome } from './storefront-onboarding-dry-run.service';
 export { VerifiedStorefrontOnboardingService, deterministicVariantSample, inferStorefrontScopes } from './verified-storefront-onboarding.service';
 export type { VerifiedStorefrontOnboardingDependencies, OnboardingScope, OnboardingParser } from './verified-storefront-onboarding.service';
+export { generateYearlyBuckets } from './date-buckets';

@@ -21,6 +21,7 @@ export type {
   CartProductRefreshJobResult,
   CartProductRefreshProductTarget,
   StorefrontKnownOfferRecoveryJobData,
+  ConductCommerceCatalogJobData,
   CartRefreshItemResult,
   CartRefreshOutcome,
 } from "./queue.types";
@@ -55,3 +56,13 @@ export {
   STOREFRONT_MAPPING_PROFILE_JSON_SCHEMA,
   normalizeStorefrontMappingProfileDraft,
 } from "./storefront-mapping-profile-schema";
+export type {
+  BuiltinOrMappingParserProfile,
+  CrystalCommerceSource,
+  CrystalCommerceConfig,
+  ConductCommerceSource,
+  ConductCommerceConfig,
+  StoreScraperConfig,
+  StoreParserConfig,
+  ConductParserConfig,
+} from './platform-config';

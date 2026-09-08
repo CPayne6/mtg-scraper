@@ -5,6 +5,7 @@ import {
   QUEUE_NAMES,
   JOB_NAMES,
   StorefrontPlanJobData,
+  ConductCommerceCatalogJobData,
   ReextractUnmatchedJobData,
 } from '@scoutlgs/shared';
 
@@ -23,11 +24,43 @@ export class QueueService {
     >,
     @InjectQueue(QUEUE_NAMES.CARD_OPTIMIZATION)
     private readonly cardOptimizationQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.CONDUCT_COMMERCE_EXTRACTION)
+    private readonly conductCommerceExtractionQueue: Queue<ConductCommerceCatalogJobData>,
   ) {
     this.queues = new Map<string, Queue>([
       [QUEUE_NAMES.STOREFRONT_EXTRACTION, this.storefrontExtractionQueue],
       [QUEUE_NAMES.CARD_OPTIMIZATION, this.cardOptimizationQueue],
+      [QUEUE_NAMES.CONDUCT_COMMERCE_EXTRACTION, this.conductCommerceExtractionQueue],
     ]);
+  }
+
+  /** Queue one source-scoped Conduct Commerce refresh. */
+  async enqueueConductCommerceCatalogJob(
+    storeId: number,
+    options: { discoveryRunId?: number } = {},
+  ): Promise<boolean> {
+    const active = await this.conductCommerceExtractionQueue.getJobs(
+      ['waiting', 'active', 'delayed', 'prioritized'] as any,
+      0,
+      10_000,
+    );
+    if (active.some((job) => job.name === JOB_NAMES.CONDUCT_COMMERCE_CATALOG && job.data.storeId === storeId)) {
+      this.logger.warn(`Skipped duplicate Conduct Commerce scan for store ${storeId}`);
+      return false;
+    }
+    await this.conductCommerceExtractionQueue.add(
+      JOB_NAMES.CONDUCT_COMMERCE_CATALOG,
+      { storeId, ...options } satisfies ConductCommerceCatalogJobData,
+      {
+        priority: 1,
+        removeOnComplete: 50,
+        removeOnFail: 100,
+        attempts: 4,
+        backoff: { type: 'exponential', delay: 5_000 },
+      },
+    );
+    this.logger.log(`Enqueued Conduct Commerce catalog scan for store ${storeId}`);
+    return true;
   }
 
   private getQueueByName(queueName: string): Queue {
@@ -106,6 +139,17 @@ export class QueueService {
 
   async hasStorefrontCrawlForStore(storeId: number): Promise<boolean> {
     return (await this.getActiveStorefrontCrawlStoreIds()).has(storeId);
+  }
+
+  async hasConductCommerceCrawlForStore(storeId: number): Promise<boolean> {
+    const jobs = await this.conductCommerceExtractionQueue.getJobs(
+      ['waiting', 'active', 'delayed', 'prioritized'] as any,
+      0,
+      10_000,
+    );
+    return jobs.some(
+      (job) => job.name === JOB_NAMES.CONDUCT_COMMERCE_CATALOG && job.data.storeId === storeId,
+    );
   }
 
   /**

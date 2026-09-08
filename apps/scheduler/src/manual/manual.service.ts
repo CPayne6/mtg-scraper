@@ -84,15 +84,29 @@ export class ManualService {
       throw new NotFoundException(`Store ${opts.storeId} not found`);
     }
 
+    if (store.platformType === 'conduct_commerce') {
+      await this.queueService.enqueueConductCommerceCatalogJob(store.id);
+      return {
+        message: `Conduct Commerce catalog extraction triggered for ${store.name}`,
+        storeId: store.id,
+        platformType: store.platformType,
+        mode: 'source-scoped-catalog',
+      };
+    }
+
     if (store.platformType !== 'shopify_storefront') {
       throw new BadRequestException(
-        `Store ${store.name} has platform type '${store.platformType}', expected 'shopify_storefront'`,
+        `Store ${store.name} has unsupported platform type '${store.platformType}'`,
       );
     }
 
-    const scope = store.scraperConfig?.source?.mode === 'products-query'
-      ? store.scraperConfig.source.productQuery
-      : store.scraperConfig?.storefrontScope;
+    const config = store.scraperConfig as {
+      source?: { mode?: string; productQuery?: string };
+      storefrontScope?: string;
+    } | undefined;
+    const scope = config?.source?.mode === 'products-query'
+      ? config.source.productQuery
+      : config?.storefrontScope;
     if (!scope) {
       throw new BadRequestException(
         `Store ${store.name} is missing scraperConfig.storefrontScope`,
@@ -118,18 +132,28 @@ export class ManualService {
     };
   }
 
-  /** Trigger the modern storefront planner for every active storefront. */
+  /** Trigger every active supported catalog backend. */
   async triggerAllStorefrontExtractions() {
     const stores = await this.storeRepository.find({
-      where: { isActive: true, platformType: 'shopify_storefront' as any },
+      where: { isActive: true },
     });
 
     const results: { store: string; error?: string }[] = [];
 
     for (const store of stores) {
-      const scope = store.scraperConfig?.source?.mode === 'products-query'
-        ? store.scraperConfig.source.productQuery
-        : store.scraperConfig?.storefrontScope;
+      if (store.platformType === 'conduct_commerce') {
+        await this.queueService.enqueueConductCommerceCatalogJob(store.id);
+        results.push({ store: store.name });
+        continue;
+      }
+      if (store.platformType !== 'shopify_storefront') continue;
+      const config = store.scraperConfig as {
+        source?: { mode?: string; productQuery?: string };
+        storefrontScope?: string;
+      } | undefined;
+      const scope = config?.source?.mode === 'products-query'
+        ? config.source.productQuery
+        : config?.storefrontScope;
       if (!scope) {
         results.push({ store: store.name, error: 'Missing storefrontScope' });
         continue;
@@ -140,7 +164,7 @@ export class ManualService {
     }
 
     this.logger.log(
-      `Triggered planned storefront extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores`,
+      `Triggered catalog extraction for ${results.filter((r) => !r.error).length}/${stores.length} stores`,
     );
 
     return {

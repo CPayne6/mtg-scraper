@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { PlatformType } from '@scoutlgs/shared';
 import type { IExtractionAdapter } from './platform.interfaces';
 import { StorefrontExtractionAdapter } from './adapters/shopify-storefront/storefront-extraction.adapter';
+import { ConductCommerceExtractionAdapter } from './adapters/conduct-commerce/conduct-commerce-extraction.adapter';
 
 /**
  * Factory for creating platform-specific adapters
@@ -13,6 +14,7 @@ export class PlatformAdapterFactory {
 
   constructor(
     private readonly storefrontExtraction: StorefrontExtractionAdapter,
+    private readonly conductCommerceExtraction: ConductCommerceExtractionAdapter,
   ) {}
 
   /**
@@ -23,7 +25,7 @@ export class PlatformAdapterFactory {
       case 'shopify_storefront':
         return this.storefrontExtraction;
       case 'conduct_commerce':
-        throw new Error('ConductCommerce extraction adapter not yet implemented');
+        return this.conductCommerceExtraction;
       default:
         throw new Error(`No extraction adapter for platform: ${platformType}`);
     }
@@ -33,6 +35,6 @@ export class PlatformAdapterFactory {
    * Check if a platform type is supported
    */
   isSupported(platformType: PlatformType): boolean {
-    return platformType === 'shopify_storefront';
+    return platformType === 'shopify_storefront' || platformType === 'conduct_commerce';
   }
 }

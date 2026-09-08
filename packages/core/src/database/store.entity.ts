@@ -9,7 +9,7 @@ import {
 import type {
   PlatformType,
   StoreDiscoveryConfig,
-  StorefrontScraperConfig,
+  StoreScraperConfig,
 } from "@scoutlgs/shared";
 
 @Entity("stores")
@@ -37,13 +37,10 @@ export class Store {
   isActive: boolean;
 
   @Column({ name: "scraper_type" })
-  scraperType: "default" | "f2f" | "401" | "hobbies" | "binderpos" | "cgrealm";
+  scraperType: "default" | "f2f" | "401" | "hobbies" | "binderpos" | "cgrealm" | "conduct";
 
   @Column({ name: "scraper_config", type: "jsonb", nullable: true })
-  scraperConfig?: Partial<StorefrontScraperConfig> & {
-    searchPath?: string;
-    /** Query scope for Storefront API products query (e.g. 'product_type:"MTG Single"') */
-  };
+  scraperConfig?: Partial<StoreScraperConfig> & { searchPath?: string };
 
   @Column({ name: "platform_type", length: 50, nullable: true })
   platformType?: PlatformType;

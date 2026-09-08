@@ -3,6 +3,7 @@ export {
   StorefrontExtractionAdapter,
   dryRunStorefrontMappingProfile,
   dryRunStorefrontBinderposParser,
+  dryRunStorefrontBuiltinParser,
 } from "./storefront-extraction.adapter";
 export type { StorefrontParserDryRunReport } from "./storefront-extraction.adapter";
 export {
@@ -39,4 +40,7 @@ export {
   PRODUCT_BY_HANDLE_QUERY,
   PRODUCTS_BY_QUERY,
   PRODUCTS_BY_IDS_QUERY,
+  PRODUCTS_BY_CREATED_AT_QUERY,
+  PRODUCT_CREATED_AT_ASC_QUERY,
+  PRODUCT_CREATED_AT_DESC_QUERY,
 } from "./storefront.queries";

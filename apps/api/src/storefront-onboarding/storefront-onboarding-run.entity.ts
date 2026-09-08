@@ -15,6 +15,7 @@ export class StorefrontOnboardingRun {
   @Column({ name: 'requested_slug', nullable: true })
   requestedSlug?: string;
   @Column({ name: 'requested_scope', nullable: true }) requestedScope?: string;
+  @Column({ name: 'requested_currency', nullable: true }) requestedCurrency?: string;
   @Column({ name: 'parser_profile', type: 'jsonb', nullable: true }) parserProfile?: Record<string, unknown>;
 
   @Column({ type: 'varchar' })

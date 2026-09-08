@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { StorefrontExtractionAdapter } from "./storefront-extraction.adapter";
+import {
+  StorefrontExtractionAdapter,
+  dryRunStorefrontBinderposParser,
+  dryRunStorefrontBuiltinParser,
+} from "./storefront-extraction.adapter";
 import { StorefrontPaginationLimitError } from "./pagination-limit-error";
 import { ExtractionHttpError } from "../shopify/extraction-http-error";
 import { Condition } from "@scoutlgs/shared";
@@ -86,6 +90,29 @@ function createMockProduct(
     ...overrides,
   };
 }
+
+describe("dryRunStorefrontBinderposParser", () => {
+  it("uses the first product image just as production storefront extraction does", () => {
+    const product = createMockProduct({
+      title: "Lightning Bolt [Magic 2011]",
+      variants: {
+        edges: [{ node: {
+          id: "gid://shopify/ProductVariant/12345", title: "NM",
+          sku: "M11-149-EN-NF-1", availableForSale: true,
+          price: { amount: "2.50", currencyCode: "CAD" },
+          selectedOptions: [{ name: "Condition", value: "NM" }],
+        } }],
+      },
+    });
+
+    const report = dryRunStorefrontBinderposParser([product]);
+
+    expect(report.variants[0].result).toMatchObject({
+      ok: true,
+      variant: { imageUrl: "https://cdn.shopify.com/image.jpg" },
+    });
+  });
+});
 
 describe("StorefrontExtractionAdapter", () => {
   let adapter: StorefrontExtractionAdapter;
@@ -703,6 +730,42 @@ describe("StorefrontExtractionAdapter", () => {
         validVariants: 2,
         rejectedVariants: 0,
       });
+    });
+
+    it("skips explicitly excluded F2F Scan inventory in both dry-run and production extraction", async () => {
+      const product = createMockProduct({
+        title: "Imperial Seal - Scan 10080",
+        variants: {
+          edges: [{ node: {
+            id: "gid://shopify/ProductVariant/10080", title: "Default Title",
+            sku: "SIN-SCAN-10080", availableForSale: true,
+            price: { amount: "10", currencyCode: "CAD" },
+            selectedOptions: [{ name: "Title", value: "Default Title" }],
+          } }],
+        },
+      });
+      expect(dryRunStorefrontBuiltinParser([product], "f2f", {
+        excludeF2fScanListings: true,
+      })).toMatchObject({ sampledVariants: 0, validVariants: 0, rejectedVariants: 0 });
+
+      const adapter = new StorefrontExtractionAdapter(
+        { query: vi.fn().mockResolvedValue({ product }) } as any,
+        { get: vi.fn().mockReturnValue(createMockExtractor()) } as any,
+      );
+      const store = createMockStore({
+        scraperType: "f2f",
+        scraperConfig: {
+          parser: { kind: "builtin", version: 1, parserType: "f2f" },
+          parserConfig: {
+            parserType: "f2f",
+            settings: {
+              profile: { kind: "builtin", version: 1, parserType: "f2f" },
+              excludeScanListings: true,
+            },
+          },
+        },
+      });
+      await expect(adapter.extractProduct(store, product.handle)).resolves.toEqual([]);
     });
   });
 });

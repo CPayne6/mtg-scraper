@@ -25,6 +25,7 @@ export type OnboardingParser = {
     profile: unknown,
     products: OnboardingProduct[],
     scope: OnboardingScope,
+    parserSettings?: Record<string, unknown>,
   ): any;
 };
 export type VerifiedStorefrontOnboardingDependencies = {
@@ -191,7 +192,10 @@ export class VerifiedStorefrontOnboardingService {
     for (const candidate of candidates) {
       const result = await this.deps.storefront.products(url, apiVersion, candidate.query, timeoutMs, 250);
       const products = result.products ?? []; const variants = products.reduce((n, p) => n + productVariants(p).length, 0);
-      const contaminated = products.some(p => !/single/i.test(String(p.productType ?? p.product_type ?? '')) || !(/magic|mtg/i.test(`${p.productType ?? ''} ${tags(p).join(' ')}`)));
+      // Some Shopify tenants (for example Face to Face) express the game as
+      // the vendor rather than a tag. A manual or inferred vendor:Magic scope
+      // is just as explicit as a Magic tag and must not be rejected.
+      const contaminated = products.some(p => !/single/i.test(String(p.productType ?? p.product_type ?? '')) || !(/magic|mtg/i.test(`${p.productType ?? ''} ${p.vendor ?? ''} ${tags(p).join(' ')}`)));
       const assessed = { ...candidate, ok: result.ok && products.length > 0 && !contaminated, productCount: products.length, variantCount: variants, warnings: result.ok && products.length && !contaminated ? [] : ['unsafe, empty, or mixed catalogue scope'] };
       scope ??= assessed; if (assessed.ok) { scope = assessed; scoped = products; break; }
     }
@@ -201,9 +205,15 @@ export class VerifiedStorefrontOnboardingService {
     if (!sampled.length) return this.report('rejected', url, apiVersion, homepage, scope, null, { errors: ['scoped catalog has fewer than 100 variants'] }, { totalScopeVariants: totalVariants, sampledVariants: 0, sampleFraction: .2 });
     let profile = input.parserProfile; let ai: any = { status: 'not-called' };
     if (!profile && homepage?.signals?.binderScript && homepage?.signals?.binderInventory) profile = { kind: 'builtin', version: 1, parserType: 'binderpos' };
+    if (!profile) {
+      const host = url.hostname.replace(/^www\./, '');
+      const parserType = host === 'facetofacegames.com' ? 'f2f' : host === 'hobbiesville.com' ? 'hobbies' : undefined;
+      if (parserType) profile = { kind: 'builtin', version: 1, parserType };
+    }
     if (!profile && input.aiDiscovery && this.deps.ai) ai = await this.discover(scoped, timeoutMs), profile = ai.envelope?.parserProfile;
     profile = enrichMtgSkuProfile(profile, sampled);
-    const validation = profile ? this.deps.parser.dryRun(profile, sampled, scope) : { valid: false, errors: ['no parser profile'] };
+    const parserSettings = parserConfigSettings(profile);
+    const validation = profile ? this.deps.parser.dryRun(profile, sampled, scope, parserSettings) : { valid: false, errors: ['no parser profile'] };
     const identity = validation.valid ? await this.deps.identity.evaluate(validation.parsedVariants ?? []) : [];
     const failedIdentity = identity.filter(x => x.outcome !== 'exact-printing' && x.outcome !== 'token');
     const valid = validation.valid && identity.length >= 100 && !failedIdentity.length;
@@ -242,7 +252,7 @@ export class VerifiedStorefrontOnboardingService {
         ),
       },
     };
-    return this.report(valid ? 'proposal-ready' : 'rejected', url, apiVersion, homepage, scope, profile, validation, { ...ai, ...diagnostics }, input.proposedSlug);
+    return this.report(valid ? 'proposal-ready' : 'rejected', url, apiVersion, homepage, scope, profile, validation, { ...ai, ...diagnostics }, input.proposedSlug, parserSettings);
   }
 
   private async collectAnchorProducts(
@@ -340,10 +350,18 @@ export class VerifiedStorefrontOnboardingService {
       return { status: 'malformed-output' };
     }
   }
-  private report(status: string, url: URL, apiVersion: string, homepage: any, scope: OnboardingScope, profile?: any, validation?: any, diagnostics?: any, requestedSlug?: string) {
+  private report(status: string, url: URL, apiVersion: string, homepage: any, scope: OnboardingScope, profile?: any, validation?: any, diagnostics?: any, requestedSlug?: string, parserSettings: Record<string, unknown> = {}) {
     const displayName = url.hostname.replace(/^www\./, ''); const name = requestedSlug ?? displayName.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
-    return { status, probeOnly: true, approvalRequired: true, input: { url: url.toString(), proposedSlug: requestedSlug }, detection: { homepage, endpointHost: url.host, apiVersion }, scope, validation, diagnostics, proposedStore: status === 'proposal-ready' ? { name, displayName, baseUrl: url.origin, isActive: false, platformType: 'shopify_storefront', scraperType: profile.kind === 'builtin' ? 'binderpos' : 'default', rateLimitPerSecond: 15, discoveryConfig: { discoveryEnabled: false }, scraperConfig: { shopifyUrl: url.host, storefrontApiVersion: apiVersion, source: { kind: 'storefront-graphql', mode: 'products-query', productQuery: scope.query }, storefrontScope: scope.query, parser: profile } } : null };
+    const parserType = profile?.kind === 'builtin' ? profile.parserType : 'mapping';
+    return { status, probeOnly: true, approvalRequired: true, input: { url: url.toString(), proposedSlug: requestedSlug }, detection: { platform: 'shopify_storefront', homepage, endpointHost: url.host, apiVersion }, scope, validation, diagnostics, proposedStore: status === 'proposal-ready' ? { name, displayName, baseUrl: url.origin, isActive: false, platformType: 'shopify_storefront', scraperType: profile.kind === 'builtin' ? profile.parserType : 'default', rateLimitPerSecond: 15, discoveryConfig: { discoveryEnabled: false }, scraperConfig: { shopifyUrl: url.host, storefrontApiVersion: apiVersion, source: { kind: 'storefront-graphql', mode: 'products-query', productQuery: scope.query }, storefrontScope: scope.query, parser: profile, parserConfig: { parserType, settings: { profile, ...parserSettings } } } } : null };
   }
+}
+
+function parserConfigSettings(profile: unknown): Record<string, unknown> {
+  return (profile as { kind?: string; parserType?: string } | undefined)?.kind === 'builtin' &&
+    (profile as { parserType?: string }).parserType === 'f2f'
+    ? { excludeScanListings: true }
+    : {};
 }
 
 /**

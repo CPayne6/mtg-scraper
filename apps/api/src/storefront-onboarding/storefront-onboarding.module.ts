@@ -10,6 +10,7 @@ import {
   TokenMatcherService,
   TokenName,
   TokenPrinting,
+  PlatformModule,
 } from '@scoutlgs/core';
 import { AuthModule } from '../auth/auth.module';
 import { StorefrontOnboardingController } from './storefront-onboarding.controller';
@@ -17,12 +18,15 @@ import { StorefrontOnboardingRun } from './storefront-onboarding-run.entity';
 import { StorefrontOnboardingApiService } from './storefront-onboarding.service';
 import { StorefrontOnboardingIdentityService } from './storefront-onboarding-identity.service';
 import { StorefrontOnboardingExecutionService } from './storefront-onboarding-execution.service';
-import { ApiStorefrontOnboardingExecutor } from './api-onboarding-executor.service';
+import { ShopifyStorefrontOnboardingExplorer } from './api-onboarding-executor.service';
 import { AdminStoreStatusController } from './admin-store-status.controller';
+import { ConductCommerceOnboardingExplorer } from './conduct-commerce-onboarding-explorer.service';
+import { ApiStorefrontOnboardingExecutor } from './onboarding-explorer-registry.service';
 
 @Module({
   imports: [
     AuthModule,
+    PlatformModule,
     TypeOrmModule.forFeature([
       StorefrontOnboardingRun,
       Store,
@@ -41,6 +45,8 @@ import { AdminStoreStatusController } from './admin-store-status.controller';
     StorefrontOnboardingDryRunService,
     StorefrontOnboardingIdentityService,
     StorefrontOnboardingExecutionService,
+    ShopifyStorefrontOnboardingExplorer,
+    ConductCommerceOnboardingExplorer,
     ApiStorefrontOnboardingExecutor,
   ],
   exports: [StorefrontOnboardingIdentityService, StorefrontOnboardingExecutionService],

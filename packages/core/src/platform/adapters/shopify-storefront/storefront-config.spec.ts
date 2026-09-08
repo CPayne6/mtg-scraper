@@ -58,4 +58,26 @@ describe("Storefront configuration normalization", () => {
       config: { shopifyUrl: "shop.example.com" },
     });
   });
+  it("accepts only the typed F2F Scan exclusion setting", () => {
+    const base = {
+      baseUrl: "https://shop.example.com", platformType: "shopify_storefront",
+      rateLimitPerSecond: 2,
+      scraperConfig: {
+        shopifyUrl: "shop.example.com", storefrontApiVersion: "2026-01",
+        storefrontScope: 'product_type:"MTG Single"',
+        parser: { kind: "builtin", version: 1, parserType: "f2f" },
+      },
+    } as any;
+    expect(validateStorefrontStoreConfig({ ...base, scraperConfig: {
+      ...base.scraperConfig,
+      parserConfig: { parserType: "f2f", settings: {
+        profile: { kind: "builtin", version: 1, parserType: "f2f" },
+        excludeScanListings: true,
+      } },
+    } }).valid).toBe(true);
+    expect(validateStorefrontStoreConfig({ ...base, scraperConfig: {
+      ...base.scraperConfig,
+      parserConfig: { parserType: "default", settings: { excludeScanListings: true } },
+    } }).valid).toBe(false);
+  });
 });
