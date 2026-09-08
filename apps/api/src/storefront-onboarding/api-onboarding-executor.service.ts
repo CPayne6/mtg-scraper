@@ -9,14 +9,19 @@ import {
 } from '@scoutlgs/core';
 import { validateStorefrontMappingProfileContract } from '@scoutlgs/shared';
 import { StorefrontOnboardingIdentityService } from './storefront-onboarding-identity.service';
+import { ConductCommerceOnboardingExplorer } from './conduct-commerce-onboarding-explorer.service';
 
 const PRODUCTS = `query Products($first:Int!, $query:String) { products(first:$first, query:$query) { nodes { id title handle vendor productType tags descriptionHtml onlineStoreUrl availableForSale images(first:1) { nodes { url } } variants(first:250) { nodes { id title sku availableForSale price { amount currencyCode } selectedOptions { name value } image { url } } } } } }`;
 
 @Injectable()
 export class ApiStorefrontOnboardingExecutor {
-  constructor(private readonly config: ConfigService, private readonly identity: StorefrontOnboardingIdentityService) {}
+  constructor(private readonly config: ConfigService, private readonly identity: StorefrontOnboardingIdentityService, private readonly conduct: ConductCommerceOnboardingExplorer) {}
 
-  async onboard(input: { url: string; proposedSlug?: string; scope?: string; parserProfile?: unknown; aiDiscovery: boolean; timeoutMs: number }) {
+  async onboard(input: { url: string; proposedSlug?: string; scope?: string; currency?: string; parserProfile?: unknown; aiDiscovery: boolean; timeoutMs: number }) {
+    const url = new URL(input.url);
+    // Selection is the only platform branch: each explorer owns transport,
+    // scoping and parser strategy while returning the same proposal contract.
+    if (await this.conduct.detects(url, input.timeoutMs)) return this.conduct.onboard(input);
     const groqApiKey = this.groqApiKey();
     const service = new VerifiedStorefrontOnboardingService({
       storefront: {

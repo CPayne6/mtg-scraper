@@ -38,6 +38,7 @@ function StoresRoute() {
   const [url, setUrl] = useState('');
   const [proposedSlug, setProposedSlug] = useState('');
   const [scope, setScope] = useState('');
+  const [currency, setCurrency] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -55,6 +56,7 @@ function StoresRoute() {
         url: url.trim(),
         ...(proposedSlug.trim() ? { proposedSlug: proposedSlug.trim() } : {}),
         ...(scope.trim() ? { scope: scope.trim() } : {}),
+        ...(currency.trim() ? { currency: currency.trim().toUpperCase() } : {}),
       });
       setDialogOpen(false);
       navigate({ to: '/admin/storefront-onboarding', search: { runId: run.id } });
@@ -108,6 +110,7 @@ function StoresRoute() {
             <TextField label="Store URL" type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/" autoFocus fullWidth />
             <TextField label="Proposed slug" value={proposedSlug} onChange={(event) => setProposedSlug(event.target.value)} helperText="Optional — leave blank to use the detected value." fullWidth />
             <TextField label="Catalog scope" value={scope} onChange={(event) => setScope(event.target.value)} helperText="Optional — leave blank to use the detected value." multiline minRows={2} fullWidth />
+            <TextField label="Store currency" value={currency} onChange={(event) => setCurrency(event.target.value)} helperText="Required when the detected platform does not expose currency (including Conduct Commerce)." inputProps={{ maxLength: 3 }} fullWidth />
           </Stack></DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}><Button disabled={submitting} onClick={() => setDialogOpen(false)}>Cancel</Button><Button variant="contained" disabled={submitting || !url.trim()} onClick={() => void startOnboarding()}>Continue</Button></DialogActions>
         </Dialog>

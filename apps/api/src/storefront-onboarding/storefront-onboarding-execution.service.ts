@@ -7,6 +7,7 @@ export interface StorefrontOnboardingExecutor {
     url: string;
     proposedSlug?: string;
     scope?: string;
+    currency?: string;
     parserProfile?: unknown;
     aiDiscovery: true;
     timeoutMs: number;
@@ -32,6 +33,7 @@ export class StorefrontOnboardingExecutionService {
         url: run.requestedUrl,
         proposedSlug: run.requestedSlug,
         scope: run.requestedScope,
+        currency: run.requestedCurrency,
         parserProfile: run.parserProfile,
         aiDiscovery: true,
         timeoutMs: 30_000,

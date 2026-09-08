@@ -9,8 +9,8 @@ export class StorefrontOnboardingController {
   constructor(private readonly service: StorefrontOnboardingApiService, private readonly execution: StorefrontOnboardingExecutionService) {}
   @Get('runs/:id') get(@Param('id', ParseIntPipe) id: number) { return this.service.get(id); }
   @Post('runs/:id/approve') approve(@Param('id', ParseIntPipe) id: number, @Body('digest') digest: string, @Req() req: any) { return this.service.approve(id, digest, req.principal.userUuid); }
-  @Post('runs') async create(@Body() body: { url?: string; proposedSlug?: string; scope?: string; parserProfile?: unknown }) {
-    const run = await this.service.createRun({ url: body.url ?? '', proposedSlug: body.proposedSlug, scope: body.scope, parserProfile: body.parserProfile });
+  @Post('runs') async create(@Body() body: { url?: string; proposedSlug?: string; scope?: string; currency?: string; parserProfile?: unknown }) {
+    const run = await this.service.createRun({ url: body.url ?? '', proposedSlug: body.proposedSlug, scope: body.scope, currency: body.currency, parserProfile: body.parserProfile });
     return this.execution.executeApi(run.id);
   }
 }

@@ -10,6 +10,7 @@ import {
   TokenMatcherService,
   TokenName,
   TokenPrinting,
+  PlatformModule,
 } from '@scoutlgs/core';
 import { AuthModule } from '../auth/auth.module';
 import { StorefrontOnboardingController } from './storefront-onboarding.controller';
@@ -19,10 +20,12 @@ import { StorefrontOnboardingIdentityService } from './storefront-onboarding-ide
 import { StorefrontOnboardingExecutionService } from './storefront-onboarding-execution.service';
 import { ApiStorefrontOnboardingExecutor } from './api-onboarding-executor.service';
 import { AdminStoreStatusController } from './admin-store-status.controller';
+import { ConductCommerceOnboardingExplorer } from './conduct-commerce-onboarding-explorer.service';
 
 @Module({
   imports: [
     AuthModule,
+    PlatformModule,
     TypeOrmModule.forFeature([
       StorefrontOnboardingRun,
       Store,
@@ -42,6 +45,7 @@ import { AdminStoreStatusController } from './admin-store-status.controller';
     StorefrontOnboardingIdentityService,
     StorefrontOnboardingExecutionService,
     ApiStorefrontOnboardingExecutor,
+    ConductCommerceOnboardingExplorer,
   ],
   exports: [StorefrontOnboardingIdentityService, StorefrontOnboardingExecutionService],
 })

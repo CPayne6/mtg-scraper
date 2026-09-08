@@ -9,6 +9,7 @@ export * from './adapters/shopify';
 export * from './adapters/shopify-storefront';
 export { ConductCommerceClient, ConductCommerceApiError } from './adapters/conduct-commerce/conduct-commerce.client';
 export { ConductCommerceExtractionAdapter } from './adapters/conduct-commerce/conduct-commerce-extraction.adapter';
+export { ConductCardDetailExtractor } from './adapters/conduct-commerce/conduct-card-detail.extractor';
 export type { ConductCategoryExtraction } from './adapters/conduct-commerce/conduct-commerce-extraction.adapter';
 export type {
   ConductApiError,

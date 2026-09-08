@@ -20,6 +20,7 @@ export type StorefrontOnboardingInput = {
   url: string;
   proposedSlug?: string;
   scope?: string;
+  currency?: string;
 };
 
 async function adminFetch<T>(path: string, init: RequestInit): Promise<T> {
