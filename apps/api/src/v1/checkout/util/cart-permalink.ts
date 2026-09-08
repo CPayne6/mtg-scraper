@@ -31,8 +31,19 @@ export function buildCartPermalink(host: string, lines: CartLine[]): string {
 export function resolveStoreHost(
   store: Pick<Store, 'baseUrl' | 'scraperConfig'>,
 ): string {
+  // Store rows retain partial legacy JSON configs, so read only the two
+  // transport-neutral keys needed for cart URLs here.
+  const config = store.scraperConfig as
+    | { platform?: string; shopifyUrl?: string }
+    | undefined;
+  const shopifyUrl =
+    config?.platform === 'conduct_commerce' ||
+    config?.platform === 'crystal_commerce'
+      ? undefined
+      : config?.shopifyUrl;
+
   return normalizeStorefrontHost(
-    store.scraperConfig?.shopifyUrl,
+    shopifyUrl,
     store.baseUrl,
   );
 }

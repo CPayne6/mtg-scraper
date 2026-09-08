@@ -51,6 +51,16 @@ export type StorefrontParserDryRunReport = {
   }>;
 };
 
+/** Prefer the typed parser settings envelope, while retaining read-only
+ * compatibility with Shopify configurations created before it existed. */
+function storefrontParserProfile(store: Store) {
+  const config = store.scraperConfig as {
+    parser?: import('@scoutlgs/shared').StorefrontParserProfile;
+    parserConfig?: { settings?: { profile?: import('@scoutlgs/shared').StorefrontParserProfile } };
+  } | undefined;
+  return config?.parserConfig?.settings?.profile ?? config?.parser;
+}
+
 /** Pure production parser boundary for onboarding and profile diagnostics. */
 export function dryRunStorefrontMappingProfile(
   store: Store,
@@ -66,7 +76,7 @@ export function dryRunStorefrontMappingProfile(
     "missing-variant-id": 0,
   };
   const variants: StorefrontParserDryRunReport["variants"] = [];
-  const profile = store.scraperConfig?.parser;
+  const profile = storefrontParserProfile(store);
   if (profile?.kind !== "mapping")
     throw new Error("Store does not have a mapping parser profile");
   const compiled = ProfiledStorefrontCardParser.compile(store.uuid, profile);
@@ -161,6 +171,9 @@ export function dryRunStorefrontBinderposParser(
                 price: Number(variant.price.amount),
                 currency: variant.price.currencyCode,
                 inStock: !!variant.availableForSale,
+                // Match the production storefront adapter: listings use the
+                // first product image for every variant, not a variant image.
+                imageUrl: input.product.images[0]?.url,
                 platformVariantId: variant.id.split("/").pop(),
               },
             } as ProfileParseResult,
@@ -215,7 +228,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     const variants = this.extractVariantsFromProduct(store, data.product);
 
     if (
-      store.scraperConfig?.parser?.kind === "mapping" &&
+      storefrontParserProfile(store)?.kind === "mapping" &&
       data.product.variants.edges.length > 0 &&
       variants.length === 0
     ) {
@@ -496,7 +509,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     product: StorefrontProduct,
   ): ExtractedCardVariant[] {
-    const profile = store.scraperConfig?.parser;
+    const profile = storefrontParserProfile(store);
     if (profile?.kind === "mapping") {
       const compiled = ProfiledStorefrontCardParser.compile(
         store.uuid,
@@ -600,7 +613,7 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
     store: Store,
     product: StorefrontProduct,
   ): boolean {
-    const profile = store.scraperConfig?.parser;
+    const profile = storefrontParserProfile(store);
     if (profile?.kind === "mapping") {
       const compiled = ProfiledStorefrontCardParser.compile(
         store.uuid,
@@ -627,8 +640,10 @@ export class StorefrontExtractionAdapter implements IExtractionAdapter {
   }
 
   private parserType(store: Store): string {
-    const profile = store.scraperConfig?.parser;
-    return profile?.kind === "builtin" ? profile.parserType : store.scraperType;
+    const config = store.scraperConfig as { parserConfig?: { parserType?: string } } | undefined;
+    const profile = storefrontParserProfile(store);
+    return config?.parserConfig?.parserType ??
+      (profile?.kind === "builtin" ? profile.parserType : store.scraperType);
   }
 
   /** Converts Storefront edges to the profile contract. Tools can create this same shape from nodes. */

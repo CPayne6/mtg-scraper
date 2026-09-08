@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { StorefrontExtractionAdapter } from "./storefront-extraction.adapter";
+import {
+  StorefrontExtractionAdapter,
+  dryRunStorefrontBinderposParser,
+} from "./storefront-extraction.adapter";
 import { StorefrontPaginationLimitError } from "./pagination-limit-error";
 import { ExtractionHttpError } from "../shopify/extraction-http-error";
 import { Condition } from "@scoutlgs/shared";
@@ -86,6 +89,29 @@ function createMockProduct(
     ...overrides,
   };
 }
+
+describe("dryRunStorefrontBinderposParser", () => {
+  it("uses the first product image just as production storefront extraction does", () => {
+    const product = createMockProduct({
+      title: "Lightning Bolt [Magic 2011]",
+      variants: {
+        edges: [{ node: {
+          id: "gid://shopify/ProductVariant/12345", title: "NM",
+          sku: "M11-149-EN-NF-1", availableForSale: true,
+          price: { amount: "2.50", currencyCode: "CAD" },
+          selectedOptions: [{ name: "Condition", value: "NM" }],
+        } }],
+      },
+    });
+
+    const report = dryRunStorefrontBinderposParser([product]);
+
+    expect(report.variants[0].result).toMatchObject({
+      ok: true,
+      variant: { imageUrl: "https://cdn.shopify.com/image.jpg" },
+    });
+  });
+});
 
 describe("StorefrontExtractionAdapter", () => {
   let adapter: StorefrontExtractionAdapter;

@@ -5,7 +5,8 @@ export type BuiltinParserType =
   | "401"
   | "hobbies"
   | "binderpos"
-  | "cgrealm";
+  | "cgrealm"
+  | "conduct";
 export type ProfileField =
   | "cardName"
   | "setName"
@@ -185,6 +186,7 @@ const builtins: BuiltinParserType[] = [
   "hobbies",
   "binderpos",
   "cgrealm",
+  "conduct",
 ];
 const missing = Symbol("missing");
 const record = (v: unknown): v is Record<string, unknown> =>

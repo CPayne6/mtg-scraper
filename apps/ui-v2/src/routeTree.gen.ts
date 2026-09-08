@@ -14,9 +14,14 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ListsRouteImport } from './routes/lists'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as CardNameRouteImport } from './routes/card.$name'
+import { Route as AdminStoresRouteImport } from './routes/admin.stores'
+import { Route as AdminStorefrontOnboardingRouteImport } from './routes/admin.storefront-onboarding'
+import { Route as AdminStoresIndexRouteImport } from './routes/admin.stores.index'
 import { Route as CardOracleIdNameRouteImport } from './routes/card.$oracleId.$name'
 import { Route as BuildListIdSlugRouteImport } from './routes/build.$listId.$slug'
+import { Route as AdminStoresStoreIdRouteImport } from './routes/admin.stores.$storeId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -43,10 +48,31 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CardNameRoute = CardNameRouteImport.update({
   id: '/card/$name',
   path: '/card/$name',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminStoresRoute = AdminStoresRouteImport.update({
+  id: '/admin/stores',
+  path: '/admin/stores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminStorefrontOnboardingRoute =
+  AdminStorefrontOnboardingRouteImport.update({
+    id: '/admin/storefront-onboarding',
+    path: '/admin/storefront-onboarding',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AdminStoresIndexRoute = AdminStoresIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminStoresRoute,
 } as any)
 const CardOracleIdNameRoute = CardOracleIdNameRouteImport.update({
   id: '/card/$oracleId/$name',
@@ -58,6 +84,11 @@ const BuildListIdSlugRoute = BuildListIdSlugRouteImport.update({
   path: '/build/$listId/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminStoresStoreIdRoute = AdminStoresStoreIdRouteImport.update({
+  id: '/$storeId',
+  path: '/$storeId',
+  getParentRoute: () => AdminStoresRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -65,9 +96,14 @@ export interface FileRoutesByFullPath {
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/storefront-onboarding': typeof AdminStorefrontOnboardingRoute
+  '/admin/stores': typeof AdminStoresRouteWithChildren
   '/card/$name': typeof CardNameRoute
+  '/admin': typeof AdminIndexRoute
+  '/admin/stores/$storeId': typeof AdminStoresStoreIdRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/card/$oracleId/$name': typeof CardOracleIdNameRoute
+  '/admin/stores/': typeof AdminStoresIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -75,9 +111,13 @@ export interface FileRoutesByTo {
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/storefront-onboarding': typeof AdminStorefrontOnboardingRoute
   '/card/$name': typeof CardNameRoute
+  '/admin': typeof AdminIndexRoute
+  '/admin/stores/$storeId': typeof AdminStoresStoreIdRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/card/$oracleId/$name': typeof CardOracleIdNameRoute
+  '/admin/stores': typeof AdminStoresIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,9 +126,14 @@ export interface FileRoutesById {
   '/lists': typeof ListsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/admin/storefront-onboarding': typeof AdminStorefrontOnboardingRoute
+  '/admin/stores': typeof AdminStoresRouteWithChildren
   '/card/$name': typeof CardNameRoute
+  '/admin/': typeof AdminIndexRoute
+  '/admin/stores/$storeId': typeof AdminStoresStoreIdRoute
   '/build/$listId/$slug': typeof BuildListIdSlugRoute
   '/card/$oracleId/$name': typeof CardOracleIdNameRoute
+  '/admin/stores/': typeof AdminStoresIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -98,9 +143,14 @@ export interface FileRouteTypes {
     | '/lists'
     | '/login'
     | '/settings'
+    | '/admin/storefront-onboarding'
+    | '/admin/stores'
     | '/card/$name'
+    | '/admin'
+    | '/admin/stores/$storeId'
     | '/build/$listId/$slug'
     | '/card/$oracleId/$name'
+    | '/admin/stores/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -108,9 +158,13 @@ export interface FileRouteTypes {
     | '/lists'
     | '/login'
     | '/settings'
+    | '/admin/storefront-onboarding'
     | '/card/$name'
+    | '/admin'
+    | '/admin/stores/$storeId'
     | '/build/$listId/$slug'
     | '/card/$oracleId/$name'
+    | '/admin/stores'
   id:
     | '__root__'
     | '/'
@@ -118,9 +172,14 @@ export interface FileRouteTypes {
     | '/lists'
     | '/login'
     | '/settings'
+    | '/admin/storefront-onboarding'
+    | '/admin/stores'
     | '/card/$name'
+    | '/admin/'
+    | '/admin/stores/$storeId'
     | '/build/$listId/$slug'
     | '/card/$oracleId/$name'
+    | '/admin/stores/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -129,7 +188,10 @@ export interface RootRouteChildren {
   ListsRoute: typeof ListsRoute
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
+  AdminStorefrontOnboardingRoute: typeof AdminStorefrontOnboardingRoute
+  AdminStoresRoute: typeof AdminStoresRouteWithChildren
   CardNameRoute: typeof CardNameRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   BuildListIdSlugRoute: typeof BuildListIdSlugRoute
   CardOracleIdNameRoute: typeof CardOracleIdNameRoute
 }
@@ -171,12 +233,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/card/$name': {
       id: '/card/$name'
       path: '/card/$name'
       fullPath: '/card/$name'
       preLoaderRoute: typeof CardNameRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/stores': {
+      id: '/admin/stores'
+      path: '/admin/stores'
+      fullPath: '/admin/stores'
+      preLoaderRoute: typeof AdminStoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/storefront-onboarding': {
+      id: '/admin/storefront-onboarding'
+      path: '/admin/storefront-onboarding'
+      fullPath: '/admin/storefront-onboarding'
+      preLoaderRoute: typeof AdminStorefrontOnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/stores/': {
+      id: '/admin/stores/'
+      path: '/'
+      fullPath: '/admin/stores/'
+      preLoaderRoute: typeof AdminStoresIndexRouteImport
+      parentRoute: typeof AdminStoresRoute
     }
     '/card/$oracleId/$name': {
       id: '/card/$oracleId/$name'
@@ -192,8 +282,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BuildListIdSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/stores/$storeId': {
+      id: '/admin/stores/$storeId'
+      path: '/$storeId'
+      fullPath: '/admin/stores/$storeId'
+      preLoaderRoute: typeof AdminStoresStoreIdRouteImport
+      parentRoute: typeof AdminStoresRoute
+    }
   }
 }
+
+interface AdminStoresRouteChildren {
+  AdminStoresStoreIdRoute: typeof AdminStoresStoreIdRoute
+  AdminStoresIndexRoute: typeof AdminStoresIndexRoute
+}
+
+const AdminStoresRouteChildren: AdminStoresRouteChildren = {
+  AdminStoresStoreIdRoute: AdminStoresStoreIdRoute,
+  AdminStoresIndexRoute: AdminStoresIndexRoute,
+}
+
+const AdminStoresRouteWithChildren = AdminStoresRoute._addFileChildren(
+  AdminStoresRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -201,7 +312,10 @@ const rootRouteChildren: RootRouteChildren = {
   ListsRoute: ListsRoute,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
+  AdminStorefrontOnboardingRoute: AdminStorefrontOnboardingRoute,
+  AdminStoresRoute: AdminStoresRouteWithChildren,
   CardNameRoute: CardNameRoute,
+  AdminIndexRoute: AdminIndexRoute,
   BuildListIdSlugRoute: BuildListIdSlugRoute,
   CardOracleIdNameRoute: CardOracleIdNameRoute,
 }

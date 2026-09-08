@@ -18,6 +18,7 @@ import {
   CardCart,
   CardList,
   CardListEntry,
+  ConductCategoryAudit,
 } from '@scoutlgs/core';
 import { StorefrontOnboardingRun } from '../storefront-onboarding/storefront-onboarding-run.entity';
 
@@ -56,6 +57,7 @@ export default new DataSource({
     CardCart,
     CardList,
     CardListEntry,
+    ConductCategoryAudit,
     StorefrontOnboardingRun,
   ],
   migrations: isProduction

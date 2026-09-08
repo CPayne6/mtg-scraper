@@ -1,0 +1,10 @@
+export type ConductApiError = { code?: number; message?: string };
+export type ConductApiEnvelope<T> = { success: boolean; errors?: ConductApiError[]; result?: T };
+export type ConductVariant = { id: number | null; price: number; quantity: number; name: string; default?: number; variantCombinationID?: number; plantID?: number };
+export type ConductListing = { inventoryID: number; categoryName: string; categoryUniqueDisplayName?: string; inventoryName: string; image?: string; variants: ConductVariant[]; productTypeID?: number; hide?: number; onlineOnly?: number; filterFields?: Record<string, string | string[]> };
+export type ConductCategory = { id: number; name: string; uniqueDisplayName: string; visible?: number; customerHideOutOfStock?: number };
+export type ConductProductType = { id: number; name: string; categories: ConductCategory[] };
+export type ConductSettings = { categories: ConductProductType[]; magicConditions?: Array<{ conditionID: number; name: string; default?: number }> };
+export type ConductListingsResult = { listings: ConductListing[]; linkedCategories?: unknown[]; productTypeID?: number };
+export type ConductDetailField = { name: string; value: string };
+export type ConductProductDetails = ConductListing & { fields?: ConductDetailField[]; images?: string[] };

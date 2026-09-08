@@ -47,7 +47,10 @@ export class ExtractionOrchestrator {
    */
   async queueDueStorefrontStores(maxConcurrentStores = 4): Promise<number> {
     const stores = (await this.storeRepository.find({ where: { isActive: true } }))
-      .filter((store) => store.platformType === 'shopify_storefront' && store.discoveryConfig?.discoveryEnabled);
+      .filter((store) =>
+        (store.platformType === 'shopify_storefront' || store.platformType === 'conduct_commerce') &&
+        store.discoveryConfig?.discoveryEnabled,
+      );
     const now = new Date();
     const activeStoreIds = await this.queueService.getActiveStorefrontCrawlStoreIds();
     let queued = 0;
@@ -55,6 +58,7 @@ export class ExtractionOrchestrator {
     for (const store of stores) {
       if (activeStoreIds.size >= maxConcurrentStores) break;
       if (activeStoreIds.has(store.id)) continue;
+      if (store.platformType === 'conduct_commerce' && await this.queueService.hasConductCommerceCrawlForStore(store.id)) continue;
       let state = await this.storeSyncStateRepository.findOne({ where: { storeId: store.id } });
       if (!state) {
         const slotMs = (store.id * 1_103_515_245) % (24 * 60 * 60 * 1000);
@@ -72,7 +76,10 @@ export class ExtractionOrchestrator {
         { nextSyncAt: new Date(now.getTime() + 24 * 60 * 60 * 1000), lastEnqueuedAt: now, lastError: null },
       );
       if (!claimed.affected) continue;
-      if (await this.queueService.enqueueStorefrontPlanJob(store.id)) {
+      const enqueued = store.platformType === 'conduct_commerce'
+        ? await this.queueService.enqueueConductCommerceCatalogJob(store.id)
+        : await this.queueService.enqueueStorefrontPlanJob(store.id);
+      if (enqueued) {
         activeStoreIds.add(store.id);
         queued++;
       }
@@ -102,18 +109,18 @@ export class ExtractionOrchestrator {
       (s) => s.platformType && s.discoveryConfig?.discoveryEnabled,
     );
 
-    const storefrontStores = enabledStores.filter(
-      (s) => s.platformType === 'shopify_storefront',
+    const supportedStores = enabledStores.filter(
+      (s) => s.platformType === 'shopify_storefront' || s.platformType === 'conduct_commerce',
     );
 
-    const targetStores = options?.skipExtraction ? [] : storefrontStores;
+    const targetStores = options?.skipExtraction ? [] : supportedStores;
 
     // Storefront updatedAt is diagnostic only; complete created_at traversal
     // is the correctness path and must never be replaced by a delta cursor.
     const updatedSince = null;
 
     this.logger.log(
-      `Found ${targetStores.length} storefront stores to queue out of ${enabledStores.length} opted-in stores` +
+      `Found ${targetStores.length} supported catalog stores to queue out of ${enabledStores.length} opted-in stores` +
         (options?.skipExtraction ? ' (extraction skipped)' : '') +
         (options?.incremental ? ' (incremental request treated as a full traversal)' : ''),
     );
@@ -128,11 +135,16 @@ export class ExtractionOrchestrator {
     this.logger.log(`Created extraction run #${savedRun.id} (trigger: ${savedRun.trigger})`);
 
     for (const store of targetStores) {
-      // Enqueue a per-store plan job. It probes the created_at range and
-      // fans out one cursor-paginated bucket job per year.
-      await this.queueService.enqueueStorefrontPlanJob(store.id, {
-        discoveryRunId: savedRun.id,
-      });
+      if (store.platformType === 'conduct_commerce') {
+        await this.queueService.enqueueConductCommerceCatalogJob(store.id, {
+          discoveryRunId: savedRun.id,
+        });
+      } else {
+        // Shopify owns its date-bucket planner; Conduct owns category traversal.
+        await this.queueService.enqueueStorefrontPlanJob(store.id, {
+          discoveryRunId: savedRun.id,
+        });
+      }
       this.logger.log(
         `Enqueued storefront plan for store: ${store.name} (ID: ${store.id})`,
       );
