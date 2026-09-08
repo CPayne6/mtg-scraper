@@ -6,12 +6,26 @@ import {
   dryRunStorefrontBinderposParser,
   dryRunStorefrontBuiltinParser,
   dryRunStorefrontMappingProfile,
+  PRODUCTS_BY_CREATED_AT_QUERY,
+  PRODUCT_CREATED_AT_ASC_QUERY,
+  PRODUCT_CREATED_AT_DESC_QUERY,
   VerifiedStorefrontOnboardingService,
 } from '@scoutlgs/core';
 import { validateStorefrontMappingProfileContract } from '@scoutlgs/shared';
 import { StorefrontOnboardingIdentityService } from './storefront-onboarding-identity.service';
 
-const PRODUCTS = `query Products($first:Int!, $query:String) { products(first:$first, query:$query) { nodes { id title handle vendor productType tags descriptionHtml onlineStoreUrl availableForSale images(first:1) { nodes { url } } variants(first:250) { nodes { id title sku availableForSale price { amount currencyCode } selectedOptions { name value } image { url } } } } } }`;
+const ONBOARDING_SAMPLE_VARIANTS = 150;
+const ONBOARDING_MAX_BUCKET_PAGES = 100;
+const ONBOARDING_MAX_PRODUCT_PAGES = ONBOARDING_MAX_BUCKET_PAGES;
+
+type StorefrontOnboardingPage = {
+  ok: boolean;
+  products: any[];
+  hasNextPage?: boolean;
+  endCursor?: string | null;
+  error?: string;
+  retryWithSmallerPage?: boolean;
+};
 
 @Injectable()
 export class ShopifyStorefrontOnboardingExplorer {
@@ -24,7 +38,7 @@ export class ShopifyStorefrontOnboardingExplorer {
         homepage: (url, timeoutMs) => this.homepage(url, timeoutMs),
         products: (url, version, scope, timeoutMs, first) => this.products(url, version, scope, timeoutMs, first),
         productsByTitle: (url, version, title, timeoutMs) =>
-          this.products(url, version, `title:${JSON.stringify(title)}`, timeoutMs, 20),
+          this.products(url, version, `title:${JSON.stringify(title)}`, timeoutMs, 20, 1, 0),
       },
       parser: this.parser(), identity: this.identity,
       ai: groqApiKey ? {
@@ -48,19 +62,84 @@ export class ShopifyStorefrontOnboardingExplorer {
       return { ok: response.ok, status: response.status, signals: { shopifyGlobal: /Shopify\.shop|cdn\.shopify\.com/i.test(html), shopifyCdn: /cdn\.shopify\.com/i.test(html), binderScript: /binderpos|binder\s*pos/i.test(html), binderInventory: /inventory|variants/i.test(html) } };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'homepage unavailable', signals: {} }; }
   }
-  private async products(url: URL, version: string, scope: string | null, timeoutMs: number, first = 250) {
+  private async products(
+    url: URL,
+    version: string,
+    scope: string | null,
+    timeoutMs: number,
+    first = 250,
+    maxPages = ONBOARDING_MAX_PRODUCT_PAGES,
+    minimumVariants = ONBOARDING_SAMPLE_VARIANTS,
+  ) {
+    const range = await this.createdAtRange(url, version, scope ?? '', timeoutMs);
+    if (!range.ok) return { ok: false, products: [], error: range.error };
+    if (!range.min || !range.max) return { ok: true, products: [] };
+    const buckets = generateYearlyBuckets(range.min, range.max);
+    const products: any[] = [];
+    const seen = new Set<string>();
+    for (const bucket of buckets) {
+      let after: string | null = null;
+      let pageCount = 0;
+      while (pageCount++ < Math.min(maxPages, ONBOARDING_MAX_BUCKET_PAGES)) {
+        const query = `${scope ?? ''} created_at:>='${bucket.start}' created_at:<'${bucket.end}'`;
+        const page = await this.productsPage(url, version, query, timeoutMs, first, after);
+        if (!page.ok && page.retryWithSmallerPage && first > 50) {
+          first = 50;
+          continue;
+        }
+        if (!page.ok) return { ok: false, products: [], error: page.error ?? 'catalog unavailable' };
+        for (const product of page.products) {
+          const id = String(product.id ?? '');
+          if (id && !seen.has(id)) { seen.add(id); products.push(product); }
+        }
+        const variants = products.reduce((count, product) => count + (product.variants?.nodes?.length ?? 0), 0);
+        if (variants >= minimumVariants || !page.hasNextPage || !page.endCursor) break;
+        after = page.endCursor;
+      }
+      const variants = products.reduce((count, product) => count + (product.variants?.nodes?.length ?? 0), 0);
+      if (variants >= minimumVariants) break;
+    }
+    return { ok: true, products };
+  }
+
+  private async productsPage(
+    url: URL,
+    version: string,
+    scope: string | null,
+    timeoutMs: number,
+    first: number,
+    after: string | null,
+  ): Promise<StorefrontOnboardingPage> {
     const endpoint = `${url.origin}/api/${version}/graphql.json`;
     try {
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'ScoutLGS onboarding probe' }, body: JSON.stringify({ query: PRODUCTS, variables: { first, query: scope } }), signal: AbortSignal.timeout(timeoutMs) });
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'ScoutLGS onboarding probe' }, body: JSON.stringify({ query: PRODUCTS_BY_CREATED_AT_QUERY, variables: { first, after, query: scope } }), signal: AbortSignal.timeout(timeoutMs) });
       const body: any = await response.json();
       // Some otherwise valid Storefront tenants reject high-complexity probes
       // (many products × variants) with an internal GraphQL error. Sampling is
       // sufficient for onboarding, so retry once with a smaller bounded page.
       if (body.errors?.length && first > 50)
-        return this.products(url, version, scope, timeoutMs, 50);
+        return { ok: false, products: [], retryWithSmallerPage: true };
       if (!response.ok || body.errors?.length) return { ok: false, products: [], error: body.errors?.map((e: any) => e.message).join('; ') ?? `HTTP ${response.status}` };
-      return { ok: true, products: body.data?.products?.nodes ?? [] };
+      const connection = body.data?.products;
+      return { ok: true, products: (connection?.edges ?? []).map((edge: any) => edge.node), hasNextPage: connection?.pageInfo?.hasNextPage === true, endCursor: connection?.pageInfo?.endCursor ?? null };
     } catch (error) { return { ok: false, products: [], error: error instanceof Error ? error.message : 'catalog unavailable' }; }
+  }
+
+  private async createdAtRange(url: URL, version: string, scope: string, timeoutMs: number) {
+    const endpoint = `${url.origin}/api/${version}/graphql.json`;
+    const query = async (document: string) => {
+      try {
+        const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'ScoutLGS onboarding probe' }, body: JSON.stringify({ query: document, variables: { query: scope } }), signal: AbortSignal.timeout(timeoutMs) });
+        const body: any = await response.json();
+        if (!response.ok || body.errors?.length) return { ok: false, error: body.errors?.map((e: any) => e.message).join('; ') ?? `HTTP ${response.status}` };
+        return { ok: true, value: body.data?.products?.edges?.[0]?.node?.createdAt ?? null };
+      } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'catalog unavailable' }; }
+    };
+    const [ascending, descending] = await Promise.all([
+      query(PRODUCT_CREATED_AT_ASC_QUERY), query(PRODUCT_CREATED_AT_DESC_QUERY),
+    ]);
+    if (!ascending.ok || !descending.ok) return { ok: false, error: ascending.error ?? descending.error };
+    return { ok: true, min: ascending.value, max: descending.value };
   }
   private parser() {
     return {
@@ -232,6 +311,21 @@ export class ShopifyStorefrontOnboardingExplorer {
       };
     }
   }
+}
+
+function generateYearlyBuckets(minCreatedAt: string, maxCreatedAt: string) {
+  const min = new Date(minCreatedAt);
+  const max = new Date(maxCreatedAt);
+  if (Number.isNaN(min.getTime()) || Number.isNaN(max.getTime()) || min > max) return [] as Array<{ start: string; end: string }>;
+  const buckets: Array<{ start: string; end: string }> = [];
+  let cursor = min;
+  while (cursor <= max) {
+    const nextYear = new Date(Date.UTC(cursor.getUTCFullYear() + 1, 0, 1));
+    const end = nextYear > max ? new Date(max.getTime() + 1000) : nextYear;
+    buckets.push({ start: cursor.toISOString(), end: end.toISOString() });
+    cursor = nextYear;
+  }
+  return buckets;
 }
 
 function parserDraftAstSchema() {
