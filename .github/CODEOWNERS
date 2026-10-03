@@ -1,0 +1,10 @@
+# Agent-facing policy and production-sensitive paths always require owner review.
+# Keep this username current if repository ownership changes.
+
+/AGENTS.md @CPayne6
+/docs/agents/ @CPayne6
+/skills/ @CPayne6
+/.github/ @CPayne6
+/docker-compose.prod.yml @CPayne6
+/infrastructure/ @CPayne6
+/scripts/deploy.sh @CPayne6
