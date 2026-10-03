@@ -1,0 +1,38 @@
+name: Agent task
+description: Define a bounded reviewable task for a coding agent.
+title: Agent task
+labels: agent-task
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: State the user or operational outcome.
+      placeholder: Users can do this.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and exclusions
+      description: Name allowed services and explicitly note excluded work.
+      placeholder: Includes this. Excludes that.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+      description: List checks or review criteria that prove completion.
+      placeholder: Test passes and UI shows the expected result.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety boundaries
+      options:
+        - label: This task does not authorize secret access, production mutation, deployment, or production merging.
+          required: true
+        - label: Any external action is explicitly included in the stated scope.
+          required: true

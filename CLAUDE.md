@@ -1,5 +1,9 @@
 # CLAUDE.md - Project Guide for AI Assistants
 
+> **Canonical policy:** [`AGENTS.md`](AGENTS.md) defines the repository-wide
+> safety, production, validation, and handoff rules. This file is background
+> project context only; if it conflicts with `AGENTS.md`, follow `AGENTS.md`.
+
 This document provides a comprehensive overview of the ScoutLGS (MTG Scraper) project for AI assistants working with this codebase.
 
 ## Project Overview
